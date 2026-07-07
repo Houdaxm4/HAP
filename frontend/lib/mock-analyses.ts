@@ -1,4 +1,4 @@
-import type { Analysis } from "./types";
+import type { Analysis, AnalysisDetail } from "./types";
 
 export const mockAnalyses: Record<string, Analysis> = {
   aapl: {
@@ -366,3 +366,60 @@ export function getAnalysis(id: string): Analysis | undefined {
 export function getAllAnalyses(): Analysis[] {
   return Object.values(mockAnalyses);
 }
+
+function toStoreAnalysis(analysis: Analysis): AnalysisDetail {
+  const sheetStatus =
+    analysis.status === "Complete" ? ("synced" as const) : ("pending" as const);
+
+  return {
+    id: analysis.id,
+    company: analysis.company,
+    ticker: analysis.ticker,
+    type: analysis.type,
+    status: analysis.status,
+    progress: analysis.progress,
+    startedAt: analysis.startedAt,
+    analyst: analysis.analyst,
+    sector: analysis.sector,
+    marketCap: analysis.marketCap,
+    thesis: analysis.overview.thesis,
+    priceTarget: analysis.targetPrice,
+    rating: analysis.recommendation,
+    keyMetrics: analysis.overview.keyMetrics,
+    workbookSheets: analysis.workbook.sheets.map((sheet) => ({
+      name: sheet.name,
+      rows: sheet.rows,
+      lastUpdated: "Earlier",
+      status: sheetStatus,
+    })),
+    verificationChecks: analysis.verification.map((check, index) => ({
+      id: `v-${analysis.id}-${index}`,
+      status:
+        check.status === "pass"
+          ? ("pass" as const)
+          : check.status === "pending"
+            ? ("pending" as const)
+            : ("warn" as const),
+      label: check.item,
+      detail: check.detail,
+    })),
+    decisionLog: analysis.decisionLog.map((entry) => ({
+      id: entry.id,
+      timestamp: entry.timestamp,
+      agent: `${entry.type.charAt(0).toUpperCase()}${entry.type.slice(1)} Agent`,
+      action: entry.title,
+      detail: entry.reasoning,
+    })),
+    executiveSummary:
+      analysis.summary.sections.map((section) => section.content).join("\n\n") ||
+      analysis.overview.thesis,
+    chatHistory: analysis.chat.map((message, index) => ({
+      id: `c-${analysis.id}-${index}`,
+      role: message.role,
+      content: message.content,
+      timestamp: message.timestamp,
+    })),
+  };
+}
+
+export const MOCK_ANALYSES = getAllAnalyses().map(toStoreAnalysis);

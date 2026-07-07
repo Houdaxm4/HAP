@@ -65,3 +65,56 @@ export interface Analysis {
     timestamp: string;
   }[];
 }
+
+export type NewAnalysisFormData = {
+  companyName: string;
+  ticker: string;
+  analysisType: "new_company" | "annual_update" | "quarterly_update";
+  prefilledWorkbook: File | null;
+  previousWorkbook: File | null;
+  customRunFilter: File | null;
+  notes: string;
+};
+
+export interface AnalysisDetail {
+  id: string;
+  company: string;
+  ticker: string;
+  type: string;
+  status: AnalysisStatus;
+  progress: number;
+  startedAt: string;
+  analyst: string;
+  sector: string;
+  marketCap: string;
+  thesis: string;
+  priceTarget: string;
+  rating: string;
+  keyMetrics: { label: string; value: string; change?: string }[];
+  workbookSheets: {
+    name: string;
+    rows: number;
+    lastUpdated: string;
+    status: "synced" | "pending" | "error";
+  }[];
+  verificationChecks: {
+    id: string;
+    status: "pass" | "warn" | "pending";
+    label: string;
+    detail: string;
+  }[];
+  decisionLog: {
+    id: string;
+    timestamp: string;
+    agent: string;
+    action: string;
+    detail: string;
+  }[];
+  executiveSummary: string;
+  chatHistory: {
+    id: string;
+    role: "assistant" | "user";
+    content: string;
+    timestamp: string;
+  }[];
+}
