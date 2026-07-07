@@ -1,3 +1,4 @@
+import { ensureCompletionState, finalizeAnalysis } from "./analysis-completion";
 import type { AnalysisDetail, AnalysisStatus } from "./types";
 
 export const QUEUED_MAX_PROGRESS = 20;
@@ -12,7 +13,7 @@ export const RUNNING_STEP = 3;
 export const REVIEW_STEP = 1;
 
 export const ANALYSIS_STORAGE_KEY = "hap-analysis-state";
-export const ANALYSIS_STORAGE_VERSION = 2;
+export const ANALYSIS_STORAGE_VERSION = 3;
 
 export type PersistedAnalysisState = {
   version: number;
@@ -52,7 +53,11 @@ export function repairAnalysis(analysis: AnalysisDetail): AnalysisDetail {
   const progress = clampProgress(analysis.progress);
 
   if (analysis.status === "Complete") {
-    return { ...analysis, progress: COMPLETE_PROGRESS, status: "Complete" };
+    return ensureCompletionState({
+      ...analysis,
+      progress: COMPLETE_PROGRESS,
+      status: "Complete",
+    });
   }
 
   if (
@@ -78,17 +83,23 @@ export function repairAnalysis(analysis: AnalysisDetail): AnalysisDetail {
 export function tickAnalysis(analysis: AnalysisDetail): AnalysisDetail {
   const repaired = repairAnalysis(analysis);
   if (repaired.status === "Complete" && repaired.progress >= COMPLETE_PROGRESS) {
-    return repaired;
+    return ensureCompletionState(repaired);
   }
 
   const nextProgress = advanceProgress(repaired.progress);
   const nextStatus = resolveStatus(nextProgress);
 
-  return {
+  const nextAnalysis = {
     ...repaired,
     progress: nextProgress,
     status: nextStatus,
   };
+
+  if (nextStatus === "Complete") {
+    return finalizeAnalysis(nextAnalysis);
+  }
+
+  return nextAnalysis;
 }
 
 export function repairAnalyses(analyses: AnalysisDetail[]): AnalysisDetail[] {
