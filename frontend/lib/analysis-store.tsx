@@ -21,18 +21,25 @@ function typeLabel(type: NewAnalysisFormData["analysisType"]): string {
   return labels[type];
 }
 
+const QUEUED_MAX_PROGRESS = 20;
+const RUNNING_MAX_PROGRESS = 95;
+const COMPLETE_PROGRESS = 100;
+
 function advanceStatus(status: AnalysisStatus, progress: number): AnalysisStatus {
-  if (status === "Queued" && progress >= 20) return "Running";
-  if (status === "Running" && progress >= 95) return "Review";
-  if (status === "Review" && progress >= 100) return "Complete";
+  if (status === "Queued" && progress >= QUEUED_MAX_PROGRESS) return "Running";
+  if (status === "Running" && progress >= RUNNING_MAX_PROGRESS) return "Review";
+  if (status === "Review" && progress >= COMPLETE_PROGRESS) return "Complete";
   return status;
 }
 
 function advanceProgress(status: AnalysisStatus, progress: number): number {
-  if (status === "Complete") return 100;
-  if (status === "Review") return Math.min(100, progress + 1);
-  if (status === "Queued") return Math.min(20, progress + 2);
-  return Math.min(94, progress + Math.floor(Math.random() * 3) + 1);
+  if (status === "Complete") return COMPLETE_PROGRESS;
+  if (status === "Review") return Math.min(COMPLETE_PROGRESS, progress + 1);
+  if (status === "Queued") return Math.min(QUEUED_MAX_PROGRESS, progress + 2);
+  return Math.min(
+    RUNNING_MAX_PROGRESS,
+    progress + Math.floor(Math.random() * 3) + 1,
+  );
 }
 
 export function AnalysisStoreProvider({ children }: { children: ReactNode }) {
