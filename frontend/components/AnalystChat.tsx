@@ -1,46 +1,16 @@
 "use client";
 
 import { useState } from "react";
-import { getAnalystGreeting, getAnalystLabel } from "@/lib/app_config";
-
-type Message = {
-  id: string;
-  role: "user" | "assistant";
-  content: string;
-  timestamp: string;
-};
+import { getAnalystLabel } from "@/lib/app_config";
+import { useAnalysisStore } from "@/lib/analysis-store";
 
 export default function AnalystChat() {
+  const { analystMessages } = useAnalysisStore();
   const [input, setInput] = useState("");
-  const [messages, setMessages] = useState<Message[]>([
-    {
-      id: "initial",
-      role: "assistant",
-      content: getAnalystGreeting(),
-      timestamp: "08:42 AM",
-    },
-  ]);
 
   const handleSend = () => {
     const trimmed = input.trim();
     if (!trimmed) return;
-
-    const now = new Date().toLocaleTimeString("en-US", {
-      hour: "2-digit",
-      minute: "2-digit",
-    });
-
-    setMessages((prev) => [
-      ...prev,
-      { id: `u-${Date.now()}`, role: "user", content: trimmed, timestamp: now },
-      {
-        id: `a-${Date.now()}`,
-        role: "assistant",
-        content:
-          `I've noted your request. In production, this will route to the ${getAnalystLabel()} agent with full analysis context.`,
-        timestamp: now,
-      },
-    ]);
     setInput("");
   };
 
@@ -58,7 +28,7 @@ export default function AnalystChat() {
       </div>
 
       <div className="flex-1 space-y-4 overflow-y-auto px-5 py-4">
-        {messages.map((msg) => (
+        {analystMessages.map((msg) => (
           <div
             key={msg.id}
             className={`max-w-[90%] rounded-lg px-4 py-3 ${

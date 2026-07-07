@@ -1,4 +1,67 @@
-export type AnalysisStatus = "Running" | "Queued" | "Review" | "Complete";
+export type AnalysisStatus =
+  | "Running"
+  | "Queued"
+  | "Review"
+  | "Complete"
+  | "created"
+  | "uploaded";
+
+export type NewAnalysisType = "new_company" | "annual_update" | "quarterly_update";
+
+export interface NewAnalysisFormData {
+  companyName: string;
+  ticker: string;
+  analysisType: NewAnalysisType;
+  prefilledWorkbook: File | null;
+  previousWorkbook: File | null;
+  customRunFilter: File | null;
+  notes: string;
+}
+
+export interface ChatMessage {
+  id: string;
+  role: "assistant" | "user";
+  content: string;
+  timestamp: string;
+}
+
+export interface AnalysisDetail {
+  id: string;
+  company: string;
+  ticker: string;
+  type: string;
+  status: AnalysisStatus;
+  progress: number;
+  startedAt: string;
+  analyst: string;
+  sector: string;
+  marketCap: string;
+  thesis: string;
+  priceTarget: string;
+  rating: string;
+  keyMetrics: { label: string; value: string; change?: string }[];
+  workbookSheets: {
+    name: string;
+    rows: number;
+    lastUpdated: string;
+    status: "synced" | "pending" | "error";
+  }[];
+  verificationChecks: {
+    id: string;
+    label: string;
+    status: "pass" | "warn" | "pending";
+    detail: string;
+  }[];
+  decisionLog: {
+    id: string;
+    timestamp: string;
+    agent: string;
+    action: string;
+    detail: string;
+  }[];
+  executiveSummary: string;
+  chatHistory: ChatMessage[];
+}
 
 export type AnalysisType =
   | "New Company"

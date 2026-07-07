@@ -2,6 +2,7 @@ export const APP_CONFIG = {
   applicationName: "HAP",
   fullName: "Houda's Analyst Platform",
   primaryUser: "Houda",
+  backendBaseUrl: "http://localhost:8000",
 } as const;
 
 export function getPageTitle(): string {
