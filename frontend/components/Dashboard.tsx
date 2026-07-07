@@ -2,7 +2,7 @@
 
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
-import { useAnalysisStore } from "@/lib/analysis-store";
+import { useAnalysisStore } from "@/lib/analysis-store-context";
 import type { NewAnalysisFormData } from "@/lib/types";
 import Sidebar from "./Sidebar";
 import CommandCenter from "./CommandCenter";

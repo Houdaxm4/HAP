@@ -2,7 +2,7 @@
 
 import { use } from "react";
 import { notFound } from "next/navigation";
-import { useAnalysisStore } from "@/lib/analysis-store";
+import { useAnalysisStore } from "@/lib/analysis-store-context";
 import AnalysisDetail from "@/components/analysis/AnalysisDetail";
 
 type PageProps = {
