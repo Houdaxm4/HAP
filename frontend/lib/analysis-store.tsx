@@ -1,25 +1,18 @@
 "use client";
 
 import {
-  createContext,
   useCallback,
-  useContext,
   useEffect,
   useMemo,
   useState,
   type ReactNode,
 } from "react";
+import { AnalysisStoreContext } from "./analysis-store-context";
 import { getAnalystLabel } from "./app_config";
 import { MOCK_ANALYSES } from "./mock-analyses";
 import type { AnalysisDetail, AnalysisStatus, NewAnalysisFormData } from "./types";
 
-type AnalysisStoreContextValue = {
-  analyses: AnalysisDetail[];
-  addAnalysis: (data: NewAnalysisFormData) => string;
-  getById: (id: string) => AnalysisDetail | undefined;
-};
-
-const AnalysisStoreContext = createContext<AnalysisStoreContextValue | null>(null);
+export { useAnalysisStore } from "./analysis-store-context";
 
 function typeLabel(type: NewAnalysisFormData["analysisType"]): string {
   const labels = {
@@ -148,12 +141,4 @@ export function AnalysisStoreProvider({ children }: { children: ReactNode }) {
       {children}
     </AnalysisStoreContext.Provider>
   );
-}
-
-export function useAnalysisStore() {
-  const ctx = useContext(AnalysisStoreContext);
-  if (!ctx) {
-    throw new Error("useAnalysisStore must be used within AnalysisStoreProvider");
-  }
-  return ctx;
 }
