@@ -1,14 +1,16 @@
 # HAP — DEVELOPMENT REPORT
 
 **Project:** Houda's Analyst Platform (HAP)  
-**Report date:** Monday, July 6, 2026  
+**Report date:** Tuesday, July 7, 2026  
 **Location:** `Downloads/HAP/`
 
 ---
 
 ## Executive Summary
 
-The HAP frontend has been implemented in the existing Next.js 16 app. The UI includes a Bloomberg-style Command Center dashboard, New Analysis modal, analysis detail views with six tabs, a right-side HAP Analyst chat panel, mock active analyses, and a simulated progress/status workflow. No backend changes were made.
+The HAP frontend has been implemented in the existing Next.js 16 app. The UI includes a Bloomberg-style Command Center dashboard, New Analysis modal, analysis detail views with six tabs, a right-side HAP Analyst chat panel, mock active analyses, and a simulated progress/status workflow.
+
+**HAP backend v0.2** is now implemented with FastAPI. It supports analysis creation, multipart workbook uploads, JSON metadata persistence, and read-only workbook inspection via openpyxl. The frontend has not yet been wired to the backend.
 
 ---
 
@@ -39,6 +41,20 @@ The HAP frontend has been implemented in the existing Next.js 16 app. The UI inc
 | `frontend/components/analysis/tabs/AnalysisChatTab.tsx` | Per-analysis chat tab |
 | `frontend/app/analysis/[id]/page.tsx` | Dynamic analysis detail route |
 | `frontend/app/not-found.tsx` | 404 page for missing analyses |
+
+### Backend (v0.2)
+
+| File | Purpose |
+|------|---------|
+| `backend/main.py` | FastAPI app, CORS, route definitions |
+| `backend/requirements.txt` | Python dependencies (FastAPI, uvicorn, openpyxl, etc.) |
+| `backend/models/analysis.py` | Pydantic models for analysis records and API payloads |
+| `backend/services/analysis_service.py` | JSON file persistence for analysis metadata |
+| `backend/services/file_service.py` | Multipart upload handling and storage paths |
+| `backend/services/workbook_service.py` | Read-only workbook inspection with openpyxl |
+| `backend/storage/analyses/.gitkeep` | Placeholder for per-analysis JSON files |
+| `backend/storage/uploads/.gitkeep` | Placeholder for uploaded workbooks |
+| `backend/storage/outputs/.gitkeep` | Placeholder for future analysis outputs |
 
 ---
 
@@ -102,7 +118,17 @@ npm run dev
 
 Open [http://localhost:3000](http://localhost:3000).
 
-**Routes:**
+## How to Run the Backend
+
+```bash
+cd backend
+pip install -r requirements.txt
+python3 -m uvicorn main:app --reload --host 127.0.0.1 --port 8000
+```
+
+API docs: [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs)
+
+**Frontend routes:**
 
 | URL | View |
 |-----|------|
@@ -114,9 +140,48 @@ Open [http://localhost:3000](http://localhost:3000).
 
 ---
 
+## Backend API Endpoints (v0.2)
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/health` | Liveness check — returns `{ "status": "ok", "service": "HAP backend" }` |
+| `POST` | `/analysis/create` | Create analysis from JSON (`company`, `ticker`, `analysis_type`) |
+| `POST` | `/analysis/{analysis_id}/upload` | Upload workbooks (`prefilled_workbook` required; `previous_workbook`, `custom_run_filter` optional) |
+| `GET` | `/analysis/{analysis_id}` | Return full analysis metadata |
+| `POST` | `/analysis/{analysis_id}/read-workbook` | Inspect prefilled workbook (sheet names, visibility, formula/cell counts) |
+
+**Storage layout:**
+
+```
+backend/storage/
+├── analyses/{analysis_id}.json   # Analysis metadata
+├── uploads/{analysis_id}/        # Uploaded workbooks
+└── outputs/                      # Reserved for future outputs
+```
+
+**Example flow:**
+
+```bash
+# Create
+curl -X POST http://127.0.0.1:8000/analysis/create \
+  -H "Content-Type: application/json" \
+  -d '{"company":"Apple Inc.","ticker":"AAPL","analysis_type":"DCF Valuation"}'
+
+# Upload (use analysis_id from create response)
+curl -X POST http://127.0.0.1:8000/analysis/{analysis_id}/upload \
+  -F "prefilled_workbook=@/path/to/workbook.xlsx"
+
+# Read workbook stats
+curl -X POST http://127.0.0.1:8000/analysis/{analysis_id}/read-workbook
+```
+
+CORS is enabled for `http://localhost:3000`.
+
+---
+
 ## Remaining TODOs
 
-- [ ] Connect New Analysis form to backend API (`POST /api/analyses` with multipart uploads)
+- [ ] Connect New Analysis form to backend API (`POST /analysis/create` + `POST /analysis/{id}/upload`)
 - [ ] Replace mock store with server-fetched data (React Query / SWR)
 - [ ] Wire HAP Analyst chat to LLM backend with analysis context
 - [ ] Implement History and Settings pages (sidebar placeholders)
@@ -131,11 +196,11 @@ Open [http://localhost:3000](http://localhost:3000).
 
 ## Next Recommended Backend Steps
 
-1. **Scaffold API** — FastAPI or Node.js service with `/api/analyses` CRUD endpoints
-2. **File storage** — S3 or local storage for workbook uploads (prefilled, previous, custom_run_filter)
-3. **Analysis orchestrator** — Job queue (Celery/BullMQ) to run analysis pipeline stages
-4. **Agent framework** — Data Agent, Model Agent, Verification Agent matching Decision Log mock
-5. **Database schema** — `analyses`, `workbook_sheets`, `verification_checks`, `decision_log`, `chat_messages`
+1. **Wire frontend** — Point New Analysis modal and detail views at backend endpoints instead of mock store
+2. **Analysis orchestrator** — Job queue (Celery/RQ) to run analysis pipeline stages after upload
+3. **Agent framework** — Data Agent, Model Agent, Verification Agent matching Decision Log mock
+4. **Output generation** — Write updated workbooks, verification reports, and summaries to `storage/outputs/`
+5. **Database migration** — Move from JSON files to PostgreSQL when multi-user or query needs grow
 6. **WebSocket channel** — Push progress/status updates to replace client-side `setInterval` simulation
 7. **LLM integration** — HAP Analyst chat with RAG over analysis artifacts and filings
 
@@ -144,5 +209,5 @@ Open [http://localhost:3000](http://localhost:3000).
 ## Notes
 
 - Project docs (`AGENTS.md`, `CLAUDE.md`) were not modified or deleted.
-- No backend files were created or modified.
+- Backend v0.2 added under `backend/`; frontend not yet connected to API.
 - Shell verification of `npm run dev` should be run locally if the automated environment could not execute npm commands.

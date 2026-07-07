@@ -1,0 +1,13 @@
+# Runtime storage (keep directory placeholders)
+storage/analyses/*.json
+storage/uploads/*/
+storage/outputs/*/
+
+!storage/analyses/.gitkeep
+!storage/uploads/.gitkeep
+!storage/outputs/.gitkeep
+
+__pycache__/
+*.py[cod]
+.venv/
+venv/
