@@ -1,0 +1,53 @@
+@import "tailwindcss";
+
+:root {
+  --background: #0a0e14;
+  --foreground: #e8eaed;
+  --hap-panel: #111820;
+  --hap-panel-elevated: #161d27;
+  --hap-border: #1e2a3a;
+  --hap-border-bright: #2a3a4f;
+  --hap-orange: #ff8c00;
+  --hap-orange-dim: #cc6f00;
+  --hap-muted: #6b7a8f;
+  --hap-success: #00c853;
+  --hap-warning: #ffb300;
+  --hap-info: #29b6f6;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-hap-panel: var(--hap-panel);
+  --color-hap-panel-elevated: var(--hap-panel-elevated);
+  --color-hap-border: var(--hap-border);
+  --color-hap-border-bright: var(--hap-border-bright);
+  --color-hap-orange: var(--hap-orange);
+  --color-hap-orange-dim: var(--hap-orange-dim);
+  --color-hap-muted: var(--hap-muted);
+  --color-hap-success: var(--hap-success);
+  --color-hap-warning: var(--hap-warning);
+  --color-hap-info: var(--hap-info);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-geist-sans), system-ui, sans-serif;
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--hap-panel);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--hap-border-bright);
+  border-radius: 3px;
+}
