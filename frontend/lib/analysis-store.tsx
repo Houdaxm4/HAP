@@ -8,9 +8,17 @@ import {
   type ReactNode,
 } from "react";
 import { AnalysisStoreContext } from "./analysis-store-context";
+import {
+  readPersistedAnalyses,
+  repairAnalyses,
+  tickAnalysis,
+  writePersistedAnalyses,
+} from "./analysis-progress";
 import { getAnalystLabel } from "./app_config";
 import { MOCK_ANALYSES } from "./mock-analyses";
-import type { AnalysisDetail, AnalysisStatus, NewAnalysisFormData } from "./types";
+import type { AnalysisDetail, NewAnalysisFormData } from "./types";
+
+const TICK_INTERVAL_MS = 4000;
 
 function typeLabel(type: NewAnalysisFormData["analysisType"]): string {
   const labels = {
@@ -21,43 +29,31 @@ function typeLabel(type: NewAnalysisFormData["analysisType"]): string {
   return labels[type];
 }
 
-function advanceStatus(status: AnalysisStatus, progress: number): AnalysisStatus {
-  if (status === "Queued" && progress >= 20) return "Running";
-  if (status === "Running" && progress >= 95) return "Review";
-  if (status === "Review" && progress >= 100) return "Complete";
-  return status;
-}
-
-function advanceProgress(status: AnalysisStatus, progress: number): number {
-  if (status === "Complete") return 100;
-  if (status === "Review") return Math.min(100, progress + 1);
-  if (status === "Queued") return Math.min(20, progress + 2);
-  return Math.min(94, progress + Math.floor(Math.random() * 3) + 1);
-}
-
 export function AnalysisStoreProvider({ children }: { children: ReactNode }) {
-  const [analyses, setAnalyses] = useState<AnalysisDetail[]>(MOCK_ANALYSES);
+  const [analyses, setAnalyses] = useState<AnalysisDetail[]>(() =>
+    repairAnalyses(MOCK_ANALYSES),
+  );
+  const [hydrated, setHydrated] = useState(false);
 
   useEffect(() => {
+    setAnalyses(readPersistedAnalyses(MOCK_ANALYSES));
+    setHydrated(true);
+  }, []);
+
+  useEffect(() => {
+    if (!hydrated) return;
+    writePersistedAnalyses(analyses);
+  }, [analyses, hydrated]);
+
+  useEffect(() => {
+    if (!hydrated) return;
+
     const interval = setInterval(() => {
-      setAnalyses((prev) =>
-        prev.map((analysis) => {
-          if (analysis.status === "Complete") return analysis;
-
-          const nextProgress = advanceProgress(analysis.status, analysis.progress);
-          const nextStatus = advanceStatus(analysis.status, nextProgress);
-
-          return {
-            ...analysis,
-            progress: nextProgress,
-            status: nextStatus,
-          };
-        }),
-      );
-    }, 4000);
+      setAnalyses((prev) => prev.map(tickAnalysis));
+    }, TICK_INTERVAL_MS);
 
     return () => clearInterval(interval);
-  }, []);
+  }, [hydrated]);
 
   const addAnalysis = useCallback((data: NewAnalysisFormData): string => {
     const id = data.ticker.toLowerCase();

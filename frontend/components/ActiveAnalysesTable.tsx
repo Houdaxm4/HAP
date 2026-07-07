@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useAnalysisStore } from "@/lib/analysis-store-context";
+import { isAnalysisComplete } from "@/lib/analysis-completion";
 import StatusBadge from "./StatusBadge";
 
 export default function ActiveAnalysesTable() {
@@ -23,41 +24,80 @@ export default function ActiveAnalysesTable() {
               <th className="px-4 py-3 font-medium">Type</th>
               <th className="px-4 py-3 font-medium">Status</th>
               <th className="px-4 py-3 font-medium">Progress</th>
+              <th className="px-4 py-3 font-medium">Actions</th>
             </tr>
           </thead>
           <tbody>
-            {analyses.map((row) => (
-              <tr
-                key={row.id}
-                className="border-b border-hap-border/50 transition-colors hover:bg-hap-panel-elevated/50"
-              >
-                <td className="px-4 py-3">
-                  <Link href={`/analysis/${row.id}`} className="group block">
-                    <div className="font-medium group-hover:text-hap-orange">
-                      {row.company}
+            {analyses.map((row) => {
+              const isComplete = isAnalysisComplete(row);
+
+              return (
+                <tr
+                  key={row.id}
+                  className={`border-b border-hap-border/50 transition-colors hover:bg-hap-panel-elevated/50 ${
+                    isComplete ? "bg-hap-success/5" : ""
+                  }`}
+                >
+                  <td className="px-4 py-3">
+                    <Link href={`/analysis/${row.id}`} className="group block">
+                      <div className="flex items-center gap-2">
+                        {isComplete && (
+                          <span
+                            className="text-hap-success"
+                            aria-label="Analysis complete"
+                          >
+                            ✓
+                          </span>
+                        )}
+                        <div>
+                          <div className="font-medium group-hover:text-hap-orange">
+                            {row.company}
+                          </div>
+                          <div className="font-mono text-xs text-hap-orange">
+                            {row.ticker}
+                          </div>
+                        </div>
+                      </div>
+                    </Link>
+                  </td>
+                  <td className="px-4 py-3 text-hap-muted">{row.type}</td>
+                  <td className="px-4 py-3">
+                    <StatusBadge status={row.status} />
+                  </td>
+                  <td className="px-4 py-3">
+                    <div className="flex items-center gap-3">
+                      <div className="h-1.5 w-24 overflow-hidden rounded-full bg-hap-border">
+                        <div
+                          className={`h-full rounded-full transition-all duration-500 ${
+                            isComplete ? "bg-hap-success" : "bg-hap-orange"
+                          }`}
+                          style={{ width: `${row.progress}%` }}
+                        />
+                      </div>
+                      <span
+                        className={`font-mono text-xs ${
+                          isComplete ? "text-hap-success" : "text-hap-muted"
+                        }`}
+                      >
+                        {row.progress}%
+                      </span>
                     </div>
-                    <div className="font-mono text-xs text-hap-orange">{row.ticker}</div>
-                  </Link>
-                </td>
-                <td className="px-4 py-3 text-hap-muted">{row.type}</td>
-                <td className="px-4 py-3">
-                  <StatusBadge status={row.status} />
-                </td>
-                <td className="px-4 py-3">
-                  <div className="flex items-center gap-3">
-                    <div className="h-1.5 w-24 overflow-hidden rounded-full bg-hap-border">
-                      <div
-                        className="h-full rounded-full bg-hap-orange transition-all duration-500"
-                        style={{ width: `${row.progress}%` }}
-                      />
-                    </div>
-                    <span className="font-mono text-xs text-hap-muted">
-                      {row.progress}%
-                    </span>
-                  </div>
-                </td>
-              </tr>
-            ))}
+                  </td>
+                  <td className="px-4 py-3">
+                    <Link
+                      href={`/analysis/${row.id}`}
+                      className={`text-xs font-medium transition-colors ${
+                        isComplete
+                          ? "text-hap-success hover:text-hap-orange"
+                          : "text-hap-muted hover:text-hap-orange"
+                      }`}
+                    >
+                      {isComplete ? "View completed analysis" : "Open"}
+                    </Link>
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>

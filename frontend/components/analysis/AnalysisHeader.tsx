@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import type { AnalysisDetail } from "@/lib/types";
+import { isAnalysisComplete } from "@/lib/analysis-completion";
 import StatusBadge from "../StatusBadge";
 
 type AnalysisHeaderProps = {
@@ -9,6 +10,8 @@ type AnalysisHeaderProps = {
 };
 
 export default function AnalysisHeader({ analysis }: AnalysisHeaderProps) {
+  const isComplete = isAnalysisComplete(analysis);
+
   return (
     <header className="shrink-0 border-b border-hap-border px-6 py-5 lg:px-8">
       <div className="flex flex-wrap items-start justify-between gap-4">
@@ -35,11 +38,19 @@ export default function AnalysisHeader({ analysis }: AnalysisHeaderProps) {
             <div className="mt-1 flex items-center gap-2">
               <div className="h-1.5 w-32 overflow-hidden rounded-full bg-hap-border">
                 <div
-                  className="h-full rounded-full bg-hap-orange transition-all duration-500"
+                  className={`h-full rounded-full transition-all duration-500 ${
+                    isComplete ? "bg-hap-success" : "bg-hap-orange"
+                  }`}
                   style={{ width: `${analysis.progress}%` }}
                 />
               </div>
-              <span className="font-mono text-sm">{analysis.progress}%</span>
+              <span
+                className={`font-mono text-sm ${
+                  isComplete ? "text-hap-success" : "text-foreground"
+                }`}
+              >
+                {analysis.progress}%
+              </span>
             </div>
           </div>
           <StatusBadge status={analysis.status} />

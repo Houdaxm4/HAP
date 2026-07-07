@@ -55,6 +55,7 @@ export interface AnalysisDetail {
   }[];
   executiveSummary: string;
   chatHistory: ChatMessage[];
+  completedAt?: string;
 }
 
 export type AnalysisType =
