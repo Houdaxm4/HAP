@@ -1,4 +1,5 @@
 import type { Analysis } from "./types";
+import type { AnalysisDetail } from "./types";
 
 export const mockAnalyses: Record<string, Analysis> = {
   aapl: {
@@ -366,3 +367,60 @@ export function getAnalysis(id: string): Analysis | undefined {
 export function getAllAnalyses(): Analysis[] {
   return Object.values(mockAnalyses);
 }
+
+function mapVerificationStatus(
+  status: Analysis["verification"][number]["status"],
+): AnalysisDetail["verificationChecks"][number]["status"] {
+  if (status === "pass") return "pass";
+  if (status === "warning" || status === "fail") return "warn";
+  return "pending";
+}
+
+function toAnalysisDetail(analysis: Analysis): AnalysisDetail {
+  return {
+    id: analysis.id,
+    company: analysis.company,
+    ticker: analysis.ticker,
+    type: analysis.type,
+    status: analysis.status,
+    progress: analysis.progress,
+    startedAt: analysis.startedAt,
+    analyst: analysis.analyst,
+    sector: analysis.sector,
+    marketCap: analysis.marketCap,
+    thesis: analysis.overview.thesis,
+    priceTarget: analysis.targetPrice,
+    rating: analysis.recommendation,
+    keyMetrics: analysis.overview.keyMetrics,
+    workbookSheets: analysis.workbook.sheets.map((sheet) => ({
+      name: sheet.name,
+      rows: sheet.rows,
+      lastUpdated: analysis.updatedAt.slice(0, 10),
+      status: "synced",
+    })),
+    verificationChecks: analysis.verification.map((check, index) => ({
+      id: `v-${analysis.id}-${index}`,
+      label: check.item,
+      status: mapVerificationStatus(check.status),
+      detail: check.detail,
+    })),
+    decisionLog: analysis.decisionLog.map((entry) => ({
+      id: entry.id,
+      timestamp: entry.timestamp,
+      agent: entry.type,
+      action: entry.title,
+      detail: entry.reasoning,
+    })),
+    executiveSummary: analysis.summary.sections[0]?.content ?? analysis.summary.rating,
+    chatHistory: analysis.chat.map((message, index) => ({
+      id: `c-${analysis.id}-${index}`,
+      role: message.role,
+      content: message.content,
+      timestamp: message.timestamp,
+    })),
+  };
+}
+
+export const MOCK_ANALYSES: AnalysisDetail[] = Object.values(mockAnalyses).map(
+  toAnalysisDetail,
+);

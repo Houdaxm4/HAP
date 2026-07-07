@@ -2,12 +2,13 @@
 
 import { useCallback, useEffect, useState } from "react";
 import FileUploadBox from "./FileUploadBox";
+import { ApiError } from "@/lib/api";
 import type { NewAnalysisFormData } from "@/lib/types";
 
 type NewAnalysisModalProps = {
   isOpen: boolean;
   onClose: () => void;
-  onSubmit: (data: NewAnalysisFormData) => void;
+  onSubmit: (data: NewAnalysisFormData) => Promise<void>;
 };
 
 const ANALYSIS_TYPES: {
@@ -36,7 +37,7 @@ export default function NewAnalysisModal({
   onSubmit,
 }: NewAnalysisModalProps) {
   const [form, setForm] = useState<NewAnalysisFormData>(initialForm);
-  const [errors, setErrors] = useState<Partial<Record<keyof NewAnalysisFormData, string>>>({});
+  const [errors, setErrors] = useState<Partial<Record<keyof NewAnalysisFormData | "submit", string>>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const resetForm = useCallback(() => {
@@ -83,15 +84,29 @@ export default function NewAnalysisModal({
     if (!validate()) return;
 
     setIsSubmitting(true);
-    await new Promise((r) => setTimeout(r, 600));
-
-    onSubmit({
-      ...form,
-      ticker: form.ticker.toUpperCase(),
+    setErrors((prev) => {
+      const next = { ...prev };
+      delete next.submit;
+      return next;
     });
 
-    resetForm();
-    setIsSubmitting(false);
+    try {
+      await onSubmit({
+        ...form,
+        ticker: form.ticker.toUpperCase(),
+      });
+      resetForm();
+    } catch (error) {
+      const message =
+        error instanceof ApiError
+          ? `${error.message} (POST ${error.url})`
+          : "Failed to create analysis. Ensure the backend is running at http://127.0.0.1:8000.";
+      setErrors((prev) => ({
+        ...prev,
+        submit: message,
+      }));
+      setIsSubmitting(false);
+    }
   };
 
   const update = <K extends keyof NewAnalysisFormData>(
@@ -261,6 +276,9 @@ export default function NewAnalysisModal({
           </div>
 
           <div className="flex shrink-0 items-center justify-end gap-3 border-t border-hap-border px-6 py-4">
+            {errors.submit && (
+              <p className="mr-auto text-xs text-red-400">{errors.submit}</p>
+            )}
             <button
               type="button"
               onClick={handleClose}

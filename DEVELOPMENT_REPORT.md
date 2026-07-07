@@ -10,7 +10,9 @@
 
 The HAP frontend has been implemented in the existing Next.js 16 app. The UI includes a Bloomberg-style Command Center dashboard, New Analysis modal, analysis detail views with six tabs, a right-side HAP Analyst chat panel, mock active analyses, and a simulated progress/status workflow.
 
-**HAP backend v0.2** is now implemented with FastAPI. It supports analysis creation, multipart workbook uploads, JSON metadata persistence, and read-only workbook inspection via openpyxl. The frontend has not yet been wired to the backend.
+**HAP backend v0.2** is now implemented with FastAPI. It supports analysis creation, multipart workbook uploads, JSON metadata persistence, and read-only workbook inspection via openpyxl.
+
+**Frontend integration (v0.2.1):** The New Analysis modal now calls `POST /analysis/create` on the FastAPI backend. Created analyses appear in Active Analyses with the backend `created` status, and the HAP Analyst chat shows a success message. File upload is not yet wired.
 
 ---
 
@@ -41,6 +43,7 @@ The HAP frontend has been implemented in the existing Next.js 16 app. The UI inc
 | `frontend/components/analysis/tabs/AnalysisChatTab.tsx` | Per-analysis chat tab |
 | `frontend/app/analysis/[id]/page.tsx` | Dynamic analysis detail route |
 | `frontend/app/not-found.tsx` | 404 page for missing analyses |
+| `frontend/lib/api.ts` | FastAPI client for analysis creation |
 
 ### Backend (v0.2)
 
@@ -62,6 +65,15 @@ The HAP frontend has been implemented in the existing Next.js 16 app. The UI inc
 
 | File | Changes |
 |------|---------|
+| `frontend/lib/types.ts` | Added `AnalysisDetail`, `NewAnalysisFormData`, backend status types |
+| `frontend/lib/app_config.ts` | Added `backendBaseUrl` (`http://127.0.0.1:8000`, normalizes accidental `/api` suffix) |
+| `frontend/lib/api.ts` | Uses `new URL("/analysis/create", base)` — no `/api` prefix |
+| `frontend/lib/analysis-store.tsx` | Calls backend on create; shared analyst chat messages |
+| `frontend/lib/mock-analyses.ts` | Exports `MOCK_ANALYSES` for dashboard seed data |
+| `frontend/components/Dashboard.tsx` | Async New Analysis submit; navigates to backend `analysis_id` |
+| `frontend/components/NewAnalysisModal.tsx` | Async submit with backend error handling |
+| `frontend/components/AnalystChat.tsx` | Reads messages from analysis store |
+| `frontend/components/StatusBadge.tsx` | Supports `created` / `uploaded` backend statuses |
 | `frontend/app/globals.css` | HAP dark theme tokens, scrollbar styling |
 | `frontend/app/layout.tsx` | HAP metadata, Providers wrapper, dark body |
 | `frontend/app/page.tsx` | Renders Dashboard instead of Next.js starter |
@@ -177,11 +189,36 @@ curl -X POST http://127.0.0.1:8000/analysis/{analysis_id}/read-workbook
 
 CORS is enabled for `http://localhost:3000`.
 
+### Frontend ↔ Backend (New Analysis)
+
+1. User submits **Start Analysis** in the New Analysis modal.
+2. Frontend `POST http://localhost:8000/analysis/create` with `{ company, ticker, analysis_type }`.
+3. Backend returns `{ analysis_id, status: "created" }`.
+4. Frontend stores the analysis in client state using `analysis_id` as the record ID.
+5. Active Analyses table shows the new row with status **Created** (backend value).
+6. HAP Analyst chat appends: *"Analysis created successfully. Ready for file upload."*
+7. User is navigated to `/analysis/{analysis_id}`.
+
+**Run both services:**
+
+```bash
+# Terminal 1 — backend
+cd backend
+pip install -r requirements.txt
+python3 -m uvicorn main:app --reload --host 127.0.0.1 --port 8000
+
+# Terminal 2 — frontend
+cd frontend
+npm install
+npm run dev
+```
+
 ---
 
 ## Remaining TODOs
 
-- [ ] Connect New Analysis form to backend API (`POST /analysis/create` + `POST /analysis/{id}/upload`)
+- [x] Connect New Analysis form to backend API (`POST /analysis/create`)
+- [ ] Wire workbook upload to `POST /analysis/{id}/upload`
 - [ ] Replace mock store with server-fetched data (React Query / SWR)
 - [ ] Wire HAP Analyst chat to LLM backend with analysis context
 - [ ] Implement History and Settings pages (sidebar placeholders)
@@ -196,7 +233,8 @@ CORS is enabled for `http://localhost:3000`.
 
 ## Next Recommended Backend Steps
 
-1. **Wire frontend** — Point New Analysis modal and detail views at backend endpoints instead of mock store
+1. **Wire file upload** — Connect modal workbooks to `POST /analysis/{id}/upload`
+2. **Fetch analysis detail** — Load metadata from `GET /analysis/{id}` on detail pages
 2. **Analysis orchestrator** — Job queue (Celery/RQ) to run analysis pipeline stages after upload
 3. **Agent framework** — Data Agent, Model Agent, Verification Agent matching Decision Log mock
 4. **Output generation** — Write updated workbooks, verification reports, and summaries to `storage/outputs/`
@@ -209,5 +247,6 @@ CORS is enabled for `http://localhost:3000`.
 ## Notes
 
 - Project docs (`AGENTS.md`, `CLAUDE.md`) were not modified or deleted.
-- Backend v0.2 added under `backend/`; frontend not yet connected to API.
+- Backend v0.2 added under `backend/`.
+- New Analysis flow calls the backend create endpoint; file upload not yet connected.
 - Shell verification of `npm run dev` should be run locally if the automated environment could not execute npm commands.

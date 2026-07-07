@@ -24,8 +24,8 @@ export default function Dashboard() {
   const openModal = () => setIsModalOpen(true);
   const closeModal = () => setIsModalOpen(false);
 
-  const handleStartAnalysis = (data: NewAnalysisFormData) => {
-    const id = addAnalysis(data);
+  const handleStartAnalysis = async (data: NewAnalysisFormData) => {
+    const id = await addAnalysis(data);
     closeModal();
     router.push(`/analysis/${id}`);
   };

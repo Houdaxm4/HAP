@@ -9,13 +9,20 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { getAnalystLabel } from "./app_config";
+import { createAnalysis } from "./api";
+import { getAnalystGreeting, getAnalystLabel } from "./app_config";
 import { MOCK_ANALYSES } from "./mock-analyses";
-import type { AnalysisDetail, AnalysisStatus, NewAnalysisFormData } from "./types";
+import type {
+  AnalysisDetail,
+  AnalysisStatus,
+  ChatMessage,
+  NewAnalysisFormData,
+} from "./types";
 
 type AnalysisStoreContextValue = {
   analyses: AnalysisDetail[];
-  addAnalysis: (data: NewAnalysisFormData) => string;
+  analystMessages: ChatMessage[];
+  addAnalysis: (data: NewAnalysisFormData) => Promise<string>;
   getById: (id: string) => AnalysisDetail | undefined;
 };
 
@@ -23,11 +30,18 @@ const AnalysisStoreContext = createContext<AnalysisStoreContextValue | null>(nul
 
 function typeLabel(type: NewAnalysisFormData["analysisType"]): string {
   const labels = {
-    new_company: "New Company Initiation",
+    new_company: "New Company",
     annual_update: "Annual Update",
     quarterly_update: "Quarterly Update",
   };
   return labels[type];
+}
+
+function formatTimestamp(): string {
+  return new Date().toLocaleTimeString("en-US", {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 }
 
 function advanceStatus(status: AnalysisStatus, progress: number): AnalysisStatus {
@@ -44,14 +58,30 @@ function advanceProgress(status: AnalysisStatus, progress: number): number {
   return Math.min(94, progress + Math.floor(Math.random() * 3) + 1);
 }
 
+function isSimulatedStatus(status: AnalysisStatus): boolean {
+  return status === "Queued" || status === "Running" || status === "Review";
+}
+
+const INITIAL_ANALYST_MESSAGE: ChatMessage = {
+  id: "initial",
+  role: "assistant",
+  content: getAnalystGreeting(),
+  timestamp: formatTimestamp(),
+};
+
 export function AnalysisStoreProvider({ children }: { children: ReactNode }) {
   const [analyses, setAnalyses] = useState<AnalysisDetail[]>(MOCK_ANALYSES);
+  const [analystMessages, setAnalystMessages] = useState<ChatMessage[]>([
+    INITIAL_ANALYST_MESSAGE,
+  ]);
 
   useEffect(() => {
     const interval = setInterval(() => {
       setAnalyses((prev) =>
         prev.map((analysis) => {
-          if (analysis.status === "Complete") return analysis;
+          if (analysis.status === "Complete" || !isSimulatedStatus(analysis.status)) {
+            return analysis;
+          }
 
           const nextProgress = advanceProgress(analysis.status, analysis.progress);
           const nextStatus = advanceStatus(analysis.status, nextProgress);
@@ -68,79 +98,80 @@ export function AnalysisStoreProvider({ children }: { children: ReactNode }) {
     return () => clearInterval(interval);
   }, []);
 
-  const addAnalysis = useCallback((data: NewAnalysisFormData): string => {
-    const id = data.ticker.toLowerCase();
-    const newAnalysis: AnalysisDetail = {
-      id,
-      company: data.companyName,
-      ticker: data.ticker.toUpperCase(),
-      type: typeLabel(data.analysisType),
-      status: "Queued",
-      progress: 5,
-      startedAt: new Date().toISOString(),
-      analyst: getAnalystLabel(),
-      sector: "Pending classification",
-      marketCap: "—",
-      thesis: data.notes || "Analysis initiated. Awaiting data ingestion.",
-      priceTarget: "—",
-      rating: "Pending",
-      keyMetrics: [],
-      workbookSheets: [
-        {
-          name: "Model",
-          rows: 0,
-          lastUpdated: "Just now",
-          status: "pending",
-        },
-      ],
-      verificationChecks: [],
-      decisionLog: [
-        {
-          id: `d-${Date.now()}`,
-          timestamp: new Date().toLocaleTimeString("en-US", {
-            hour: "2-digit",
-            minute: "2-digit",
-          }),
-          agent: "Orchestrator",
-          action: "Run initiated",
-          detail: `${typeLabel(data.analysisType)} for ${data.ticker.toUpperCase()}`,
-        },
-      ],
-      executiveSummary: "Analysis queued. Workbooks uploaded and awaiting processing.",
-      chatHistory: [
-        {
-          id: `c-${Date.now()}`,
-          role: "assistant",
-          content: `Starting ${typeLabel(data.analysisType)} for ${data.companyName} (${data.ticker.toUpperCase()}). I'll notify you when data ingestion completes.`,
-          timestamp: new Date().toLocaleTimeString("en-US", {
-            hour: "2-digit",
-            minute: "2-digit",
-          }),
-        },
-      ],
-    };
-
-    setAnalyses((prev) => {
-      const existing = prev.findIndex((a) => a.id === id);
-      if (existing >= 0) {
-        const updated = [...prev];
-        updated[existing] = newAnalysis;
-        return updated;
-      }
-      return [newAnalysis, ...prev];
-    });
-
-    return id;
+  const appendAnalystMessage = useCallback((content: string) => {
+    setAnalystMessages((prev) => [
+      ...prev,
+      {
+        id: `a-${Date.now()}`,
+        role: "assistant",
+        content,
+        timestamp: formatTimestamp(),
+      },
+    ]);
   }, []);
 
+  const addAnalysis = useCallback(
+    async (data: NewAnalysisFormData): Promise<string> => {
+      const response = await createAnalysis({
+        company: data.companyName.trim(),
+        ticker: data.ticker.trim().toUpperCase(),
+        analysis_type: typeLabel(data.analysisType),
+      });
+
+      const now = new Date().toISOString();
+      const newAnalysis: AnalysisDetail = {
+        id: response.analysis_id,
+        company: data.companyName.trim(),
+        ticker: data.ticker.trim().toUpperCase(),
+        type: typeLabel(data.analysisType),
+        status: response.status,
+        progress: 0,
+        startedAt: now,
+        analyst: getAnalystLabel(),
+        sector: "Pending classification",
+        marketCap: "—",
+        thesis: data.notes || "Analysis created. Awaiting workbook upload.",
+        priceTarget: "—",
+        rating: "Pending",
+        keyMetrics: [],
+        workbookSheets: [],
+        verificationChecks: [],
+        decisionLog: [
+          {
+            id: `d-${Date.now()}`,
+            timestamp: formatTimestamp(),
+            agent: "Orchestrator",
+            action: "Analysis created",
+            detail: `${typeLabel(data.analysisType)} for ${data.ticker.toUpperCase()}`,
+          },
+        ],
+        executiveSummary: "Analysis created. Upload workbooks to begin processing.",
+        chatHistory: [
+          {
+            id: `c-${Date.now()}`,
+            role: "assistant",
+            content: "Analysis created successfully. Ready for file upload.",
+            timestamp: formatTimestamp(),
+          },
+        ],
+      };
+
+      setAnalyses((prev) => [newAnalysis, ...prev]);
+      appendAnalystMessage("Analysis created successfully. Ready for file upload.");
+
+      return response.analysis_id;
+    },
+    [appendAnalystMessage],
+  );
+
   const getById = useCallback(
-    (id: string) => analyses.find((a) => a.id === id.toLowerCase()),
+    (id: string) => analyses.find((analysis) => analysis.id === id),
     [analyses],
   );
 
   const value = useMemo(
-    () => ({ analyses, addAnalysis, getById }),
-    [analyses, addAnalysis, getById],
+    () => ({ analyses, analystMessages, addAnalysis, getById }),
+    [analyses, analystMessages, addAnalysis, getById],
   );
 
   return (
