@@ -15,16 +15,27 @@ export class ApiError extends Error {
   constructor(
     message: string,
     public readonly status: number,
+    public readonly url: string,
   ) {
     super(message);
     this.name = "ApiError";
   }
 }
 
+/** Backend route: POST /analysis/create (no /api prefix). */
+export const ANALYSIS_CREATE_PATH = "/analysis/create";
+
+export function getAnalysisCreateUrl(): string {
+  const base = APP_CONFIG.backendBaseUrl.replace(/\/+$/, "").replace(/\/api$/, "");
+  return new URL(ANALYSIS_CREATE_PATH, `${base}/`).href;
+}
+
 export async function createAnalysis(
   payload: CreateAnalysisPayload,
 ): Promise<CreateAnalysisResult> {
-  const response = await fetch(`${APP_CONFIG.backendBaseUrl}/analysis/create`, {
+  const url = getAnalysisCreateUrl();
+
+  const response = await fetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
@@ -35,6 +46,7 @@ export async function createAnalysis(
     throw new ApiError(
       detail || `Failed to create analysis (${response.status})`,
       response.status,
+      url,
     );
   }
 

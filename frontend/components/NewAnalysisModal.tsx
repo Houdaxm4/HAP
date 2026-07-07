@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import FileUploadBox from "./FileUploadBox";
+import { ApiError } from "@/lib/api";
 import type { NewAnalysisFormData } from "@/lib/types";
 
 type NewAnalysisModalProps = {
@@ -95,10 +96,14 @@ export default function NewAnalysisModal({
         ticker: form.ticker.toUpperCase(),
       });
       resetForm();
-    } catch {
+    } catch (error) {
+      const message =
+        error instanceof ApiError
+          ? `${error.message} (POST ${error.url})`
+          : "Failed to create analysis. Ensure the backend is running at http://127.0.0.1:8000.";
       setErrors((prev) => ({
         ...prev,
-        submit: "Failed to create analysis. Ensure the backend is running at http://localhost:8000.",
+        submit: message,
       }));
       setIsSubmitting(false);
     }

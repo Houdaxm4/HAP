@@ -66,7 +66,8 @@ The HAP frontend has been implemented in the existing Next.js 16 app. The UI inc
 | File | Changes |
 |------|---------|
 | `frontend/lib/types.ts` | Added `AnalysisDetail`, `NewAnalysisFormData`, backend status types |
-| `frontend/lib/app_config.ts` | Added `backendBaseUrl` (`http://localhost:8000`) |
+| `frontend/lib/app_config.ts` | Added `backendBaseUrl` (`http://127.0.0.1:8000`, normalizes accidental `/api` suffix) |
+| `frontend/lib/api.ts` | Uses `new URL("/analysis/create", base)` — no `/api` prefix |
 | `frontend/lib/analysis-store.tsx` | Calls backend on create; shared analyst chat messages |
 | `frontend/lib/mock-analyses.ts` | Exports `MOCK_ANALYSES` for dashboard seed data |
 | `frontend/components/Dashboard.tsx` | Async New Analysis submit; navigates to backend `analysis_id` |
