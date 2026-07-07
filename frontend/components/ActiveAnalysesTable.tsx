@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useAnalysisStore } from "@/lib/analysis-store";
+import { useAnalysisStore } from "@/lib/analysis-store-context";
 import StatusBadge from "./StatusBadge";
 
 export default function ActiveAnalysesTable() {
