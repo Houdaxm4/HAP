@@ -366,3 +366,5 @@ export function getAnalysis(id: string): Analysis | undefined {
 export function getAllAnalyses(): Analysis[] {
   return Object.values(mockAnalyses);
 }
+
+export const MOCK_ANALYSES = getAllAnalyses();
