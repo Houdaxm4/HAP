@@ -7,7 +7,7 @@ import type { NewAnalysisFormData } from "@/lib/types";
 type NewAnalysisModalProps = {
   isOpen: boolean;
   onClose: () => void;
-  onSubmit: (data: NewAnalysisFormData) => void;
+  onSubmit: (data: NewAnalysisFormData) => Promise<void>;
 };
 
 const ANALYSIS_TYPES: {
@@ -36,7 +36,7 @@ export default function NewAnalysisModal({
   onSubmit,
 }: NewAnalysisModalProps) {
   const [form, setForm] = useState<NewAnalysisFormData>(initialForm);
-  const [errors, setErrors] = useState<Partial<Record<keyof NewAnalysisFormData, string>>>({});
+  const [errors, setErrors] = useState<Partial<Record<keyof NewAnalysisFormData | "uploads", string>>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const resetForm = useCallback(() => {
@@ -67,12 +67,18 @@ export default function NewAnalysisModal({
   }, [isOpen]);
 
   const validate = (): boolean => {
-    const next: Partial<Record<keyof NewAnalysisFormData, string>> = {};
+    const next: Partial<Record<keyof NewAnalysisFormData | "uploads", string>> = {};
     if (!form.companyName.trim()) next.companyName = "Company name is required";
     if (!form.ticker.trim()) {
       next.ticker = "Ticker is required";
     } else if (!/^[A-Za-z]{1,5}$/.test(form.ticker.trim())) {
       next.ticker = "Enter a valid ticker (1–5 letters)";
+    }
+    if (!form.prefilledWorkbook) {
+      next.uploads = "Prefilled workbook is required";
+    }
+    if (!form.customRunFilter) {
+      next.uploads = "custom_run filter file is required";
     }
     setErrors(next);
     return Object.keys(next).length === 0;
@@ -83,15 +89,15 @@ export default function NewAnalysisModal({
     if (!validate()) return;
 
     setIsSubmitting(true);
-    await new Promise((r) => setTimeout(r, 600));
-
-    onSubmit({
-      ...form,
-      ticker: form.ticker.toUpperCase(),
-    });
-
-    resetForm();
-    setIsSubmitting(false);
+    try {
+      await onSubmit({
+        ...form,
+        ticker: form.ticker.toUpperCase(),
+      });
+      resetForm();
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const update = <K extends keyof NewAnalysisFormData>(
@@ -225,23 +231,26 @@ export default function NewAnalysisModal({
                 <div className="grid gap-3 sm:grid-cols-3">
                   <FileUploadBox
                     label="Prefilled Workbook"
-                    description=".xlsx, .xls"
+                    description=".xlsx, .xls (required)"
                     file={form.prefilledWorkbook}
                     onFileChange={(f) => update("prefilledWorkbook", f)}
                   />
                   <FileUploadBox
                     label="Previous Workbook"
-                    description=".xlsx, .xls"
+                    description=".xlsx, .xls (optional)"
                     file={form.previousWorkbook}
                     onFileChange={(f) => update("previousWorkbook", f)}
                   />
                   <FileUploadBox
                     label="custom_run_filter"
-                    description=".csv, .xlsx"
+                    description=".csv, .xlsx (required)"
                     file={form.customRunFilter}
                     onFileChange={(f) => update("customRunFilter", f)}
                   />
                 </div>
+                {errors.uploads && (
+                  <p className="mt-2 text-xs text-red-400">{errors.uploads}</p>
+                )}
               </div>
 
               <div>

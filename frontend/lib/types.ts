@@ -1,5 +1,27 @@
 export type AnalysisStatus = "Running" | "Queued" | "Review" | "Complete";
 
+export type PipelineStage =
+  | "created"
+  | "template_uploaded"
+  | "filing_collection"
+  | "workbook_completion"
+  | "workbook_validation"
+  | "fundamental_analysis"
+  | "market_valuation_analysis"
+  | "final_recommendation"
+  | "outputs_ready"
+  | "failed";
+
+export type OutputStatus = "pending" | "ready" | "unavailable";
+
+export type PipelineOutputs = {
+  workbook: OutputStatus;
+  investment_memo: OutputStatus;
+  source_citations: OutputStatus;
+  discrepancy_report: OutputStatus;
+  verification_report: OutputStatus;
+};
+
 export type NewAnalysisType = "new_company" | "annual_update" | "quarterly_update";
 
 export interface NewAnalysisFormData {
@@ -21,11 +43,17 @@ export interface ChatMessage {
 
 export interface AnalysisDetail {
   id: string;
+  backendAnalysisId: string | null;
+  backendConnected: boolean;
+  isDemo: boolean;
   company: string;
   ticker: string;
   type: string;
   status: AnalysisStatus;
   progress: number;
+  pipelineStage: PipelineStage;
+  pipelineMessage: string;
+  pipelineOutputs: PipelineOutputs;
   startedAt: string;
   analyst: string;
   sector: string;
@@ -55,6 +83,12 @@ export interface AnalysisDetail {
   }[];
   executiveSummary: string;
   chatHistory: ChatMessage[];
+  completedAt?: string;
+  uploadedFiles: {
+    prefilledWorkbook: string | null;
+    previousWorkbook: string | null;
+    customRunFilter: string | null;
+  };
 }
 
 export type AnalysisType =
