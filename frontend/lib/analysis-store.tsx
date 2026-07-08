@@ -4,36 +4,44 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
 import { AnalysisStoreContext } from "./analysis-store-context";
 import {
+  createBackendAnalysis,
+  checkBackendHealth,
+  getBackendAnalysis,
+  startBackendPipeline,
+  uploadBackendAnalysisFiles,
+} from "./api";
+import {
+  createLocalAnalysis,
+  mapBackendAnalysis,
+  syncAnalysisFromBackend,
+} from "./analysis-pipeline";
+import {
   readPersistedAnalyses,
   repairAnalyses,
-  tickAnalysis,
   writePersistedAnalyses,
 } from "./analysis-progress";
-import { getAnalystLabel } from "./app_config";
 import { MOCK_ANALYSES } from "./mock-analyses";
 import type { AnalysisDetail, NewAnalysisFormData } from "./types";
 
-const TICK_INTERVAL_MS = 4000;
-
-function typeLabel(type: NewAnalysisFormData["analysisType"]): string {
-  const labels = {
-    new_company: "New Company Initiation",
-    annual_update: "Annual Update",
-    quarterly_update: "Quarterly Update",
-  };
-  return labels[type];
-}
+const PIPELINE_POLL_INTERVAL_MS = 10000;
 
 export function AnalysisStoreProvider({ children }: { children: ReactNode }) {
   const [analyses, setAnalyses] = useState<AnalysisDetail[]>(() =>
     repairAnalyses(MOCK_ANALYSES),
   );
   const [hydrated, setHydrated] = useState(false);
+  const [backendAvailable, setBackendAvailable] = useState(false);
+  const analysesRef = useRef(analyses);
+
+  useEffect(() => {
+    analysesRef.current = analyses;
+  }, [analyses]);
 
   useEffect(() => {
     setAnalyses(readPersistedAnalyses(MOCK_ANALYSES));
@@ -48,77 +56,128 @@ export function AnalysisStoreProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!hydrated) return;
 
-    const interval = setInterval(() => {
-      setAnalyses((prev) => prev.map(tickAnalysis));
-    }, TICK_INTERVAL_MS);
+    let cancelled = false;
 
-    return () => clearInterval(interval);
-  }, [hydrated]);
-
-  const addAnalysis = useCallback((data: NewAnalysisFormData): string => {
-    const id = data.ticker.toLowerCase();
-    const newAnalysis: AnalysisDetail = {
-      id,
-      company: data.companyName,
-      ticker: data.ticker.toUpperCase(),
-      type: typeLabel(data.analysisType),
-      status: "Queued",
-      progress: 5,
-      startedAt: new Date().toISOString(),
-      analyst: getAnalystLabel(),
-      sector: "Pending classification",
-      marketCap: "—",
-      thesis: data.notes || "Analysis initiated. Awaiting data ingestion.",
-      priceTarget: "—",
-      rating: "Pending",
-      keyMetrics: [],
-      workbookSheets: [
-        {
-          name: "Model",
-          rows: 0,
-          lastUpdated: "Just now",
-          status: "pending",
-        },
-      ],
-      verificationChecks: [],
-      decisionLog: [
-        {
-          id: `d-${Date.now()}`,
-          timestamp: new Date().toLocaleTimeString("en-US", {
-            hour: "2-digit",
-            minute: "2-digit",
-          }),
-          agent: "Orchestrator",
-          action: "Run initiated",
-          detail: `${typeLabel(data.analysisType)} for ${data.ticker.toUpperCase()}`,
-        },
-      ],
-      executiveSummary: "Analysis queued. Workbooks uploaded and awaiting processing.",
-      chatHistory: [
-        {
-          id: `c-${Date.now()}`,
-          role: "assistant",
-          content: `Starting ${typeLabel(data.analysisType)} for ${data.companyName} (${data.ticker.toUpperCase()}). I'll notify you when data ingestion completes.`,
-          timestamp: new Date().toLocaleTimeString("en-US", {
-            hour: "2-digit",
-            minute: "2-digit",
-          }),
-        },
-      ],
+    const refreshBackendStatus = async () => {
+      const available = await checkBackendHealth();
+      if (!cancelled) setBackendAvailable(available);
     };
 
-    setAnalyses((prev) => {
-      const existing = prev.findIndex((a) => a.id === id);
-      if (existing >= 0) {
-        const updated = [...prev];
-        updated[existing] = newAnalysis;
-        return updated;
-      }
-      return [newAnalysis, ...prev];
-    });
+    refreshBackendStatus();
+    const interval = setInterval(refreshBackendStatus, PIPELINE_POLL_INTERVAL_MS);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [hydrated]);
 
-    return id;
-  }, []);
+  useEffect(() => {
+    if (!hydrated || !backendAvailable) return;
+
+    let cancelled = false;
+
+    const pollBackendAnalyses = async () => {
+      const backendLinked = analysesRef.current.filter(
+        (analysis) => analysis.backendAnalysisId && !analysis.isDemo,
+      );
+
+      if (backendLinked.length === 0) return;
+
+      const updates = await Promise.all(
+        backendLinked.map(async (analysis) => {
+          try {
+            const backend = await getBackendAnalysis(analysis.backendAnalysisId!);
+            return syncAnalysisFromBackend(analysis, backend);
+          } catch {
+            return analysis;
+          }
+        }),
+      );
+
+      if (cancelled) return;
+
+      setAnalyses((prev) =>
+        prev.map((analysis) => {
+          const updated = updates.find((item) => item.id === analysis.id);
+          return updated ?? analysis;
+        }),
+      );
+    };
+
+    pollBackendAnalyses();
+    const interval = setInterval(pollBackendAnalyses, PIPELINE_POLL_INTERVAL_MS);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [hydrated, backendAvailable]);
+
+  const addAnalysis = useCallback(
+    async (data: NewAnalysisFormData): Promise<string> => {
+      if (!data.prefilledWorkbook || !data.customRunFilter) {
+        throw new Error("Prefilled workbook and custom_run filter are required.");
+      }
+
+      const available = await checkBackendHealth();
+
+      if (available) {
+        const created = await createBackendAnalysis({
+          company: data.companyName,
+          ticker: data.ticker,
+          analysisType:
+            data.analysisType === "new_company"
+              ? "New Company Initiation"
+              : data.analysisType === "annual_update"
+                ? "Annual Update"
+                : "Quarterly Update",
+        });
+
+        const uploaded = await uploadBackendAnalysisFiles(created.analysis_id, {
+          prefilledWorkbook: data.prefilledWorkbook,
+          customRunFilter: data.customRunFilter,
+          previousWorkbook: data.previousWorkbook,
+        });
+
+        await startBackendPipeline(uploaded.analysis_id);
+        const refreshed = await getBackendAnalysis(uploaded.analysis_id);
+        const mapped = mapBackendAnalysis(refreshed, data);
+
+        setAnalyses((prev) => {
+          const existing = prev.findIndex((a) => a.id === mapped.id);
+          if (existing >= 0) {
+            const updated = [...prev];
+            updated[existing] = mapped;
+            return updated;
+          }
+          return [mapped, ...prev.filter((item) => !item.isDemo)];
+        });
+
+        return mapped.id;
+      }
+
+      const local = {
+        ...createLocalAnalysis(data),
+        pipelineStage: "template_uploaded" as const,
+        pipelineMessage:
+          "Template and custom_run filter recorded locally. Start the HAP backend to run filing collection and workbook completion.",
+        progress: 14,
+        status: "Running" as const,
+      };
+
+      setAnalyses((prev) => {
+        const existing = prev.findIndex((a) => a.id === local.id);
+        if (existing >= 0) {
+          const updated = [...prev];
+          updated[existing] = local;
+          return updated;
+        }
+        return [local, ...prev.filter((item) => !item.isDemo)];
+      });
+
+      return local.id;
+    },
+    [],
+  );
 
   const getById = useCallback(
     (id: string) => analyses.find((a) => a.id === id.toLowerCase()),
@@ -126,8 +185,8 @@ export function AnalysisStoreProvider({ children }: { children: ReactNode }) {
   );
 
   const value = useMemo(
-    () => ({ analyses, addAnalysis, getById }),
-    [analyses, addAnalysis, getById],
+    () => ({ analyses, addAnalysis, getById, backendAvailable }),
+    [analyses, addAnalysis, getById, backendAvailable],
   );
 
   return (

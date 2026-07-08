@@ -1,105 +1,76 @@
-import { ensureCompletionState, finalizeAnalysis } from "./analysis-completion";
-import type { AnalysisDetail, AnalysisStatus } from "./types";
-
-export const QUEUED_MAX_PROGRESS = 20;
-export const RUNNING_MAX_PROGRESS = 95;
-export const COMPLETE_PROGRESS = 100;
-
-/** Legacy cap left analyses stuck at 94% while Review required >= 95. */
-export const STUCK_RUNNING_THRESHOLD = 94;
-
-export const QUEUED_STEP = 2;
-export const RUNNING_STEP = 3;
-export const REVIEW_STEP = 1;
+import type { AnalysisDetail, PipelineStage } from "./types";
+import {
+  PENDING_OUTPUTS,
+  PIPELINE_PENDING_MESSAGE,
+  progressForStage,
+  statusForStage,
+} from "./pipeline-stages";
 
 export const ANALYSIS_STORAGE_KEY = "hap-analysis-state";
-export const ANALYSIS_STORAGE_VERSION = 3;
+export const ANALYSIS_STORAGE_VERSION = 4;
 
 export type PersistedAnalysisState = {
   version: number;
   analyses: AnalysisDetail[];
 };
 
-function clampProgress(progress: number): number {
-  const value = Number(progress);
-  if (!Number.isFinite(value)) return 0;
-  return Math.max(0, Math.min(COMPLETE_PROGRESS, Math.round(value)));
+const LEGACY_COMPLETE_STAGES = new Set(["Complete"]);
+
+function normalizePipelineStage(value: unknown): PipelineStage {
+  if (typeof value !== "string") return "created";
+
+  const stage = value as PipelineStage;
+  const valid: PipelineStage[] = [
+    "created",
+    "template_uploaded",
+    "filing_collection",
+    "workbook_completion",
+    "workbook_validation",
+    "fundamental_analysis",
+    "market_valuation_analysis",
+    "final_recommendation",
+    "outputs_ready",
+    "failed",
+  ];
+
+  if (valid.includes(stage)) return stage;
+  return "created";
 }
 
-export function resolveStatus(progress: number): AnalysisStatus {
-  const p = clampProgress(progress);
-  if (p >= COMPLETE_PROGRESS) return "Complete";
-  if (p >= RUNNING_MAX_PROGRESS) return "Review";
-  if (p >= QUEUED_MAX_PROGRESS) return "Running";
-  return "Queued";
-}
-
-export function advanceProgress(progress: number): number {
-  const p = clampProgress(progress);
-  if (p >= COMPLETE_PROGRESS) return COMPLETE_PROGRESS;
-  if (p >= RUNNING_MAX_PROGRESS) {
-    return Math.min(COMPLETE_PROGRESS, p + REVIEW_STEP);
-  }
-  if (p >= QUEUED_MAX_PROGRESS) {
-    return Math.min(RUNNING_MAX_PROGRESS, p + RUNNING_STEP);
-  }
-  return Math.min(QUEUED_MAX_PROGRESS, p + QUEUED_STEP);
-}
-
-/**
- * Repair analyses stuck by the legacy 94% Running cap or status/progress drift.
- */
 export function repairAnalysis(analysis: AnalysisDetail): AnalysisDetail {
-  const progress = clampProgress(analysis.progress);
+  const pipelineStage = normalizePipelineStage(analysis.pipelineStage);
+  const migratedStage =
+    LEGACY_COMPLETE_STAGES.has(String(analysis.status)) ||
+    (analysis.progress >= 100 && pipelineStage !== "outputs_ready")
+      ? "template_uploaded"
+      : pipelineStage;
 
-  if (analysis.status === "Complete") {
-    return ensureCompletionState({
-      ...analysis,
-      progress: COMPLETE_PROGRESS,
-      status: "Complete",
-    });
-  }
-
-  if (
-    analysis.status === "Running" &&
-    progress >= STUCK_RUNNING_THRESHOLD &&
-    progress < RUNNING_MAX_PROGRESS
-  ) {
-    return {
-      ...analysis,
-      progress: RUNNING_MAX_PROGRESS,
-      status: "Review",
-    };
-  }
-
-  const resolvedStatus = resolveStatus(progress);
-  if (resolvedStatus !== analysis.status) {
-    return { ...analysis, progress, status: resolvedStatus };
-  }
-
-  return { ...analysis, progress, status: analysis.status };
-}
-
-export function tickAnalysis(analysis: AnalysisDetail): AnalysisDetail {
-  const repaired = repairAnalysis(analysis);
-  if (repaired.status === "Complete" && repaired.progress >= COMPLETE_PROGRESS) {
-    return ensureCompletionState(repaired);
-  }
-
-  const nextProgress = advanceProgress(repaired.progress);
-  const nextStatus = resolveStatus(nextProgress);
-
-  const nextAnalysis = {
-    ...repaired,
-    progress: nextProgress,
-    status: nextStatus,
+  return {
+    ...analysis,
+    backendAnalysisId: analysis.backendAnalysisId ?? null,
+    backendConnected: Boolean(analysis.backendConnected),
+    isDemo: Boolean(analysis.isDemo),
+    pipelineStage: migratedStage,
+    pipelineMessage:
+      analysis.pipelineMessage ||
+      (migratedStage === "outputs_ready"
+        ? "Pipeline outputs are ready for review."
+        : PIPELINE_PENDING_MESSAGE),
+    pipelineOutputs: analysis.pipelineOutputs ?? { ...PENDING_OUTPUTS },
+    progress: progressForStage(migratedStage),
+    status: statusForStage(migratedStage),
+    executiveSummary:
+      migratedStage === "outputs_ready"
+        ? analysis.executiveSummary
+        : analysis.executiveSummary?.includes("has finished")
+          ? PIPELINE_PENDING_MESSAGE
+          : analysis.executiveSummary || PIPELINE_PENDING_MESSAGE,
+    uploadedFiles: analysis.uploadedFiles ?? {
+      prefilledWorkbook: null,
+      previousWorkbook: null,
+      customRunFilter: null,
+    },
   };
-
-  if (nextStatus === "Complete") {
-    return finalizeAnalysis(nextAnalysis);
-  }
-
-  return nextAnalysis;
 }
 
 export function repairAnalyses(analyses: AnalysisDetail[]): AnalysisDetail[] {
@@ -125,20 +96,14 @@ export function migratePersistedState(
     return repairAnalyses(fallback);
   }
 
-  const analyses =
-    value.analyses.length > 0 ? value.analyses : fallback;
-
-  if (value.version < ANALYSIS_STORAGE_VERSION) {
-    return repairAnalyses(analyses);
-  }
-
+  const analyses = value.analyses.length > 0 ? value.analyses : fallback;
   return repairAnalyses(analyses);
 }
 
 export function readPersistedAnalyses(
   fallback: AnalysisDetail[],
 ): AnalysisDetail[] {
-  if (typeof window === "undefined") return fallback;
+  if (typeof window === "undefined") return repairAnalyses(fallback);
 
   try {
     const raw = window.localStorage.getItem(ANALYSIS_STORAGE_KEY);

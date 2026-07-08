@@ -1,76 +1,55 @@
 import type { AnalysisDetail } from "@/lib/types";
-import { isAnalysisComplete } from "@/lib/analysis-completion";
-import CompletedAnalysisPanel from "../CompletedAnalysisPanel";
+import { isAnalysisComplete } from "@/lib/analysis-pipeline";
+import { PIPELINE_PENDING_MESSAGE } from "@/lib/pipeline-stages";
+import PipelineOutputsPanel from "../PipelineOutputsPanel";
 
 type SummaryTabProps = {
   analysis: AnalysisDetail;
-  onViewCompleted: () => void;
+  onViewSummary: () => void;
 };
 
-export default function SummaryTab({ analysis, onViewCompleted }: SummaryTabProps) {
+export default function SummaryTab({ analysis, onViewSummary }: SummaryTabProps) {
   const isComplete = isAnalysisComplete(analysis);
 
   return (
-    <div className="space-y-6">
-      {isComplete && (
-        <div id="completed-analysis-summary">
-          <CompletedAnalysisPanel
-            analysis={analysis}
-            onViewCompleted={onViewCompleted}
-          />
-        </div>
-      )}
+    <div id="analysis-summary" className="space-y-6">
+      <PipelineOutputsPanel analysis={analysis} onViewSummary={onViewSummary} />
 
       <div className="rounded border border-hap-border bg-hap-panel p-6">
         <h3 className="text-xs font-semibold uppercase tracking-widest text-hap-muted">
-          {isComplete ? "Completed Analysis Summary" : "Executive Summary"}
+          {isComplete ? "Completed analysis summary" : "Pipeline status"}
         </h3>
         <p className="mt-4 text-sm leading-relaxed text-foreground/90">
-          {analysis.executiveSummary}
+          {isComplete
+            ? analysis.executiveSummary
+            : analysis.executiveSummary || PIPELINE_PENDING_MESSAGE}
         </p>
 
-        {isComplete && (
-          <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            <div className="rounded border border-hap-border bg-hap-panel-elevated p-4">
-              <p className="text-xs uppercase tracking-wider text-hap-muted">Rating</p>
-              <p className="mt-1 font-medium text-hap-success">{analysis.rating}</p>
-            </div>
-            <div className="rounded border border-hap-border bg-hap-panel-elevated p-4">
-              <p className="text-xs uppercase tracking-wider text-hap-muted">Price Target</p>
-              <p className="mt-1 font-mono font-medium text-hap-orange">
-                {analysis.priceTarget}
-              </p>
-            </div>
-            <div className="rounded border border-hap-border bg-hap-panel-elevated p-4">
-              <p className="text-xs uppercase tracking-wider text-hap-muted">Workbook Sheets</p>
-              <p className="mt-1 font-mono font-medium">{analysis.workbookSheets.length}</p>
-            </div>
-            <div className="rounded border border-hap-border bg-hap-panel-elevated p-4">
-              <p className="text-xs uppercase tracking-wider text-hap-muted">Verification Checks</p>
-              <p className="mt-1 font-mono font-medium">
-                {analysis.verificationChecks.length}
-              </p>
-            </div>
+        <div className="mt-6 grid gap-4 sm:grid-cols-2">
+          <div className="rounded border border-hap-border bg-hap-panel-elevated p-4">
+            <p className="text-xs uppercase tracking-wider text-hap-muted">Current stage</p>
+            <p className="mt-1 font-medium">{analysis.pipelineStage.replaceAll("_", " ")}</p>
           </div>
-        )}
+          <div className="rounded border border-hap-border bg-hap-panel-elevated p-4">
+            <p className="text-xs uppercase tracking-wider text-hap-muted">Backend</p>
+            <p className="mt-1 font-medium">
+              {analysis.backendConnected ? "Connected" : "Offline / local only"}
+            </p>
+          </div>
+          <div className="rounded border border-hap-border bg-hap-panel-elevated p-4">
+            <p className="text-xs uppercase tracking-wider text-hap-muted">Prefilled template</p>
+            <p className="mt-1 text-sm">{analysis.uploadedFiles.prefilledWorkbook ?? "—"}</p>
+          </div>
+          <div className="rounded border border-hap-border bg-hap-panel-elevated p-4">
+            <p className="text-xs uppercase tracking-wider text-hap-muted">custom_run filter</p>
+            <p className="mt-1 text-sm">{analysis.uploadedFiles.customRunFilter ?? "—"}</p>
+          </div>
+        </div>
 
-        {!isComplete && (
-          <div className="mt-6 flex gap-3">
-            <button
-              type="button"
-              disabled
-              className="rounded border border-hap-border px-4 py-2 text-sm text-hap-muted"
-            >
-              Export PDF
-            </button>
-            <button
-              type="button"
-              disabled
-              className="rounded border border-hap-orange/40 bg-hap-orange/10 px-4 py-2 text-sm font-medium text-hap-orange opacity-70"
-            >
-              Approve &amp; Publish
-            </button>
-          </div>
+        {analysis.isDemo && (
+          <p className="mt-4 rounded border border-hap-warning/30 bg-hap-warning/10 px-3 py-2 text-xs text-hap-warning">
+            Demo fixture only. Create a new analysis with uploads to exercise the real workflow.
+          </p>
         )}
       </div>
     </div>

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import type { AnalysisDetail } from "@/lib/types";
-import { isAnalysisComplete } from "@/lib/analysis-completion";
+import { isAnalysisComplete } from "@/lib/analysis-pipeline";
 import StatusBadge from "../StatusBadge";
 
 type AnalysisHeaderProps = {

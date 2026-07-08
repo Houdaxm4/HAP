@@ -68,6 +68,8 @@ class FileService:
         """
         if prefilled_workbook is None or not prefilled_workbook.filename:
             raise FileUploadError("prefilled_workbook is required.")
+        if custom_run_filter is None or not custom_run_filter.filename:
+            raise FileUploadError("custom_run_filter is required.")
 
         analysis_id = analysis.analysis_id
         files = AnalysisFiles(
@@ -94,6 +96,12 @@ class FileService:
 
         analysis.files = files
         analysis.status = "uploaded"
+        analysis.pipeline.current_stage = "template_uploaded"
+        analysis.pipeline.stage_status = "in_progress"
+        analysis.pipeline.message = (
+            "Template and custom_run filter uploaded. Start the pipeline to collect filings."
+        )
+        analysis.pipeline.updated_at = utc_now_iso()
         analysis.updated_at = utc_now_iso()
         return analysis
 

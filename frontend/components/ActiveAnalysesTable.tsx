@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useAnalysisStore } from "@/lib/analysis-store-context";
-import { isAnalysisComplete } from "@/lib/analysis-completion";
+import { isAnalysisComplete } from "@/lib/analysis-pipeline";
 import StatusBadge from "./StatusBadge";
 
 export default function ActiveAnalysesTable() {
@@ -12,7 +12,7 @@ export default function ActiveAnalysesTable() {
     <div className="overflow-hidden rounded border border-hap-border bg-hap-panel">
       <div className="border-b border-hap-border px-4 py-3">
         <h3 className="text-xs font-semibold uppercase tracking-widest text-hap-muted">
-          Active Analyses
+          Analyses
         </h3>
       </div>
 
@@ -22,6 +22,7 @@ export default function ActiveAnalysesTable() {
             <tr className="border-b border-hap-border text-left text-xs uppercase tracking-wider text-hap-muted">
               <th className="px-4 py-3 font-medium">Company</th>
               <th className="px-4 py-3 font-medium">Type</th>
+              <th className="px-4 py-3 font-medium">Pipeline stage</th>
               <th className="px-4 py-3 font-medium">Status</th>
               <th className="px-4 py-3 font-medium">Progress</th>
               <th className="px-4 py-3 font-medium">Actions</th>
@@ -42,10 +43,7 @@ export default function ActiveAnalysesTable() {
                     <Link href={`/analysis/${row.id}`} className="group block">
                       <div className="flex items-center gap-2">
                         {isComplete && (
-                          <span
-                            className="text-hap-success"
-                            aria-label="Analysis complete"
-                          >
+                          <span className="text-hap-success" aria-label="Outputs ready">
                             ✓
                           </span>
                         )}
@@ -55,12 +53,16 @@ export default function ActiveAnalysesTable() {
                           </div>
                           <div className="font-mono text-xs text-hap-orange">
                             {row.ticker}
+                            {row.isDemo ? " · demo" : ""}
                           </div>
                         </div>
                       </div>
                     </Link>
                   </td>
                   <td className="px-4 py-3 text-hap-muted">{row.type}</td>
+                  <td className="px-4 py-3 text-hap-muted">
+                    {row.pipelineStage.replaceAll("_", " ")}
+                  </td>
                   <td className="px-4 py-3">
                     <StatusBadge status={row.status} />
                   </td>
@@ -86,13 +88,9 @@ export default function ActiveAnalysesTable() {
                   <td className="px-4 py-3">
                     <Link
                       href={`/analysis/${row.id}`}
-                      className={`text-xs font-medium transition-colors ${
-                        isComplete
-                          ? "text-hap-success hover:text-hap-orange"
-                          : "text-hap-muted hover:text-hap-orange"
-                      }`}
+                      className="text-xs font-medium text-hap-orange hover:underline"
                     >
-                      {isComplete ? "View completed analysis" : "Open"}
+                      {isComplete ? "View completed analysis" : "Open pipeline"}
                     </Link>
                   </td>
                 </tr>
