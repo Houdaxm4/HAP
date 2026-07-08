@@ -1,13 +1,14 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import FileUploadBox from "./FileUploadBox";
+import { ApiError, startAnalysisWorkflow } from "@/lib/api";
 import type { NewAnalysisFormData } from "@/lib/types";
+import FileUploadBox from "./FileUploadBox";
 
 type NewAnalysisModalProps = {
   isOpen: boolean;
   onClose: () => void;
-  onSubmit: (data: NewAnalysisFormData) => void;
+  onSubmit: (analysisId: string) => void;
 };
 
 const ANALYSIS_TYPES: {
@@ -37,11 +38,13 @@ export default function NewAnalysisModal({
 }: NewAnalysisModalProps) {
   const [form, setForm] = useState<NewAnalysisFormData>(initialForm);
   const [errors, setErrors] = useState<Partial<Record<keyof NewAnalysisFormData, string>>>({});
+  const [submitError, setSubmitError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const resetForm = useCallback(() => {
     setForm(initialForm);
     setErrors({});
+    setSubmitError(null);
     setIsSubmitting(false);
   }, []);
 
@@ -74,6 +77,12 @@ export default function NewAnalysisModal({
     } else if (!/^[A-Za-z]{1,5}$/.test(form.ticker.trim())) {
       next.ticker = "Enter a valid ticker (1–5 letters)";
     }
+    if (!form.prefilledWorkbook) {
+      next.prefilledWorkbook = "Prefilled workbook is required";
+    }
+    if (!form.customRunFilter) {
+      next.customRunFilter = "custom_run_filter is required";
+    }
     setErrors(next);
     return Object.keys(next).length === 0;
   };
@@ -83,15 +92,25 @@ export default function NewAnalysisModal({
     if (!validate()) return;
 
     setIsSubmitting(true);
-    await new Promise((r) => setTimeout(r, 600));
+    setSubmitError(null);
 
-    onSubmit({
-      ...form,
-      ticker: form.ticker.toUpperCase(),
-    });
-
-    resetForm();
-    setIsSubmitting(false);
+    try {
+      const analysisId = await startAnalysisWorkflow({
+        ...form,
+        ticker: form.ticker.toUpperCase(),
+      });
+      onSubmit(analysisId);
+      resetForm();
+    } catch (err) {
+      const message =
+        err instanceof ApiError
+          ? err.message
+          : err instanceof Error
+            ? err.message
+            : "Failed to start analysis.";
+      setSubmitError(message);
+      setIsSubmitting(false);
+    }
   };
 
   const update = <K extends keyof NewAnalysisFormData>(
@@ -130,7 +149,7 @@ export default function NewAnalysisModal({
               New Analysis
             </h2>
             <p className="text-xs text-hap-muted">
-              Configure and launch an investment analysis run
+              Upload workbooks and launch the HAP backend pipeline
             </p>
           </div>
           <button
@@ -148,6 +167,12 @@ export default function NewAnalysisModal({
         <form onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col">
           <div className="flex-1 overflow-y-auto px-6 py-5">
             <div className="space-y-6">
+              {submitError && (
+                <div className="rounded-lg border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm text-red-300">
+                  {submitError}
+                </div>
+              )}
+
               <div className="grid gap-4 sm:grid-cols-2">
                 <div>
                   <label htmlFor="companyName" className="mb-1.5 block text-xs font-medium uppercase tracking-wider text-hap-muted">
@@ -158,7 +183,7 @@ export default function NewAnalysisModal({
                     type="text"
                     value={form.companyName}
                     onChange={(e) => update("companyName", e.target.value)}
-                    placeholder="e.g. Apple Inc."
+                    placeholder="e.g. Ensign Group, Inc."
                     className={`w-full rounded-lg border bg-background px-3 py-2.5 text-sm transition-colors focus:outline-none focus:ring-1 ${
                       errors.companyName
                         ? "border-red-500/50 focus:border-red-500 focus:ring-red-500/30"
@@ -179,7 +204,7 @@ export default function NewAnalysisModal({
                     type="text"
                     value={form.ticker}
                     onChange={(e) => update("ticker", e.target.value.toUpperCase())}
-                    placeholder="e.g. AAPL"
+                    placeholder="e.g. ENSG"
                     maxLength={5}
                     className={`w-full rounded-lg border bg-background px-3 py-2.5 font-mono text-sm uppercase transition-colors focus:outline-none focus:ring-1 ${
                       errors.ticker
@@ -228,6 +253,7 @@ export default function NewAnalysisModal({
                     description=".xlsx, .xls"
                     file={form.prefilledWorkbook}
                     onFileChange={(f) => update("prefilledWorkbook", f)}
+                    error={errors.prefilledWorkbook}
                   />
                   <FileUploadBox
                     label="Previous Workbook"
@@ -240,6 +266,7 @@ export default function NewAnalysisModal({
                     description=".csv, .xlsx"
                     file={form.customRunFilter}
                     onFileChange={(f) => update("customRunFilter", f)}
+                    error={errors.customRunFilter}
                   />
                 </div>
               </div>
@@ -280,7 +307,7 @@ export default function NewAnalysisModal({
                     <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                     <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
                   </svg>
-                  Starting...
+                  Starting pipeline...
                 </>
               ) : (
                 "Start Analysis"

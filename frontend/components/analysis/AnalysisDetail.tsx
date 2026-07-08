@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import type { AnalysisDetail as AnalysisDetailType } from "@/lib/types";
+import type { AnalysisRecord } from "@/lib/types";
 import Sidebar from "../Sidebar";
 import AnalystChat from "../AnalystChat";
 import AnalysisHeader from "./AnalysisHeader";
@@ -15,7 +15,7 @@ import SummaryTab from "./tabs/SummaryTab";
 import AnalysisChatTab from "./tabs/AnalysisChatTab";
 
 type AnalysisDetailProps = {
-  analysis: AnalysisDetailType;
+  analysis: AnalysisRecord;
 };
 
 export default function AnalysisDetail({ analysis }: AnalysisDetailProps) {

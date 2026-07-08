@@ -81,6 +81,16 @@ async def upload_analysis_files(
     return updated.to_dict()
 
 
+@app.get("/analysis")
+def list_analyses() -> list[dict]:
+    """Return all analyses for the dashboard, newest first."""
+    analyses = analysis_service.list_all()
+    return [
+        {**analysis.to_dict(), "display_status": _display_status(analysis)}
+        for analysis in analyses
+    ]
+
+
 @app.get("/analysis/{analysis_id}")
 def get_analysis(analysis_id: str) -> dict:
     """Return full metadata for an analysis."""
