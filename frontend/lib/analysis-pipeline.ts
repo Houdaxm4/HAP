@@ -22,6 +22,63 @@ function typeLabel(type: NewAnalysisFormData["analysisType"]): string {
   return labels[type];
 }
 
+function buildFromPhase1(backend: BackendAnalysis) {
+  const phase1 = backend.phase1;
+  if (!phase1) {
+    return {
+      workbookSheets: backend.files.prefilled_workbook
+        ? [
+            {
+              name: backend.files.prefilled_workbook.filename,
+              rows: 0,
+              lastUpdated: "Uploaded",
+              status: "pending" as const,
+            },
+          ]
+        : [],
+      verificationChecks: [],
+      keyMetrics: [],
+      decisionLog: [],
+    };
+  }
+
+  return {
+    workbookSheets: [
+      {
+        name: "Completed workbook",
+        rows: phase1.fills_applied.length,
+        lastUpdated: "Phase 1",
+        status: phase1.validation_passed ? ("synced" as const) : ("pending" as const),
+      },
+    ],
+    verificationChecks: [
+      {
+        id: `v-${backend.analysis_id}-phase1`,
+        label: "SEC-backed workbook fills",
+        status: phase1.validation_passed ? ("pass" as const) : ("warn" as const),
+        detail: phase1.validation_message,
+      },
+    ],
+    keyMetrics: [
+      { label: "Resolved ticker", value: phase1.resolved_ticker },
+      { label: "SEC filings", value: String(phase1.filings.length) },
+      { label: "Cells filled", value: String(phase1.fills_applied.length) },
+    ],
+    decisionLog: [
+      {
+        id: `d-${backend.analysis_id}-phase1`,
+        timestamp: new Date(backend.updated_at).toLocaleTimeString("en-US", {
+          hour: "2-digit",
+          minute: "2-digit",
+        }),
+        agent: "Phase 1",
+        action: "Workbook filled from SEC facts",
+        detail: phase1.validation_message,
+      },
+    ],
+  };
+}
+
 export function createLocalAnalysis(data: NewAnalysisFormData): AnalysisDetail {
   const id = data.ticker.toLowerCase();
   const now = new Date().toISOString();
@@ -59,24 +116,13 @@ export function createLocalAnalysis(data: NewAnalysisFormData): AnalysisDetail {
         ]
       : [],
     verificationChecks: [],
-    decisionLog: [
-      {
-        id: `d-${Date.now()}`,
-        timestamp: new Date().toLocaleTimeString("en-US", {
-          hour: "2-digit",
-          minute: "2-digit",
-        }),
-        agent: "Orchestrator",
-        action: "Run created",
-        detail: `${typeLabel(data.analysisType)} for ${data.ticker.toUpperCase()} awaiting backend pipeline.`,
-      },
-    ],
+    decisionLog: [],
     executiveSummary: PIPELINE_PENDING_MESSAGE,
     chatHistory: [
       {
         id: `c-${Date.now()}`,
         role: "assistant",
-        content: `Created ${typeLabel(data.analysisType)} for ${data.companyName} (${data.ticker.toUpperCase()}). ${PIPELINE_PENDING_MESSAGE}`,
+        content: `Created ${typeLabel(data.analysisType)} for ${data.companyName} (${data.ticker.toUpperCase()}). Start the HAP backend to run Phase 1.`,
         timestamp: new Date().toLocaleTimeString("en-US", {
           hour: "2-digit",
           minute: "2-digit",
@@ -97,6 +143,7 @@ export function mapBackendAnalysis(
 ): AnalysisDetail {
   const stage = backend.pipeline.current_stage as PipelineStage;
   const outputs = backend.pipeline.outputs as PipelineOutputs;
+  const phase1View = buildFromPhase1(backend);
 
   return {
     id: backend.ticker.toLowerCase(),
@@ -106,7 +153,7 @@ export function mapBackendAnalysis(
     company: backend.company,
     ticker: backend.ticker,
     type: backend.analysis_type,
-    status: statusForStage(stage),
+    status: statusForStage(stage, backend.status),
     progress: progressForStage(stage),
     pipelineStage: stage,
     pipelineMessage: backend.pipeline.message,
@@ -120,30 +167,10 @@ export function mapBackendAnalysis(
       "Workbook completion and investment analysis will run after backend pipeline stages finish.",
     priceTarget: "—",
     rating: "Pending",
-    keyMetrics: [],
-    workbookSheets: backend.files.prefilled_workbook
-      ? [
-          {
-            name: backend.files.prefilled_workbook.filename,
-            rows: 0,
-            lastUpdated: "Uploaded",
-            status: "pending",
-          },
-        ]
-      : [],
-    verificationChecks: [],
-    decisionLog: [
-      {
-        id: `d-${backend.analysis_id}-created`,
-        timestamp: new Date(backend.created_at).toLocaleTimeString("en-US", {
-          hour: "2-digit",
-          minute: "2-digit",
-        }),
-        agent: "Orchestrator",
-        action: "Backend run created",
-        detail: `${backend.ticker} registered with HAP backend.`,
-      },
-    ],
+    keyMetrics: phase1View.keyMetrics,
+    workbookSheets: phase1View.workbookSheets,
+    verificationChecks: phase1View.verificationChecks,
+    decisionLog: phase1View.decisionLog,
     executiveSummary: backend.pipeline.message,
     chatHistory: [
       {
@@ -170,20 +197,28 @@ export function syncAnalysisFromBackend(
 ): AnalysisDetail {
   const stage = backend.pipeline.current_stage as PipelineStage;
   const outputs = backend.pipeline.outputs as PipelineOutputs;
+  const phase1View = buildFromPhase1(backend);
 
   return {
     ...analysis,
+    company: backend.company,
+    ticker: backend.ticker,
     backendAnalysisId: backend.analysis_id,
     backendConnected: true,
-    status: statusForStage(stage),
+    status: statusForStage(stage, backend.status),
     progress: progressForStage(stage),
     pipelineStage: stage,
     pipelineMessage: backend.pipeline.message,
     pipelineOutputs: outputs,
-    executiveSummary:
-      stage === "outputs_ready"
-        ? "Pipeline outputs are ready for review."
-        : backend.pipeline.message,
+    keyMetrics: phase1View.keyMetrics.length ? phase1View.keyMetrics : analysis.keyMetrics,
+    workbookSheets: phase1View.workbookSheets.length
+      ? phase1View.workbookSheets
+      : analysis.workbookSheets,
+    verificationChecks: phase1View.verificationChecks.length
+      ? phase1View.verificationChecks
+      : analysis.verificationChecks,
+    decisionLog: [...analysis.decisionLog, ...phase1View.decisionLog],
+    executiveSummary: backend.pipeline.message,
   };
 }
 
@@ -192,5 +227,9 @@ export function isAnalysisComplete(analysis: AnalysisDetail): boolean {
 }
 
 export function hasRealOutputs(analysis: AnalysisDetail): boolean {
-  return Object.values(analysis.pipelineOutputs).every((status) => status === "ready");
+  return analysis.pipelineOutputs.workbook === "ready";
+}
+
+export function isProcessing(analysis: AnalysisDetail): boolean {
+  return analysis.status === "Processing";
 }

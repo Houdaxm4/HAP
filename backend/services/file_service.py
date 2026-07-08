@@ -7,6 +7,7 @@ from pathlib import Path
 from fastapi import UploadFile
 
 from models.analysis import Analysis, AnalysisFiles, UploadedFileMetadata, utc_now_iso
+from models.pipeline import PipelineStage
 
 UPLOADS_DIR = Path(__file__).resolve().parent.parent / "storage" / "uploads"
 
@@ -88,18 +89,24 @@ class FileService:
             )
 
         if custom_run_filter is not None and custom_run_filter.filename:
+            filter_suffix = Path(custom_run_filter.filename).suffix.lower() or ".csv"
+            stored_filter_name = (
+                "custom_run_filter.csv"
+                if filter_suffix == ".csv"
+                else "custom_run_filter.xlsx"
+            )
             files.custom_run_filter = await self.save_upload(
                 analysis_id,
                 custom_run_filter,
-                "custom_run_filter.xlsx",
+                stored_filter_name,
             )
 
         analysis.files = files
         analysis.status = "uploaded"
-        analysis.pipeline.current_stage = "template_uploaded"
-        analysis.pipeline.stage_status = "in_progress"
+        analysis.pipeline.current_stage = PipelineStage.TEMPLATE_UPLOADED
+        analysis.pipeline.stage_status = "pending"
         analysis.pipeline.message = (
-            "Template and custom_run filter uploaded. Start the pipeline to collect filings."
+            "Template and custom_run filter uploaded. Start the pipeline to begin Phase 1."
         )
         analysis.pipeline.updated_at = utc_now_iso()
         analysis.updated_at = utc_now_iso()
@@ -117,3 +124,21 @@ class FileService:
         if not path.exists():
             raise FileUploadError("Prefilled workbook file is missing on disk.")
         return path
+
+    def get_custom_run_filter_path(self, analysis: Analysis) -> Path:
+        """Resolve the on-disk path to the custom_run filter file."""
+        if analysis.files.custom_run_filter is None:
+            raise FileUploadError("No custom_run filter has been uploaded for this analysis.")
+
+        path = (
+            self.analysis_upload_dir(analysis.analysis_id)
+            / analysis.files.custom_run_filter.stored_filename
+        )
+        if not path.exists():
+            raise FileUploadError("custom_run filter file is missing on disk.")
+        return path
+
+    def get_outputs_dir(self, analysis_id: str) -> Path:
+        directory = Path(__file__).resolve().parent.parent / "storage" / "outputs" / analysis_id
+        directory.mkdir(parents=True, exist_ok=True)
+        return directory

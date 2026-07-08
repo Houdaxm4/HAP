@@ -2,6 +2,7 @@ import type { AnalysisStatus } from "@/lib/types";
 
 const statusStyles: Record<AnalysisStatus, string> = {
   Running: "bg-hap-info/15 text-hap-info border-hap-info/30",
+  Processing: "bg-hap-warning/15 text-hap-warning border-hap-warning/30",
   Queued: "bg-hap-warning/15 text-hap-warning border-hap-warning/30",
   Review: "bg-hap-success/15 text-hap-success border-hap-success/30",
   Complete: "bg-hap-success/15 text-hap-success border-hap-success/30",

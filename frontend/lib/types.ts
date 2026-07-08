@@ -1,4 +1,4 @@
-export type AnalysisStatus = "Running" | "Queued" | "Review" | "Complete";
+export type AnalysisStatus = "Queued" | "Processing" | "Running" | "Review" | "Complete";
 
 export type PipelineStage =
   | "created"

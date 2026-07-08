@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import type { AnalysisDetail } from "@/lib/types";
-import { isAnalysisComplete } from "@/lib/analysis-pipeline";
+import { isAnalysisComplete, isProcessing } from "@/lib/analysis-pipeline";
 import StatusBadge from "../StatusBadge";
 
 type AnalysisHeaderProps = {
@@ -11,6 +11,7 @@ type AnalysisHeaderProps = {
 
 export default function AnalysisHeader({ analysis }: AnalysisHeaderProps) {
   const isComplete = isAnalysisComplete(analysis);
+  const processing = isProcessing(analysis);
 
   return (
     <header className="shrink-0 border-b border-hap-border px-6 py-5 lg:px-8">
@@ -39,7 +40,11 @@ export default function AnalysisHeader({ analysis }: AnalysisHeaderProps) {
               <div className="h-1.5 w-32 overflow-hidden rounded-full bg-hap-border">
                 <div
                   className={`h-full rounded-full transition-all duration-500 ${
-                    isComplete ? "bg-hap-success" : "bg-hap-orange"
+                    isComplete
+                      ? "bg-hap-success"
+                      : processing
+                        ? "bg-hap-warning"
+                        : "bg-hap-orange"
                   }`}
                   style={{ width: `${analysis.progress}%` }}
                 />

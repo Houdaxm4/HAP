@@ -18,6 +18,7 @@ import {
 } from "./api";
 import {
   createLocalAnalysis,
+  isProcessing,
   mapBackendAnalysis,
   syncAnalysisFromBackend,
 } from "./analysis-pipeline";
@@ -30,6 +31,7 @@ import { MOCK_ANALYSES } from "./mock-analyses";
 import type { AnalysisDetail, NewAnalysisFormData } from "./types";
 
 const PIPELINE_POLL_INTERVAL_MS = 10000;
+const PROCESSING_POLL_INTERVAL_MS = 3000;
 
 export function AnalysisStoreProvider({ children }: { children: ReactNode }) {
   const [analyses, setAnalyses] = useState<AnalysisDetail[]>(() =>
@@ -105,10 +107,18 @@ export function AnalysisStoreProvider({ children }: { children: ReactNode }) {
     };
 
     pollBackendAnalyses();
-    const interval = setInterval(pollBackendAnalyses, PIPELINE_POLL_INTERVAL_MS);
+    const interval = setInterval(() => {
+      const hasProcessing = analysesRef.current.some(isProcessing);
+      if (hasProcessing) {
+        pollBackendAnalyses();
+      }
+    }, PROCESSING_POLL_INTERVAL_MS);
+
+    const slowInterval = setInterval(pollBackendAnalyses, PIPELINE_POLL_INTERVAL_MS);
     return () => {
       cancelled = true;
       clearInterval(interval);
+      clearInterval(slowInterval);
     };
   }, [hydrated, backendAvailable]);
 
@@ -161,7 +171,7 @@ export function AnalysisStoreProvider({ children }: { children: ReactNode }) {
         pipelineMessage:
           "Template and custom_run filter recorded locally. Start the HAP backend to run filing collection and workbook completion.",
         progress: 14,
-        status: "Running" as const,
+        status: "Queued" as const,
       };
 
       setAnalyses((prev) => {

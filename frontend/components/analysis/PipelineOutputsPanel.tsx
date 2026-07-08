@@ -4,7 +4,9 @@ import type { AnalysisDetail } from "@/lib/types";
 import {
   hasRealOutputs,
   isAnalysisComplete,
+  isProcessing,
 } from "@/lib/analysis-pipeline";
+import { API_BASE_URL } from "@/lib/api";
 import {
   OUTPUT_LABELS,
   PIPELINE_PENDING_MESSAGE,
@@ -21,15 +23,18 @@ export default function PipelineOutputsPanel({
   onViewSummary,
   compact = false,
 }: PipelineOutputsPanelProps) {
-  const outputsReady = isAnalysisComplete(analysis) && hasRealOutputs(analysis);
-  const pending = !outputsReady;
+  const processing = isProcessing(analysis);
+  const workbookReady = hasRealOutputs(analysis);
+  const outputsReady = isAnalysisComplete(analysis) && workbookReady;
 
   return (
     <section
       className={`rounded border ${
         outputsReady
           ? "border-hap-success/30 bg-hap-success/10"
-          : "border-hap-info/30 bg-hap-info/10"
+          : processing
+            ? "border-hap-warning/30 bg-hap-warning/10"
+            : "border-hap-info/30 bg-hap-info/10"
       } ${compact ? "p-4" : "p-6"}`}
     >
       <div className="flex items-start gap-3">
@@ -37,25 +42,37 @@ export default function PipelineOutputsPanel({
           className={`mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-sm font-bold ${
             outputsReady
               ? "bg-hap-success/20 text-hap-success"
-              : "bg-hap-info/20 text-hap-info"
+              : processing
+                ? "bg-hap-warning/20 text-hap-warning"
+                : "bg-hap-info/20 text-hap-info"
           }`}
         >
-          {outputsReady ? "✓" : "…"}
+          {outputsReady ? "✓" : processing ? "…" : "•"}
         </div>
         <div className="min-w-0 flex-1">
           <p
             className={`text-xs font-semibold uppercase tracking-widest ${
-              outputsReady ? "text-hap-success" : "text-hap-info"
+              outputsReady
+                ? "text-hap-success"
+                : processing
+                  ? "text-hap-warning"
+                  : "text-hap-info"
             }`}
           >
-            {outputsReady ? "Outputs ready" : "Pipeline in progress"}
+            {processing
+              ? "Phase 1 processing"
+              : workbookReady
+                ? "Phase 1 complete"
+                : "Pipeline waiting"}
           </p>
           <p className={`mt-2 text-foreground/90 ${compact ? "text-sm" : "text-base"}`}>
-            {outputsReady
-              ? "Analysis complete. Review the completed workbook and investment memo."
-              : PIPELINE_PENDING_MESSAGE}
+            {processing
+              ? analysis.pipelineMessage
+              : workbookReady
+                ? "Phase 1 complete. Workbook filled from SEC filings. Fundamental analysis is next."
+                : PIPELINE_PENDING_MESSAGE}
           </p>
-          {!compact && (
+          {!compact && !processing && (
             <p className="mt-2 text-sm text-hap-muted">{analysis.pipelineMessage}</p>
           )}
         </div>
@@ -75,10 +92,10 @@ export default function PipelineOutputsPanel({
                 <span>{OUTPUT_LABELS[key]}</span>
                 <span
                   className={`text-xs font-medium uppercase ${
-                    ready ? "text-hap-success" : "text-hap-muted"
+                    ready ? "text-hap-success" : processing ? "text-hap-warning" : "text-hap-muted"
                   }`}
                 >
-                  {ready ? "Ready" : "Pending"}
+                  {ready ? "Ready" : processing ? "Processing" : "Pending"}
                 </span>
               </div>
             );
@@ -95,22 +112,31 @@ export default function PipelineOutputsPanel({
           View completed analysis
         </button>
 
-        <button
-          type="button"
-          disabled
-          title="Coming soon"
-          className="inline-flex items-center gap-2 rounded border border-hap-border px-4 py-2 text-sm text-hap-muted opacity-70"
-        >
-          Download completed workbook
-          <span className="rounded bg-hap-panel px-1.5 py-0.5 text-[10px] uppercase tracking-wide">
-            Coming soon
-          </span>
-        </button>
+        {workbookReady && analysis.backendAnalysisId ? (
+          <a
+            href={`${API_BASE_URL}/analysis/${analysis.backendAnalysisId}/outputs/workbook`}
+            className="inline-flex items-center gap-2 rounded border border-hap-success/40 bg-hap-success/10 px-4 py-2 text-sm font-medium text-hap-success transition-colors hover:bg-hap-success/20"
+          >
+            Download completed workbook
+          </a>
+        ) : (
+          <button
+            type="button"
+            disabled
+            title={processing ? "Phase 1 in progress" : "Workbook not ready"}
+            className="inline-flex items-center gap-2 rounded border border-hap-border px-4 py-2 text-sm text-hap-muted opacity-70"
+          >
+            Download completed workbook
+            <span className="rounded bg-hap-panel px-1.5 py-0.5 text-[10px] uppercase tracking-wide">
+              {processing ? "Processing" : "Pending"}
+            </span>
+          </button>
+        )}
 
         <button
           type="button"
           disabled
-          title="Coming soon"
+          title="Coming in a later phase"
           className="inline-flex items-center gap-2 rounded border border-hap-border px-4 py-2 text-sm text-hap-muted opacity-70"
         >
           Download investment memo

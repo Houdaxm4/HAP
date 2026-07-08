@@ -1,9 +1,13 @@
-"""HAP backend v0.3 — FastAPI application entry point."""
+"""HAP backend v0.4 — FastAPI application entry point."""
 
 from __future__ import annotations
 
-from fastapi import FastAPI, File, HTTPException, UploadFile
+import logging
+from pathlib import Path
+
+from fastapi import BackgroundTasks, FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 
 from models.analysis import CreateAnalysisRequest, CreateAnalysisResponse
 from models.pipeline import PipelineState, PipelineStepResponse
@@ -12,10 +16,12 @@ from services.file_service import FileService, FileUploadError
 from services.pipeline_service import PipelineService
 from services.workbook_service import WorkbookService, WorkbookSummary
 
+logger = logging.getLogger(__name__)
+
 app = FastAPI(
     title="HAP Backend",
     description="Houda's Analyst Platform API",
-    version="0.3.0",
+    version="0.4.0",
 )
 
 app.add_middleware(
@@ -32,15 +38,27 @@ workbook_service = WorkbookService()
 pipeline_service = PipelineService()
 
 
+def _run_phase_one_background(analysis_id: str) -> None:
+    try:
+        analysis = analysis_service.get(analysis_id)
+        pipeline_service.run_phase_one(analysis)
+        analysis_service.save(analysis)
+    except Exception:  # noqa: BLE001
+        logger.exception("Phase 1 pipeline failed for analysis %s", analysis_id)
+        try:
+            analysis = analysis_service.get(analysis_id)
+            analysis_service.save(analysis)
+        except AnalysisNotFoundError:
+            return
+
+
 @app.get("/health")
 def health() -> dict[str, str]:
-    """Liveness check for the API service."""
     return {"status": "ok", "service": "HAP backend"}
 
 
 @app.post("/analysis/create", response_model=CreateAnalysisResponse)
 def create_analysis(request: CreateAnalysisRequest) -> CreateAnalysisResponse:
-    """Create a new analysis and persist its metadata."""
     analysis = analysis_service.create(request)
     return CreateAnalysisResponse(analysis_id=analysis.analysis_id, status="created")
 
@@ -52,7 +70,6 @@ async def upload_analysis_files(
     previous_workbook: UploadFile | None = File(None),
     custom_run_filter: UploadFile = File(...),
 ) -> dict:
-    """Upload the prefilled template and required custom_run filter."""
     try:
         analysis = analysis_service.get(analysis_id)
     except AnalysisNotFoundError as exc:
@@ -73,12 +90,15 @@ async def upload_analysis_files(
 
 
 @app.post("/analysis/{analysis_id}/pipeline/start", response_model=PipelineState)
-def start_pipeline(analysis_id: str) -> PipelineState:
-    """Start the analysis pipeline after required uploads are present."""
+def start_pipeline(
+    analysis_id: str,
+    background_tasks: BackgroundTasks,
+) -> PipelineState:
     try:
         analysis = analysis_service.get(analysis_id)
         state = pipeline_service.start(analysis)
         analysis_service.save(analysis)
+        background_tasks.add_task(_run_phase_one_background, analysis_id)
         return state
     except AnalysisNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
@@ -88,7 +108,6 @@ def start_pipeline(analysis_id: str) -> PipelineState:
 
 @app.get("/analysis/{analysis_id}/pipeline", response_model=PipelineState)
 def get_pipeline(analysis_id: str) -> PipelineState:
-    """Return the current pipeline state for an analysis."""
     try:
         analysis = analysis_service.get(analysis_id)
     except AnalysisNotFoundError as exc:
@@ -96,72 +115,17 @@ def get_pipeline(analysis_id: str) -> PipelineState:
     return pipeline_service.get_state(analysis)
 
 
-@app.post(
-    "/analysis/{analysis_id}/pipeline/collect-filings",
-    response_model=PipelineStepResponse,
-)
-def collect_filings(analysis_id: str) -> PipelineStepResponse:
-    """Placeholder: collect SEC filings and market materials."""
-    return _run_pipeline_step(analysis_id, pipeline_service.collect_filings)
-
-
-@app.post(
-    "/analysis/{analysis_id}/pipeline/parse-filings",
-    response_model=PipelineStepResponse,
-)
-def parse_filings(analysis_id: str) -> PipelineStepResponse:
-    """Placeholder: parse collected SEC filings."""
-    return _run_pipeline_step(analysis_id, pipeline_service.parse_filings)
-
-
-@app.post(
-    "/analysis/{analysis_id}/pipeline/fill-workbook",
-    response_model=PipelineStepResponse,
-)
-def fill_workbook(analysis_id: str) -> PipelineStepResponse:
-    """Placeholder: complete blanks in the uploaded workbook template."""
-    return _run_pipeline_step(analysis_id, pipeline_service.fill_workbook)
-
-
-@app.post(
-    "/analysis/{analysis_id}/pipeline/validate-workbook",
-    response_model=PipelineStepResponse,
-)
-def validate_workbook(analysis_id: str) -> PipelineStepResponse:
-    """Placeholder: validate completed workbook against sources."""
-    return _run_pipeline_step(analysis_id, pipeline_service.validate_workbook)
-
-
-@app.post(
-    "/analysis/{analysis_id}/pipeline/fundamental-analysis",
-    response_model=PipelineStepResponse,
-)
-def fundamental_analysis(analysis_id: str) -> PipelineStepResponse:
-    """Placeholder: run fundamental analysis."""
-    return _run_pipeline_step(analysis_id, pipeline_service.run_fundamental_analysis)
-
-
-@app.post(
-    "/analysis/{analysis_id}/pipeline/market-valuation-analysis",
-    response_model=PipelineStepResponse,
-)
-def market_valuation_analysis(analysis_id: str) -> PipelineStepResponse:
-    """Placeholder: run market and valuation analysis."""
-    return _run_pipeline_step(analysis_id, pipeline_service.run_market_valuation_analysis)
-
-
-@app.post(
-    "/analysis/{analysis_id}/pipeline/generate-memo",
-    response_model=PipelineStepResponse,
-)
-def generate_memo(analysis_id: str) -> PipelineStepResponse:
-    """Placeholder: generate investment memo and final outputs."""
-    return _run_pipeline_step(analysis_id, pipeline_service.generate_investment_memo)
+@app.get("/analysis/{analysis_id}")
+def get_analysis(analysis_id: str) -> dict:
+    try:
+        analysis = analysis_service.get(analysis_id)
+    except AnalysisNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return analysis.to_dict()
 
 
 @app.get("/analysis/{analysis_id}/outputs")
 def get_outputs(analysis_id: str) -> dict:
-    """Return pipeline output availability for an analysis."""
     try:
         analysis = analysis_service.get(analysis_id)
     except AnalysisNotFoundError as exc:
@@ -172,37 +136,34 @@ def get_outputs(analysis_id: str) -> dict:
         "ticker": analysis.ticker,
         "pipeline_stage": analysis.pipeline.current_stage,
         "outputs": analysis.pipeline.outputs.model_dump(),
-        "message": (
-            "Analysis pipeline outputs are pending real backend implementation."
-            if analysis.pipeline.current_stage != "outputs_ready"
-            else "Outputs are ready."
-        ),
+        "phase1": analysis.phase1.model_dump() if analysis.phase1 else None,
+        "message": analysis.pipeline.message,
     }
 
 
-def _run_pipeline_step(analysis_id: str, runner) -> PipelineStepResponse:
-    try:
-        analysis = analysis_service.get(analysis_id)
-        response = runner(analysis)
-        analysis_service.save(analysis)
-        return response
-    except AnalysisNotFoundError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
-
-
-@app.get("/analysis/{analysis_id}")
-def get_analysis(analysis_id: str) -> dict:
-    """Return full metadata for an analysis."""
+@app.get("/analysis/{analysis_id}/outputs/workbook")
+def download_completed_workbook(analysis_id: str) -> FileResponse:
     try:
         analysis = analysis_service.get(analysis_id)
     except AnalysisNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
-    return analysis.to_dict()
+
+    if analysis.phase1 is None or not analysis.phase1.completed_workbook_path:
+        raise HTTPException(status_code=404, detail="Completed workbook is not available yet.")
+
+    path = Path(analysis.phase1.completed_workbook_path)
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="Completed workbook file is missing on disk.")
+
+    return FileResponse(
+        path,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        filename=f"{analysis.ticker}_Completed_Workbook.xlsx",
+    )
 
 
 @app.post("/analysis/{analysis_id}/read-workbook", response_model=WorkbookSummary)
 def read_workbook(analysis_id: str) -> WorkbookSummary:
-    """Inspect the prefilled workbook without modifying it."""
     try:
         analysis = analysis_service.get(analysis_id)
     except AnalysisNotFoundError as exc:

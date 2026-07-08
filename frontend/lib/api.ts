@@ -43,6 +43,22 @@ export type BackendAnalysis = {
     custom_run_filter?: { filename: string; size_bytes: number; uploaded_at: string };
   };
   pipeline: BackendPipelineState;
+  phase1?: {
+    resolved_ticker: string;
+    fills_applied: Array<{
+      sheet: string;
+      cell: string;
+      concept: string;
+      period: string;
+      value: number | string;
+      source: string;
+      xbrl_tag?: string | null;
+    }>;
+    filings: Array<{ form: string; filing_date: string; accession_number: string }>;
+    validation_passed: boolean;
+    validation_message: string;
+    completed_workbook_path?: string | null;
+  } | null;
 };
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {

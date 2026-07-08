@@ -7,7 +7,7 @@ import {
 } from "./pipeline-stages";
 
 export const ANALYSIS_STORAGE_KEY = "hap-analysis-state";
-export const ANALYSIS_STORAGE_VERSION = 4;
+export const ANALYSIS_STORAGE_VERSION = 5;
 
 export type PersistedAnalysisState = {
   version: number;

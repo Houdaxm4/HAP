@@ -1,10 +1,14 @@
 import type { AnalysisDetail, AnalysisStatus, PipelineOutputs, PipelineStage } from "./types";
 
-export const PIPELINE_STAGES: PipelineStage[] = [
-  "template_uploaded",
+export const PHASE1_STAGES: PipelineStage[] = [
   "filing_collection",
   "workbook_completion",
   "workbook_validation",
+];
+
+export const PIPELINE_STAGES: PipelineStage[] = [
+  "template_uploaded",
+  ...PHASE1_STAGES,
   "fundamental_analysis",
   "market_valuation_analysis",
   "final_recommendation",
@@ -28,13 +32,13 @@ export const PIPELINE_STAGE_DESCRIPTIONS: Record<PipelineStage, string> = {
   template_uploaded:
     "Prefilled Excel template and custom_run filter are stored for the run.",
   filing_collection:
-    "Collect 10 years of 10-K filings, latest 10-Q, earnings release, investor presentation, Yahoo Finance data, and business sources.",
+    "Parse uploads, resolve ticker, and download 10 years of 10-K filings plus the latest 10-Q.",
   workbook_completion:
-    "Validate filing data and complete blanks in the uploaded Excel template without overwriting formulas.",
+    "Map SEC facts into the uploaded Excel template without overwriting formulas.",
   workbook_validation:
-    "Reconcile completed workbook values against SEC source documents.",
+    "Validate SEC-backed fills across mapped template cells.",
   fundamental_analysis:
-    "Run fundamental analysis only after workbook validation succeeds.",
+    "Run fundamental analysis after Phase 1 workbook completion succeeds.",
   market_valuation_analysis:
     "Run market, competitive, valuation, and value-creation analysis.",
   final_recommendation:
@@ -55,6 +59,10 @@ export const PENDING_OUTPUTS: PipelineOutputs = {
 export const PIPELINE_PENDING_MESSAGE =
   "Analysis pipeline output pending real backend implementation.";
 
+export function isPhase1Stage(stage: PipelineStage): boolean {
+  return PHASE1_STAGES.includes(stage);
+}
+
 export function progressForStage(stage: PipelineStage): number {
   if (stage === "outputs_ready") return 100;
   if (stage === "failed") return 0;
@@ -67,10 +75,14 @@ export function progressForStage(stage: PipelineStage): number {
   return Math.round(((index + 1) / PIPELINE_STAGES.length) * 100);
 }
 
-export function statusForStage(stage: PipelineStage): AnalysisStatus {
+export function statusForStage(
+  stage: PipelineStage,
+  backendStatus?: string,
+): AnalysisStatus {
+  if (backendStatus === "processing" || isPhase1Stage(stage)) return "Processing";
   if (stage === "outputs_ready") return "Complete";
   if (stage === "failed") return "Queued";
-  if (stage === "created") return "Queued";
+  if (stage === "created" || stage === "template_uploaded") return "Queued";
   if (stage === "final_recommendation") return "Review";
   return "Running";
 }
