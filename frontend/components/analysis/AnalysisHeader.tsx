@@ -1,11 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import type { AnalysisDetail } from "@/lib/types";
+import type { AnalysisRecord } from "@/lib/types";
+import { stageLabel } from "@/lib/pipeline-stages";
 import StatusBadge from "../StatusBadge";
 
 type AnalysisHeaderProps = {
-  analysis: AnalysisDetail;
+  analysis: AnalysisRecord;
 };
 
 export default function AnalysisHeader({ analysis }: AnalysisHeaderProps) {
@@ -25,7 +26,7 @@ export default function AnalysisHeader({ analysis }: AnalysisHeaderProps) {
             <span className="font-mono text-lg text-hap-orange">{analysis.ticker}</span>
           </div>
           <p className="mt-1 text-sm text-hap-muted">
-            {analysis.type} &middot; {analysis.sector}
+            {analysis.type} &middot; {stageLabel(analysis.currentStage)}
           </p>
         </div>
 
@@ -42,7 +43,7 @@ export default function AnalysisHeader({ analysis }: AnalysisHeaderProps) {
               <span className="font-mono text-sm">{analysis.progress}%</span>
             </div>
           </div>
-          <StatusBadge status={analysis.status} />
+          <StatusBadge status={analysis.displayStatus} />
         </div>
       </div>
     </header>

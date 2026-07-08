@@ -8,6 +8,7 @@ type FileUploadBoxProps = {
   accept?: string;
   file: File | null;
   onFileChange: (file: File | null) => void;
+  error?: string;
 };
 
 export default function FileUploadBox({
@@ -16,6 +17,7 @@ export default function FileUploadBox({
   accept = ".xlsx,.xls,.csv",
   file,
   onFileChange,
+  error,
 }: FileUploadBoxProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [isDragging, setIsDragging] = useState(false);
@@ -109,6 +111,7 @@ export default function FileUploadBox({
           </>
         )}
       </div>
+      {error && <p className="text-xs text-red-400">{error}</p>}
     </div>
   );
 }

@@ -1,6 +1,22 @@
-import type { AnalysisDetail } from "@/lib/types";
+import type { AnalysisRecord } from "@/lib/types";
 
-export default function DecisionLogTab({ analysis }: { analysis: AnalysisDetail }) {
+function formatTimestamp(value: string): string {
+  try {
+    return new Date(value).toLocaleString();
+  } catch {
+    return value;
+  }
+}
+
+export default function DecisionLogTab({ analysis }: { analysis: AnalysisRecord }) {
+  if (analysis.decisionLog.length === 0) {
+    return (
+      <p className="text-sm text-hap-muted">
+        Decision log entries will appear as backend agents complete pipeline stages.
+      </p>
+    );
+  }
+
   return (
     <div className="space-y-0">
       {analysis.decisionLog.map((entry, i) => (
@@ -16,7 +32,12 @@ export default function DecisionLogTab({ analysis }: { analysis: AnalysisDetail 
           <div className="pb-6">
             <div className="flex items-center gap-2">
               <span className="text-sm font-medium">{entry.action}</span>
-              <span className="text-xs text-hap-muted">{entry.timestamp}</span>
+              <span className="text-xs text-hap-muted">{formatTimestamp(entry.timestamp)}</span>
+              {entry.confidence != null && (
+                <span className="text-xs text-hap-muted">
+                  · {Math.round(entry.confidence * 100)}% confidence
+                </span>
+              )}
             </div>
             <p className="mt-0.5 text-xs text-hap-orange">{entry.agent}</p>
             <p className="mt-1 text-sm text-hap-muted">{entry.detail}</p>

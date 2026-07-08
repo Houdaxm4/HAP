@@ -1,4 +1,4 @@
-import type { Analysis, AnalysisDetail } from "./types";
+import type { Analysis, AnalysisDetail } from "../types";
 
 export const mockAnalyses: Record<string, Analysis> = {
   aapl: {

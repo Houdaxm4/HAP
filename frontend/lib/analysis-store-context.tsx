@@ -1,21 +1,18 @@
 "use client";
 
-import { createContext, useContext } from "react";
-import type { AnalysisDetail, NewAnalysisFormData } from "./types";
+import { createContext } from "react";
+import type { AnalysisRecord } from "./types";
 
 export type AnalysisStoreContextValue = {
-  analyses: AnalysisDetail[];
-  addAnalysis: (data: NewAnalysisFormData) => string;
-  getById: (id: string) => AnalysisDetail | undefined;
+  analyses: AnalysisRecord[];
+  isLoading: boolean;
+  error: string | null;
+  refreshAnalyses: () => Promise<void>;
+  refreshAnalysis: (analysisId: string) => Promise<void>;
+  getById: (id: string) => AnalysisRecord | undefined;
+  upsertAnalysis: (analysis: AnalysisRecord) => void;
 };
 
-export const AnalysisStoreContext =
-  createContext<AnalysisStoreContextValue | null>(null);
+export const AnalysisStoreContext = createContext<AnalysisStoreContextValue | null>(null);
 
-export function useAnalysisStore() {
-  const ctx = useContext(AnalysisStoreContext);
-  if (!ctx) {
-    throw new Error("useAnalysisStore must be used within AnalysisStoreProvider");
-  }
-  return ctx;
-}
+export const POLL_INTERVAL_MS = 3000;
