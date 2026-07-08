@@ -2,15 +2,12 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
 from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
-
-def utc_now_iso() -> str:
-    """Return the current UTC timestamp as an ISO 8601 string."""
-    return datetime.now(timezone.utc).isoformat()
+from models.common import utc_now_iso
+from models.pipeline import DecisionLogEntry, PipelineStatus
 
 
 class CreateAnalysisRequest(BaseModel):
@@ -56,12 +53,31 @@ class Analysis(BaseModel):
     created_at: str = Field(default_factory=utc_now_iso)
     updated_at: str = Field(default_factory=utc_now_iso)
     files: AnalysisFiles = Field(default_factory=AnalysisFiles)
+    pipeline: PipelineStatus = Field(default_factory=PipelineStatus)
+    decision_log: list[DecisionLogEntry] = Field(default_factory=list)
+    cik: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         """Serialize the analysis to a plain dictionary."""
-        return self.model_dump()
+        data = self.model_dump()
+        data["pipeline"] = self.pipeline.to_dict()
+        return data
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> Analysis:
         """Deserialize an analysis from a plain dictionary."""
-        return cls.model_validate(data)
+        normalized = dict(data)
+        if "pipeline" in normalized:
+            normalized["pipeline"] = PipelineStatus.from_dict(normalized["pipeline"])
+        return cls.model_validate(normalized)
+
+    @property
+    def is_pipeline_complete(self) -> bool:
+        """True only when all required milestone outputs exist."""
+        outputs = self.pipeline.outputs
+        return (
+            self.pipeline.state == "complete"
+            and outputs.completed_workbook is not None
+            and outputs.provenance_report is not None
+            and outputs.validation_report is not None
+        )

@@ -1,19 +1,25 @@
-"""HAP backend v0.2 — FastAPI application entry point."""
+"""HAP backend v0.3 — FastAPI application entry point."""
 
 from __future__ import annotations
 
-from fastapi import FastAPI, File, HTTPException, UploadFile
+from pathlib import Path
+
+from fastapi import BackgroundTasks, FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 
 from models.analysis import CreateAnalysisRequest, CreateAnalysisResponse
+from pipeline.orchestrator import PipelineError, PipelineOrchestrator
 from services.analysis_service import AnalysisNotFoundError, AnalysisService
 from services.file_service import FileService, FileUploadError
-from services.workbook_service import WorkbookService, WorkbookSummary
+from services.output_service import OutputService
+from services.workbook_service import WorkbookService
+from models.workbook_schema import WorkbookSummary
 
 app = FastAPI(
     title="HAP Backend",
     description="Houda's Analyst Platform API",
-    version="0.2.0",
+    version="0.3.0",
 )
 
 app.add_middleware(
@@ -27,12 +33,18 @@ app.add_middleware(
 analysis_service = AnalysisService()
 file_service = FileService()
 workbook_service = WorkbookService()
+output_service = OutputService()
+pipeline_orchestrator = PipelineOrchestrator(
+    analysis_service=analysis_service,
+    file_service=file_service,
+    output_service=output_service,
+)
 
 
 @app.get("/health")
 def health() -> dict[str, str]:
     """Liveness check for the API service."""
-    return {"status": "ok", "service": "HAP backend"}
+    return {"status": "ok", "service": "HAP backend", "version": "0.3.0"}
 
 
 @app.post("/analysis/create", response_model=CreateAnalysisResponse)
@@ -76,7 +88,30 @@ def get_analysis(analysis_id: str) -> dict:
         analysis = analysis_service.get(analysis_id)
     except AnalysisNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
-    return analysis.to_dict()
+    payload = analysis.to_dict()
+    payload["display_status"] = _display_status(analysis)
+    return payload
+
+
+@app.post("/analysis/{analysis_id}/run")
+def run_analysis_pipeline(analysis_id: str, background_tasks: BackgroundTasks) -> dict:
+    """Start the HAP backend pipeline for an uploaded analysis."""
+    try:
+        analysis = analysis_service.get(analysis_id)
+    except AnalysisNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    try:
+        pipeline_orchestrator.assert_ready_for_pipeline(analysis)
+    except PipelineError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    background_tasks.add_task(pipeline_orchestrator.run, analysis_id)
+    return {
+        "analysis_id": analysis_id,
+        "status": "processing",
+        "message": "Pipeline started. Poll GET /analysis/{id} for progress.",
+    }
 
 
 @app.post("/analysis/{analysis_id}/read-workbook", response_model=WorkbookSummary)
@@ -93,3 +128,75 @@ def read_workbook(analysis_id: str) -> WorkbookSummary:
         return workbook_service.read_summary(workbook_path, original_filename)
     except FileUploadError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.get("/analysis/{analysis_id}/outputs/{artifact_name}")
+def download_output_artifact(analysis_id: str, artifact_name: str) -> FileResponse:
+    """Download a pipeline output artifact."""
+    try:
+        analysis_service.get(analysis_id)
+    except AnalysisNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    path = output_service.artifact_path(analysis_id, artifact_name)
+    if not path.exists():
+        raise HTTPException(status_code=404, detail=f"Artifact '{artifact_name}' not found.")
+
+    return FileResponse(
+        path=path,
+        filename=artifact_name,
+        media_type=_media_type_for(path),
+    )
+
+
+@app.get("/analysis/{analysis_id}/provenance/{cell_ref:path}")
+def get_cell_provenance(analysis_id: str, cell_ref: str) -> dict:
+    """
+    Return explainability metadata for one workbook cell.
+
+    Example: /analysis/{id}/provenance/Income%20Statement!B5
+    """
+    try:
+        analysis_service.get(analysis_id)
+    except AnalysisNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    provenance_path = output_service.artifact_path(analysis_id, "provenance_report.json")
+    if not provenance_path.exists():
+        raise HTTPException(status_code=404, detail="Provenance report not available yet.")
+
+    import json
+
+    with provenance_path.open("r", encoding="utf-8") as handle:
+        report = json.load(handle)
+
+    normalized_ref = cell_ref.replace("%21", "!")
+    for entry in report.get("entries", []):
+        if entry.get("cell_ref") == normalized_ref:
+            return entry
+
+    raise HTTPException(status_code=404, detail=f"No provenance found for '{normalized_ref}'.")
+
+
+def _display_status(analysis) -> str:
+    """UI-facing status that never shows Complete until required outputs exist."""
+    if analysis.is_pipeline_complete:
+        return "Complete"
+    if analysis.pipeline.state in {"processing", "idle"} and analysis.status != "failed":
+        if analysis.status == "uploaded":
+            return "Waiting for backend pipeline."
+        return "Processing"
+    if analysis.pipeline.state == "failed":
+        return "Failed"
+    return "Processing"
+
+
+def _media_type_for(path: Path) -> str:
+    suffix = path.suffix.lower()
+    if suffix == ".json":
+        return "application/json"
+    if suffix == ".xlsx":
+        return "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    if suffix == ".csv":
+        return "text/csv"
+    return "application/octet-stream"

@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 from fastapi import UploadFile
 
-from models.analysis import Analysis, AnalysisFiles, UploadedFileMetadata, utc_now_iso
+from models.analysis import Analysis, AnalysisFiles, UploadedFileMetadata
+from models.common import utc_now_iso
 
 UPLOADS_DIR = Path(__file__).resolve().parent.parent / "storage" / "uploads"
 
@@ -86,16 +88,49 @@ class FileService:
             )
 
         if custom_run_filter is not None and custom_run_filter.filename:
+            stored_name = self._stored_filename(
+                custom_run_filter.filename,
+                default_stem="custom_run_filter",
+                allowed_extensions={".csv", ".xlsx", ".xlsm", ".xls"},
+            )
             files.custom_run_filter = await self.save_upload(
                 analysis_id,
                 custom_run_filter,
-                "custom_run_filter.xlsx",
+                stored_name,
             )
 
         analysis.files = files
         analysis.status = "uploaded"
         analysis.updated_at = utc_now_iso()
         return analysis
+
+    def get_custom_run_filter_path(self, analysis: Analysis) -> Path:
+        """Resolve the on-disk path to the custom_run filter file."""
+        if analysis.files.custom_run_filter is None:
+            raise FileUploadError("No custom_run_filter has been uploaded for this analysis.")
+
+        path = (
+            self.analysis_upload_dir(analysis.analysis_id)
+            / analysis.files.custom_run_filter.stored_filename
+        )
+        if not path.exists():
+            raise FileUploadError("custom_run_filter file is missing on disk.")
+        return path
+
+    @staticmethod
+    def _stored_filename(
+        original_filename: str,
+        default_stem: str,
+        allowed_extensions: set[str],
+    ) -> str:
+        suffix = Path(original_filename).suffix.lower()
+        if suffix not in allowed_extensions:
+            raise FileUploadError(
+                f"Unsupported file extension '{suffix}' for {default_stem}. "
+                f"Allowed: {', '.join(sorted(allowed_extensions))}"
+            )
+        safe_stem = re.sub(r"[^A-Za-z0-9._-]+", "_", Path(original_filename).stem) or default_stem
+        return f"{safe_stem}{suffix}"
 
     def get_prefilled_workbook_path(self, analysis: Analysis) -> Path:
         """Resolve the on-disk path to the prefilled workbook."""
@@ -109,3 +144,4 @@ class FileService:
         if not path.exists():
             raise FileUploadError("Prefilled workbook file is missing on disk.")
         return path
+
