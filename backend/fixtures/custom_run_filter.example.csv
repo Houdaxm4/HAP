@@ -1,0 +1,5 @@
+sheet,cell,concept,period,source
+Summary,B5,Ticker,,
+Income Statement,C12,Revenues,latest_annual,sec_xbrl
+Income Statement,C13,NetIncomeLoss,latest_annual,sec_xbrl
+Balance Sheet,C10,Assets,latest_annual,sec_xbrl

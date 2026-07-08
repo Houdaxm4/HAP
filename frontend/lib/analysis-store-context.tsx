@@ -5,8 +5,9 @@ import type { AnalysisDetail, NewAnalysisFormData } from "./types";
 
 export type AnalysisStoreContextValue = {
   analyses: AnalysisDetail[];
-  addAnalysis: (data: NewAnalysisFormData) => string;
+  addAnalysis: (data: NewAnalysisFormData) => Promise<string>;
   getById: (id: string) => AnalysisDetail | undefined;
+  backendAvailable: boolean;
 };
 
 export const AnalysisStoreContext =

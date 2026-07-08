@@ -24,10 +24,19 @@ export default function Dashboard() {
   const openModal = () => setIsModalOpen(true);
   const closeModal = () => setIsModalOpen(false);
 
-  const handleStartAnalysis = (data: NewAnalysisFormData) => {
-    const id = addAnalysis(data);
-    closeModal();
-    router.push(`/analysis/${id}`);
+  const handleStartAnalysis = async (data: NewAnalysisFormData) => {
+    try {
+      const id = await addAnalysis(data);
+      closeModal();
+      router.push(`/analysis/${id}`);
+    } catch (error) {
+      console.error(error);
+      alert(
+        error instanceof Error
+          ? error.message
+          : "Failed to start analysis. Check uploads and backend connectivity.",
+      );
+    }
   };
 
   return (

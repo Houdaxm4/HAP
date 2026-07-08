@@ -7,6 +7,9 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
+from models.pipeline import PipelineState, default_pipeline_state
+from models.phase1 import Phase1Result
+
 
 def utc_now_iso() -> str:
     """Return the current UTC timestamp as an ISO 8601 string."""
@@ -56,6 +59,8 @@ class Analysis(BaseModel):
     created_at: str = Field(default_factory=utc_now_iso)
     updated_at: str = Field(default_factory=utc_now_iso)
     files: AnalysisFiles = Field(default_factory=AnalysisFiles)
+    pipeline: PipelineState = Field(default_factory=default_pipeline_state)
+    phase1: Phase1Result | None = None
 
     def to_dict(self) -> dict[str, Any]:
         """Serialize the analysis to a plain dictionary."""
