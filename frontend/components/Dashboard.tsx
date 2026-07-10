@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useAnalysisStore } from "@/lib/analysis-store";
 import Sidebar from "./Sidebar";
 import CommandCenter from "./CommandCenter";
@@ -9,19 +9,20 @@ import AnalystChat from "./AnalystChat";
 import NewAnalysisModal from "./NewAnalysisModal";
 
 export default function Dashboard() {
-  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [manualOpen, setManualOpen] = useState(false);
   const { refreshAnalyses } = useAnalysisStore();
   const router = useRouter();
   const searchParams = useSearchParams();
+  const queryOpen = searchParams.get("new") === "1";
+  const isModalOpen = manualOpen || queryOpen;
 
-  useEffect(() => {
-    if (searchParams.get("new") === "1") {
-      setIsModalOpen(true);
+  const openModal = () => setManualOpen(true);
+  const closeModal = () => {
+    setManualOpen(false);
+    if (queryOpen) {
+      router.replace("/");
     }
-  }, [searchParams]);
-
-  const openModal = () => setIsModalOpen(true);
-  const closeModal = () => setIsModalOpen(false);
+  };
 
   const handleStartAnalysis = async (analysisId: string) => {
     await refreshAnalyses();

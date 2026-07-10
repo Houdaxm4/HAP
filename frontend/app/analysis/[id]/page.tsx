@@ -5,7 +5,6 @@ import { notFound } from "next/navigation";
 import { useAnalysisStore } from "@/lib/analysis-store";
 import { getAnalysis } from "@/lib/api";
 import AnalysisDetail from "@/components/analysis/AnalysisDetail";
-import type { AnalysisRecord } from "@/lib/types";
 
 type PageProps = {
   params: Promise<{ id: string }>;
@@ -14,42 +13,34 @@ type PageProps = {
 export default function AnalysisPage({ params }: PageProps) {
   const { id } = use(params);
   const { getById, upsertAnalysis, isLoading } = useAnalysisStore();
-  const cached = getById(id);
-  const [analysis, setAnalysis] = useState<AnalysisRecord | undefined>(cached);
-  const [loadError, setLoadError] = useState(false);
+  const analysis = getById(id);
+  const [missing, setMissing] = useState(false);
 
   useEffect(() => {
-    if (cached) {
-      setAnalysis(cached);
-      return;
-    }
+    if (analysis) return;
+
     let cancelled = false;
     void getAnalysis(id)
       .then((record) => {
-        if (cancelled) return;
-        upsertAnalysis(record);
-        setAnalysis(record);
+        if (!cancelled) upsertAnalysis(record);
       })
       .catch(() => {
-        if (!cancelled) setLoadError(true);
+        if (!cancelled) setMissing(true);
       });
+
     return () => {
       cancelled = true;
     };
-  }, [cached, id, upsertAnalysis]);
+  }, [analysis, id, upsertAnalysis]);
 
-  useEffect(() => {
-    if (cached) setAnalysis(cached);
-  }, [cached]);
-
-  if (loadError) {
+  if (missing) {
     notFound();
   }
 
   if (!analysis) {
     return (
       <div className="flex h-screen items-center justify-center text-sm text-hap-muted">
-        {isLoading ? "Loading analysis..." : "Loading analysis from backend..."}
+        {isLoading ? "Loading analyses..." : "Loading analysis from backend..."}
       </div>
     );
   }

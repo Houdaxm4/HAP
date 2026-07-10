@@ -31,6 +31,7 @@ export function AnalysisStoreProvider({ children }: { children: ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const analysesRef = useRef<AnalysisRecord[]>([]);
+  const didInitialFetch = useRef(false);
 
   useEffect(() => {
     analysesRef.current = analyses;
@@ -79,8 +80,20 @@ export function AnalysisStoreProvider({ children }: { children: ReactNode }) {
   );
 
   useEffect(() => {
-    void refreshAnalyses();
-  }, [refreshAnalyses]);
+    if (didInitialFetch.current) return;
+    didInitialFetch.current = true;
+    void listAnalyses()
+      .then((records) => {
+        setAnalyses(records);
+        setError(null);
+      })
+      .catch((err: unknown) => {
+        setError(err instanceof Error ? err.message : "Failed to load analyses.");
+      })
+      .finally(() => {
+        setIsLoading(false);
+      });
+  }, []);
 
   useEffect(() => {
     const interval = setInterval(() => {
