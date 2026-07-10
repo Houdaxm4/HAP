@@ -11,27 +11,32 @@ from models.common import utc_now_iso
 
 
 class PipelineStage(str, Enum):
-    """Ordered stages in the first production milestone."""
+    """Ordered stages for the infrastructure milestone (pre-SEC)."""
 
-    UPLOAD = "upload"
-    PARSE_WORKBOOK = "parse_workbook"
-    PARSE_CUSTOM_RUN = "parse_custom_run"
-    FETCH_SEC_FILINGS = "fetch_sec_filings"
-    FILL_WORKBOOK = "fill_workbook"
-    VALIDATE_WORKBOOK = "validate_workbook"
-    COMPLETE = "complete"
+    WORKBOOK_UPLOADED = "workbook_uploaded"
+    WORKBOOK_PARSED = "workbook_parsed"
+    CUSTOM_RUN_FILTER_UPLOADED = "custom_run_filter_uploaded"
+    CUSTOM_RUN_FILTER_VALIDATED = "custom_run_filter_validated"
+    WAITING_FOR_FILING_COLLECTION = "waiting_for_filing_collection"
     FAILED = "failed"
 
 
 PIPELINE_STAGE_ORDER: list[PipelineStage] = [
-    PipelineStage.UPLOAD,
-    PipelineStage.PARSE_WORKBOOK,
-    PipelineStage.PARSE_CUSTOM_RUN,
-    PipelineStage.FETCH_SEC_FILINGS,
-    PipelineStage.FILL_WORKBOOK,
-    PipelineStage.VALIDATE_WORKBOOK,
-    PipelineStage.COMPLETE,
+    PipelineStage.WORKBOOK_UPLOADED,
+    PipelineStage.WORKBOOK_PARSED,
+    PipelineStage.CUSTOM_RUN_FILTER_UPLOADED,
+    PipelineStage.CUSTOM_RUN_FILTER_VALIDATED,
+    PipelineStage.WAITING_FOR_FILING_COLLECTION,
 ]
+
+PIPELINE_STAGE_LABELS: dict[PipelineStage, str] = {
+    PipelineStage.WORKBOOK_UPLOADED: "Workbook uploaded",
+    PipelineStage.WORKBOOK_PARSED: "Workbook parsed",
+    PipelineStage.CUSTOM_RUN_FILTER_UPLOADED: "custom_run_filter uploaded",
+    PipelineStage.CUSTOM_RUN_FILTER_VALIDATED: "custom_run_filter validated",
+    PipelineStage.WAITING_FOR_FILING_COLLECTION: "Waiting for filing collection",
+    PipelineStage.FAILED: "Failed",
+}
 
 
 class DecisionLogEntry(BaseModel):
@@ -60,7 +65,7 @@ class PipelineOutputs(BaseModel):
 class PipelineStatus(BaseModel):
     """Runtime pipeline state tracked on each analysis."""
 
-    state: Literal["idle", "processing", "complete", "failed"] = "idle"
+    state: Literal["idle", "processing", "waiting", "complete", "failed"] = "idle"
     current_stage: PipelineStage | None = None
     stages_completed: list[PipelineStage] = Field(default_factory=list)
     progress_pct: int = 0
@@ -84,9 +89,20 @@ class PipelineStatus(BaseModel):
             return cls()
         normalized = dict(data)
         if normalized.get("current_stage"):
-            normalized["current_stage"] = PipelineStage(normalized["current_stage"])
+            try:
+                normalized["current_stage"] = PipelineStage(normalized["current_stage"])
+            except ValueError:
+                # Legacy stage names from earlier milestones — treat as unknown/idle.
+                normalized["current_stage"] = None
         if normalized.get("stages_completed"):
-            normalized["stages_completed"] = [
-                PipelineStage(stage) for stage in normalized["stages_completed"]
-            ]
+            stages: list[PipelineStage] = []
+            for stage in normalized["stages_completed"]:
+                try:
+                    stages.append(PipelineStage(stage))
+                except ValueError:
+                    continue
+            normalized["stages_completed"] = stages
+        # Map legacy "complete" without waiting stage to waiting when appropriate.
+        if normalized.get("state") == "complete" and not normalized.get("current_stage"):
+            normalized["state"] = "waiting"
         return cls.model_validate(normalized)

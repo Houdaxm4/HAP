@@ -1,4 +1,4 @@
-"""Parse custom_run filter files (CSV or XLSX)."""
+"""Parse and validate custom_run filter files (CSV or XLSX)."""
 
 from __future__ import annotations
 
@@ -8,13 +8,14 @@ from pathlib import Path
 from openpyxl import load_workbook
 
 from models.custom_run import CustomRunEntry, CustomRunMapping
+from models.workbook_schema import WorkbookStructure
 
 REQUIRED_COLUMNS = {"worksheet", "cell", "concept", "period"}
 OPTIONAL_COLUMNS = {"workbook", "xbrl_tag", "unit", "notes"}
 
 
 class CustomRunParseError(Exception):
-    """Raised when the custom_run filter cannot be parsed."""
+    """Raised when the custom_run filter cannot be parsed or validated."""
 
 
 class CustomRunService:
@@ -40,6 +41,31 @@ class CustomRunService:
             entry_count=len(entries),
             entries=entries,
         )
+
+    def validate_against_workbook(
+        self,
+        mapping: CustomRunMapping,
+        structure: WorkbookStructure,
+    ) -> None:
+        """
+        Ensure every custom_run mapping targets a worksheet that exists.
+
+        Raises CustomRunParseError when worksheet references are invalid.
+        """
+        sheet_names = set(structure.worksheet_names)
+        missing_sheets: list[str] = []
+        for entry in mapping.entries:
+            if entry.worksheet not in sheet_names:
+                missing_sheets.append(f"{entry.worksheet}!{entry.cell}")
+
+        if missing_sheets:
+            unique = sorted(set(missing_sheets))
+            preview = ", ".join(unique[:5])
+            suffix = f" (+{len(unique) - 5} more)" if len(unique) > 5 else ""
+            raise CustomRunParseError(
+                "custom_run_filter references worksheets missing from the workbook: "
+                f"{preview}{suffix}"
+            )
 
     def _parse_csv(self, file_path: Path) -> list[CustomRunEntry]:
         with file_path.open("r", encoding="utf-8-sig", newline="") as handle:

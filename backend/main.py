@@ -1,4 +1,4 @@
-"""HAP backend v0.3 — FastAPI application entry point."""
+"""HAP backend v0.4 — FastAPI application entry point."""
 
 from __future__ import annotations
 
@@ -9,17 +9,18 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 
 from models.analysis import CreateAnalysisRequest, CreateAnalysisResponse
+from models.pipeline import PIPELINE_STAGE_LABELS, PipelineStage
+from models.workbook_schema import WorkbookSummary
 from pipeline.orchestrator import PipelineError, PipelineOrchestrator
 from services.analysis_service import AnalysisNotFoundError, AnalysisService
 from services.file_service import FileService, FileUploadError
 from services.output_service import OutputService
 from services.workbook_service import WorkbookService
-from models.workbook_schema import WorkbookSummary
 
 app = FastAPI(
     title="HAP Backend",
     description="Houda's Analyst Platform API",
-    version="0.3.0",
+    version="0.4.0",
 )
 
 app.add_middleware(
@@ -44,7 +45,18 @@ pipeline_orchestrator = PipelineOrchestrator(
 @app.get("/health")
 def health() -> dict[str, str]:
     """Liveness check for the API service."""
-    return {"status": "ok", "service": "HAP backend", "version": "0.3.0"}
+    return {"status": "ok", "service": "HAP backend", "version": "0.4.0"}
+
+
+@app.get("/analysis")
+def list_analyses() -> list[dict]:
+    """Return all analyses with UI-facing display status."""
+    results: list[dict] = []
+    for analysis in analysis_service.list_all():
+        payload = analysis.to_dict()
+        payload["display_status"] = _display_status(analysis)
+        results.append(payload)
+    return results
 
 
 @app.post("/analysis/create", response_model=CreateAnalysisResponse)
@@ -57,11 +69,19 @@ def create_analysis(request: CreateAnalysisRequest) -> CreateAnalysisResponse:
 @app.post("/analysis/{analysis_id}/upload")
 async def upload_analysis_files(
     analysis_id: str,
+    background_tasks: BackgroundTasks,
     prefilled_workbook: UploadFile = File(...),
+    custom_run_filter: UploadFile = File(...),
     previous_workbook: UploadFile | None = File(None),
-    custom_run_filter: UploadFile | None = File(None),
+    start_pipeline: bool = True,
 ) -> dict:
-    """Upload workbook files for an existing analysis."""
+    """
+    Upload and validate workbook files for an existing analysis.
+
+    Both ``prefilled_workbook`` and ``custom_run_filter`` are required.
+    When ``start_pipeline`` is true (default), the infrastructure pipeline
+    starts in the background after a successful upload.
+    """
     try:
         analysis = analysis_service.get(analysis_id)
     except AnalysisNotFoundError as exc:
@@ -78,7 +98,22 @@ async def upload_analysis_files(
     except FileUploadError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-    return updated.to_dict()
+    pipeline_started = False
+    if start_pipeline:
+        try:
+            pipeline_orchestrator.assert_ready_for_pipeline(updated)
+        except PipelineError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        background_tasks.add_task(pipeline_orchestrator.run, analysis_id)
+        pipeline_started = True
+
+    # Re-load so the response reflects pipeline progress when background
+    # tasks run inline (e.g. TestClient) or still show uploaded otherwise.
+    refreshed = analysis_service.get(analysis_id)
+    payload = refreshed.to_dict()
+    payload["display_status"] = _display_status(refreshed)
+    payload["pipeline_started"] = pipeline_started
+    return payload
 
 
 @app.get("/analysis/{analysis_id}")
@@ -95,7 +130,7 @@ def get_analysis(analysis_id: str) -> dict:
 
 @app.post("/analysis/{analysis_id}/run")
 def run_analysis_pipeline(analysis_id: str, background_tasks: BackgroundTasks) -> dict:
-    """Start the HAP backend pipeline for an uploaded analysis."""
+    """Start the HAP infrastructure pipeline for an uploaded analysis."""
     try:
         analysis = analysis_service.get(analysis_id)
     except AnalysisNotFoundError as exc:
@@ -111,6 +146,7 @@ def run_analysis_pipeline(analysis_id: str, background_tasks: BackgroundTasks) -
         "analysis_id": analysis_id,
         "status": "processing",
         "message": "Pipeline started. Poll GET /analysis/{id} for progress.",
+        "stages": [PIPELINE_STAGE_LABELS[stage] for stage in PipelineStage if stage != PipelineStage.FAILED],
     }
 
 
@@ -179,15 +215,17 @@ def get_cell_provenance(analysis_id: str, cell_ref: str) -> dict:
 
 
 def _display_status(analysis) -> str:
-    """UI-facing status that never shows Complete until required outputs exist."""
-    if analysis.is_pipeline_complete:
-        return "Complete"
-    if analysis.pipeline.state in {"processing", "idle"} and analysis.status != "failed":
-        if analysis.status == "uploaded":
-            return "Waiting for backend pipeline."
-        return "Processing"
-    if analysis.pipeline.state == "failed":
+    """UI-facing status for the infrastructure pipeline."""
+    if analysis.pipeline.state == "failed" or analysis.status == "failed":
         return "Failed"
+    if analysis.pipeline.state == "waiting" or analysis.is_pipeline_complete:
+        return "Waiting for filing collection"
+    if analysis.pipeline.state == "processing" or analysis.status == "processing":
+        return "Processing"
+    if analysis.status == "uploaded":
+        return "Uploaded"
+    if analysis.status == "created":
+        return "Created"
     return "Processing"
 
 

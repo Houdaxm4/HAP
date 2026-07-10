@@ -73,11 +73,16 @@ class Analysis(BaseModel):
 
     @property
     def is_pipeline_complete(self) -> bool:
-        """True only when all required milestone outputs exist."""
-        outputs = self.pipeline.outputs
+        """
+        True when the infrastructure pipeline has finished and is waiting
+        for filing collection (SEC download is not implemented yet).
+        """
+        from models.pipeline import PipelineStage
+
         return (
-            self.pipeline.state == "complete"
-            and outputs.completed_workbook is not None
-            and outputs.provenance_report is not None
-            and outputs.validation_report is not None
+            self.pipeline.state == "waiting"
+            and self.pipeline.current_stage
+            == PipelineStage.WAITING_FOR_FILING_COLLECTION
+            and self.pipeline.outputs.workbook_structure is not None
+            and self.pipeline.outputs.custom_run_mapping is not None
         )

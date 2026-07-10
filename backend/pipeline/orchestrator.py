@@ -1,22 +1,22 @@
-"""HAP pipeline orchestrator for the first production milestone."""
+"""HAP pipeline orchestrator for the infrastructure milestone (pre-SEC)."""
 
 from __future__ import annotations
 
-from pathlib import Path
-
 from models.analysis import Analysis
 from models.common import utc_now_iso
-from models.pipeline import DecisionLogEntry, PipelineStage, PipelineStatus
-from pipeline.stages.fetch_sec_filings import FetchSecFilingsStage
-from pipeline.stages.fill_workbook import FillWorkbookStage
-from pipeline.stages.parse_custom_run import ParseCustomRunStage
+from models.pipeline import (
+    PIPELINE_STAGE_LABELS,
+    DecisionLogEntry,
+    PipelineStage,
+    PipelineStatus,
+)
 from pipeline.stages.parse_workbook import ParseWorkbookStage
-from pipeline.stages.validate_workbook import ValidateWorkbookStage
+from pipeline.stages.validate_custom_run import ValidateCustomRunStage
 from services.analysis_service import AnalysisService
 from services.custom_run_service import CustomRunParseError
 from services.file_service import FileService
 from services.output_service import OutputService
-from services.sec_service import SecServiceError
+from services.workbook_service import WorkbookParseError
 
 
 class PipelineError(Exception):
@@ -25,10 +25,21 @@ class PipelineError(Exception):
 
 class PipelineOrchestrator:
     """
-    Run the fixed HAP workflow for milestone 1:
+    Run the infrastructure workflow:
 
-    Upload → Parse workbook → Parse custom_run → SEC filings → Fill → Validate
+    Workbook uploaded → Workbook parsed → custom_run_filter uploaded →
+    custom_run_filter validated → Waiting for filing collection
+
+    SEC downloading and AI extraction are intentionally not implemented yet.
     """
+
+    STAGE_PROGRESS: dict[PipelineStage, int] = {
+        PipelineStage.WORKBOOK_UPLOADED: 20,
+        PipelineStage.WORKBOOK_PARSED: 40,
+        PipelineStage.CUSTOM_RUN_FILTER_UPLOADED: 60,
+        PipelineStage.CUSTOM_RUN_FILTER_VALIDATED: 80,
+        PipelineStage.WAITING_FOR_FILING_COLLECTION: 100,
+    }
 
     def __init__(
         self,
@@ -40,19 +51,18 @@ class PipelineOrchestrator:
         self.file_service = file_service or FileService()
         self.output_service = output_service or OutputService()
         self.parse_workbook_stage = ParseWorkbookStage(output_service=self.output_service)
-        self.parse_custom_run_stage = ParseCustomRunStage(output_service=self.output_service)
-        self.fetch_sec_stage = FetchSecFilingsStage(output_service=self.output_service)
-        self.fill_workbook_stage = FillWorkbookStage(output_service=self.output_service)
-        self.validate_workbook_stage = ValidateWorkbookStage(output_service=self.output_service)
+        self.validate_custom_run_stage = ValidateCustomRunStage(
+            output_service=self.output_service
+        )
 
     def run(self, analysis_id: str) -> Analysis:
-        """Execute all pipeline stages sequentially."""
+        """Execute infrastructure pipeline stages sequentially."""
         analysis = self.analysis_service.get(analysis_id)
         self._assert_ready_for_pipeline(analysis)
 
         analysis.pipeline = PipelineStatus(
             state="processing",
-            current_stage=PipelineStage.PARSE_WORKBOOK,
+            current_stage=PipelineStage.WORKBOOK_UPLOADED,
             progress_pct=5,
             started_at=utc_now_iso(),
         )
@@ -64,85 +74,104 @@ class PipelineOrchestrator:
             workbook_path = self.file_service.get_prefilled_workbook_path(analysis)
             custom_run_path = self.file_service.get_custom_run_filter_path(analysis)
 
-            structure, structure_path, log = self.parse_workbook_stage.run(analysis, workbook_path)
-            self._complete_stage(analysis, PipelineStage.PARSE_WORKBOOK, 20, log, workbook_structure=structure_path)
-
-            mapping, mapping_path, log = self.parse_custom_run_stage.run(analysis, custom_run_path)
-            self._complete_stage(analysis, PipelineStage.PARSE_CUSTOM_RUN, 35, log, custom_run_mapping=mapping_path)
-
-            cache_dir = self.output_service.analysis_output_dir(analysis_id) / "sec_cache"
-            manifest, company_facts, manifest_path, _, log = self.fetch_sec_stage.run(
-                analysis,
-                cache_dir=cache_dir,
-            )
-            analysis.cik = manifest.get("cik")
+            # Stage 1 — Workbook uploaded (files already stored on disk)
             self._complete_stage(
                 analysis,
-                PipelineStage.FETCH_SEC_FILINGS,
-                55,
-                log,
-                sec_filings_manifest=manifest_path,
+                PipelineStage.WORKBOOK_UPLOADED,
+                DecisionLogEntry(
+                    agent="Document Collection Agent",
+                    action="workbook_uploaded",
+                    detail=(
+                        f"Stored prefilled workbook "
+                        f"'{analysis.files.prefilled_workbook.filename}'."  # type: ignore[union-attr]
+                    ),
+                    confidence=1.0,
+                ),
             )
 
-            provenance_report, workbook_path_rel, provenance_path, log = self.fill_workbook_stage.run(
+            # Stage 2 — Workbook parsed
+            analysis.pipeline.current_stage = PipelineStage.WORKBOOK_PARSED
+            analysis.pipeline.progress_pct = 30
+            self.analysis_service.save(analysis)
+            structure, structure_path, log = self.parse_workbook_stage.run(
+                analysis, workbook_path
+            )
+            self._complete_stage(
                 analysis,
-                workbook_path,
-                mapping,
+                PipelineStage.WORKBOOK_PARSED,
+                log,
+                workbook_structure=structure_path,
+            )
+
+            # Stage 3 — custom_run_filter uploaded
+            self._complete_stage(
+                analysis,
+                PipelineStage.CUSTOM_RUN_FILTER_UPLOADED,
+                DecisionLogEntry(
+                    agent="Document Collection Agent",
+                    action="custom_run_filter_uploaded",
+                    detail=(
+                        f"Stored custom_run_filter "
+                        f"'{analysis.files.custom_run_filter.filename}'."  # type: ignore[union-attr]
+                    ),
+                    confidence=1.0,
+                ),
+            )
+
+            # Stage 4 — custom_run_filter validated
+            analysis.pipeline.current_stage = PipelineStage.CUSTOM_RUN_FILTER_VALIDATED
+            analysis.pipeline.progress_pct = 70
+            self.analysis_service.save(analysis)
+            _, mapping_path, log = self.validate_custom_run_stage.run(
+                analysis,
+                custom_run_path,
                 structure,
-                company_facts,
-                manifest,
             )
             self._complete_stage(
                 analysis,
-                PipelineStage.FILL_WORKBOOK,
-                80,
+                PipelineStage.CUSTOM_RUN_FILTER_VALIDATED,
                 log,
-                completed_workbook=workbook_path_rel,
-                provenance_report=provenance_path,
+                custom_run_mapping=mapping_path,
             )
 
-            completed_workbook_path = self.output_service.artifact_path(
-                analysis_id,
-                "completed_workbook.xlsx",
+            # Stage 5 — Waiting for filing collection (stop here; no SEC yet)
+            analysis.pipeline.state = "waiting"
+            analysis.pipeline.current_stage = PipelineStage.WAITING_FOR_FILING_COLLECTION
+            analysis.pipeline.progress_pct = self.STAGE_PROGRESS[
+                PipelineStage.WAITING_FOR_FILING_COLLECTION
+            ]
+            analysis.pipeline.stages_completed.append(
+                PipelineStage.WAITING_FOR_FILING_COLLECTION
             )
-            _, validation_path, discrepancy_path, log = self.validate_workbook_stage.run(
-                analysis,
-                mapping,
-                provenance_report,
-                completed_workbook_path,
-            )
-            self._complete_stage(
-                analysis,
-                PipelineStage.VALIDATE_WORKBOOK,
-                95,
-                log,
-                validation_report=validation_path,
-                discrepancy_report=discrepancy_path,
-            )
-
-            analysis.pipeline.state = "complete"
-            analysis.pipeline.current_stage = PipelineStage.COMPLETE
-            analysis.pipeline.progress_pct = 100
             analysis.pipeline.completed_at = utc_now_iso()
-            analysis.status = "complete" if analysis.is_pipeline_complete else "processing"
+            analysis.status = "waiting_for_filing_collection"
             analysis.updated_at = utc_now_iso()
+            analysis.decision_log.append(
+                DecisionLogEntry(
+                    agent="Pipeline Orchestrator",
+                    action="waiting_for_filing_collection",
+                    detail=(
+                        "Infrastructure pipeline complete. "
+                        "SEC filing collection is not implemented yet."
+                    ),
+                    confidence=1.0,
+                )
+            )
             self.analysis_service.save(analysis)
             return analysis
-        except (CustomRunParseError, SecServiceError, PipelineError, OSError, ValueError) as exc:
+        except (CustomRunParseError, WorkbookParseError, PipelineError, OSError, ValueError) as exc:
             return self._fail(analysis, str(exc))
 
     def _complete_stage(
         self,
         analysis: Analysis,
         stage: PipelineStage,
-        progress_pct: int,
         log_entry: DecisionLogEntry,
         **output_fields: str,
     ) -> None:
         analysis.pipeline.stages_completed.append(stage)
-        next_stage = self._next_stage(stage)
-        analysis.pipeline.current_stage = next_stage
-        analysis.pipeline.progress_pct = progress_pct
+        analysis.pipeline.current_stage = stage
+        analysis.pipeline.progress_pct = self.STAGE_PROGRESS[stage]
         for field_name, value in output_fields.items():
             setattr(analysis.pipeline.outputs, field_name, value)
         analysis.decision_log.append(log_entry)
@@ -167,22 +196,6 @@ class PipelineOrchestrator:
         self.analysis_service.save(analysis)
         return analysis
 
-    @staticmethod
-    def _next_stage(stage: PipelineStage) -> PipelineStage | None:
-        order = [
-            PipelineStage.PARSE_WORKBOOK,
-            PipelineStage.PARSE_CUSTOM_RUN,
-            PipelineStage.FETCH_SEC_FILINGS,
-            PipelineStage.FILL_WORKBOOK,
-            PipelineStage.VALIDATE_WORKBOOK,
-            PipelineStage.COMPLETE,
-        ]
-        try:
-            index = order.index(stage)
-        except ValueError:
-            return None
-        return order[index + 1] if index + 1 < len(order) else PipelineStage.COMPLETE
-
     def assert_ready_for_pipeline(self, analysis: Analysis) -> None:
         """Validate that an analysis has the uploads required to start the pipeline."""
         self._assert_ready_for_pipeline(analysis)
@@ -195,3 +208,9 @@ class PipelineOrchestrator:
             raise PipelineError("custom_run_filter is required before running the pipeline.")
         if analysis.pipeline.state == "processing":
             raise PipelineError("Pipeline is already running for this analysis.")
+
+    @staticmethod
+    def stage_label(stage: PipelineStage | None) -> str:
+        if stage is None:
+            return "Not started"
+        return PIPELINE_STAGE_LABELS.get(stage, stage.value)

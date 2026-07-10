@@ -1,13 +1,13 @@
-"""Integration tests for the first HAP production pipeline milestone."""
+"""Integration tests for the HAP infrastructure pipeline (pre-SEC)."""
 
 from __future__ import annotations
 
 from pathlib import Path
-from unittest.mock import patch
 
 import pytest
 
 from models.analysis import Analysis, AnalysisFiles, UploadedFileMetadata
+from models.pipeline import PipelineStage
 from pipeline.orchestrator import PipelineOrchestrator
 from services.analysis_service import AnalysisService
 from services.file_service import FileService
@@ -56,44 +56,57 @@ def pipeline_env(tmp_path: Path, sample_workbook: Path, sample_custom_run_csv: P
     return orchestrator, analysis_service, output_service
 
 
-def test_pipeline_end_to_end_with_mocked_sec(
-    pipeline_env,
-    mock_company_facts,
-    mock_filings_manifest,
-):
+def test_infrastructure_pipeline_stops_at_filing_collection(pipeline_env):
     orchestrator, analysis_service, output_service = pipeline_env
 
-    with patch.object(
-        orchestrator.fetch_sec_stage.sec_service,
-        "resolve_cik",
-        return_value="0000320193",
-    ), patch.object(
-        orchestrator.fetch_sec_stage.sec_service,
-        "fetch_filings_manifest",
-        return_value=mock_filings_manifest,
-    ), patch.object(
-        orchestrator.fetch_sec_stage.sec_service,
-        "fetch_company_facts",
-        return_value=mock_company_facts,
-    ):
-        result = orchestrator.run("test-analysis")
+    result = orchestrator.run("test-analysis")
 
-    assert result.pipeline.state == "complete"
+    assert result.pipeline.state == "waiting"
+    assert result.pipeline.current_stage == PipelineStage.WAITING_FOR_FILING_COLLECTION
+    assert result.pipeline.progress_pct == 100
     assert result.is_pipeline_complete
-    assert result.pipeline.outputs.completed_workbook is not None
-    assert result.pipeline.outputs.provenance_report is not None
-    assert result.pipeline.outputs.validation_report is not None
-    assert len(result.decision_log) >= 5
+    assert result.status == "waiting_for_filing_collection"
 
-    completed_path = output_service.artifact_path("test-analysis", "completed_workbook.xlsx")
-    assert completed_path.exists()
+    expected_stages = [
+        PipelineStage.WORKBOOK_UPLOADED,
+        PipelineStage.WORKBOOK_PARSED,
+        PipelineStage.CUSTOM_RUN_FILTER_UPLOADED,
+        PipelineStage.CUSTOM_RUN_FILTER_VALIDATED,
+        PipelineStage.WAITING_FOR_FILING_COLLECTION,
+    ]
+    assert result.pipeline.stages_completed == expected_stages
 
-    provenance = output_service.read_json("test-analysis", "provenance_report.json")
-    assert provenance["filled_count"] == 3
-    assert provenance["skipped_formula_count"] == 0
+    assert result.pipeline.outputs.workbook_structure is not None
+    assert result.pipeline.outputs.custom_run_mapping is not None
+    # SEC / fill outputs must not be produced in this milestone.
+    assert result.pipeline.outputs.sec_filings_manifest is None
+    assert result.pipeline.outputs.completed_workbook is None
 
-    validation = output_service.read_json("test-analysis", "validation_report.json")
-    assert validation["fail_count"] == 0
+    structure = output_service.read_json("test-analysis", "workbook_structure.json")
+    assert "Income Statement" in structure["worksheet_names"]
+
+    mapping = output_service.read_json("test-analysis", "custom_run_mapping.json")
+    assert mapping["entry_count"] == 3
+
+    assert any(entry.action == "waiting_for_filing_collection" for entry in result.decision_log)
 
     reloaded = analysis_service.get("test-analysis")
     assert reloaded.is_pipeline_complete
+
+
+def test_pipeline_fails_on_invalid_custom_run_worksheet(pipeline_env):
+    orchestrator, analysis_service, _output_service = pipeline_env
+    custom_run_path = (
+        orchestrator.file_service.analysis_upload_dir("test-analysis") / "custom_run_filter.csv"
+    )
+    custom_run_path.write_text(
+        "worksheet,cell,concept,period\nMissing Sheet,B5,Revenue,FY2024\n",
+        encoding="utf-8",
+    )
+
+    result = orchestrator.run("test-analysis")
+    assert result.pipeline.state == "failed"
+    assert result.status == "failed"
+    assert "missing from the workbook" in (result.pipeline.error or "")
+    reloaded = analysis_service.get("test-analysis")
+    assert reloaded.pipeline.state == "failed"

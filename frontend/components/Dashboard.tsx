@@ -2,8 +2,7 @@
 
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
-import { useAnalysisStore } from "@/lib/analysis-store-context";
-import type { NewAnalysisFormData } from "@/lib/types";
+import { useAnalysisStore } from "@/lib/analysis-store";
 import Sidebar from "./Sidebar";
 import CommandCenter from "./CommandCenter";
 import AnalystChat from "./AnalystChat";
@@ -11,7 +10,7 @@ import NewAnalysisModal from "./NewAnalysisModal";
 
 export default function Dashboard() {
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const { addAnalysis } = useAnalysisStore();
+  const { refreshAnalyses } = useAnalysisStore();
   const router = useRouter();
   const searchParams = useSearchParams();
 
@@ -24,10 +23,10 @@ export default function Dashboard() {
   const openModal = () => setIsModalOpen(true);
   const closeModal = () => setIsModalOpen(false);
 
-  const handleStartAnalysis = (data: NewAnalysisFormData) => {
-    const id = addAnalysis(data);
+  const handleStartAnalysis = async (analysisId: string) => {
+    await refreshAnalyses();
     closeModal();
-    router.push(`/analysis/${id}`);
+    router.push(`/analysis/${analysisId}`);
   };
 
   return (
