@@ -34,9 +34,12 @@ class ParseWorkbookStage:
             agent="Workbook Completion Agent",
             action="parse_workbook",
             detail=(
-                f"Parsed {len(structure.worksheet_names)} worksheets, "
-                f"{structure.formula_count} formulas, "
-                f"{len(structure.named_ranges)} named ranges."
+                f"Parsed {len(structure.worksheet_names)} worksheets "
+                f"({len(structure.hidden_sheets)} hidden), "
+                f"{structure.formula_count} formula cells, "
+                f"{structure.editable_cell_count} editable cells, "
+                f"{len(structure.named_ranges)} named ranges. "
+                "Source workbook was not modified; formatting captured in JSON."
             ),
             confidence=1.0,
             citations=[artifact_path],

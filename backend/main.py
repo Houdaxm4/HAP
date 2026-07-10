@@ -10,12 +10,12 @@ from fastapi.responses import FileResponse
 
 from models.analysis import CreateAnalysisRequest, CreateAnalysisResponse
 from models.pipeline import PIPELINE_STAGE_LABELS, PipelineStage
-from models.workbook_schema import WorkbookSummary
+from models.workbook_schema import WorkbookStructure, WorkbookSummary
 from pipeline.orchestrator import PipelineError, PipelineOrchestrator
 from services.analysis_service import AnalysisNotFoundError, AnalysisService
 from services.file_service import FileService, FileUploadError
 from services.output_service import OutputService
-from services.workbook_service import WorkbookService
+from services.workbook_service import WorkbookParseError, WorkbookService
 
 app = FastAPI(
     title="HAP Backend",
@@ -152,7 +152,7 @@ def run_analysis_pipeline(analysis_id: str, background_tasks: BackgroundTasks) -
 
 @app.post("/analysis/{analysis_id}/read-workbook", response_model=WorkbookSummary)
 def read_workbook(analysis_id: str) -> WorkbookSummary:
-    """Inspect the prefilled workbook without modifying it."""
+    """Inspect the prefilled workbook without modifying it (summary view)."""
     try:
         analysis = analysis_service.get(analysis_id)
     except AnalysisNotFoundError as exc:
@@ -163,6 +163,33 @@ def read_workbook(analysis_id: str) -> WorkbookSummary:
         original_filename = analysis.files.prefilled_workbook.filename  # type: ignore[union-attr]
         return workbook_service.read_summary(workbook_path, original_filename)
     except FileUploadError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.get("/analysis/{analysis_id}/workbook-structure", response_model=WorkbookStructure)
+def get_workbook_structure(analysis_id: str) -> WorkbookStructure:
+    """
+    Return the full JSON representation of the uploaded workbook.
+
+    Prefers the pipeline artifact when available; otherwise parses the uploaded
+    file on demand. The source workbook is never modified.
+    """
+    try:
+        analysis = analysis_service.get(analysis_id)
+    except AnalysisNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    artifact = output_service.artifact_path(analysis_id, "workbook_structure.json")
+    if artifact.exists():
+        return WorkbookStructure.model_validate(output_service.read_json(analysis_id, "workbook_structure.json"))
+
+    try:
+        workbook_path = file_service.get_prefilled_workbook_path(analysis)
+        original_filename = analysis.files.prefilled_workbook.filename  # type: ignore[union-attr]
+        return workbook_service.parse_structure(workbook_path, original_filename)
+    except FileUploadError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except WorkbookParseError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 

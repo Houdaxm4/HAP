@@ -2,6 +2,7 @@ import type {
   AnalysisRecord,
   BackendAnalysisResponse,
   NewAnalysisFormData,
+  WorkbookStructure,
 } from "./types";
 
 const API_BASE =
@@ -208,4 +209,8 @@ export async function startAnalysisWorkflow(data: NewAnalysisFormData): Promise<
   const analysisId = await createAnalysis(data);
   await uploadAnalysisFiles(analysisId, data);
   return analysisId;
+}
+
+export async function fetchWorkbookStructure(analysisId: string): Promise<WorkbookStructure> {
+  return request<WorkbookStructure>(`/analysis/${analysisId}/workbook-structure`);
 }

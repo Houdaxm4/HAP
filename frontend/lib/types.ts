@@ -132,6 +132,88 @@ export interface AnalysisRecord {
   chatHistory: ChatMessage[];
 }
 
+export interface CellFormatting {
+  number_format?: string | null;
+  font_name?: string | null;
+  font_size?: number | null;
+  font_bold?: boolean | null;
+  font_italic?: boolean | null;
+  font_color?: string | null;
+  fill_pattern?: string | null;
+  fill_color?: string | null;
+  horizontal_alignment?: string | null;
+  vertical_alignment?: string | null;
+  wrap_text?: boolean | null;
+  locked?: boolean | null;
+}
+
+export interface WorkbookCellInfo {
+  address: string;
+  row?: number | null;
+  column?: number | null;
+  value?: string | number | boolean | null;
+  data_type: "formula" | "value" | "blank";
+  formula?: string | null;
+  is_formula: boolean;
+  is_editable: boolean;
+  formatting?: CellFormatting | null;
+}
+
+export interface WorkbookNamedRange {
+  name: string;
+  destinations: string[];
+  attr_text?: string | null;
+}
+
+export interface WorkbookSheetInfo {
+  name: string;
+  visibility: "visible" | "hidden" | "veryHidden";
+  index: number;
+  dimensions?: string | null;
+  max_row?: number | null;
+  max_column?: number | null;
+  formula_count: number;
+  editable_cell_count: number;
+  value_count: number;
+  blank_count: number;
+  non_empty_cell_count: number;
+  formula_cells: WorkbookCellInfo[];
+  editable_cells: WorkbookCellInfo[];
+  cells: WorkbookCellInfo[];
+}
+
+export interface WorkbookMetadata {
+  title?: string | null;
+  subject?: string | null;
+  creator?: string | null;
+  description?: string | null;
+  keywords?: string | null;
+  category?: string | null;
+  last_modified_by?: string | null;
+  created?: string | null;
+  modified?: string | null;
+  content_status?: string | null;
+  revision?: string | null;
+  excel_base_date?: string | null;
+  sheet_count: number;
+  defined_name_count: number;
+}
+
+export interface WorkbookStructure {
+  workbook_filename: string;
+  metadata: WorkbookMetadata;
+  worksheet_names: string[];
+  visible_sheets: string[];
+  hidden_sheets: string[];
+  named_ranges: WorkbookNamedRange[];
+  worksheets: WorkbookSheetInfo[];
+  formula_count: number;
+  editable_cell_count: number;
+  non_empty_cell_count: number;
+  formula_cells: string[];
+  editable_cells: string[];
+}
+
 /** @deprecated Prefer AnalysisRecord — kept for existing tab imports */
 export type AnalysisDetail = AnalysisRecord;
 
