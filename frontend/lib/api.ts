@@ -1,6 +1,7 @@
 import type {
   AnalysisRecord,
   BackendAnalysisResponse,
+  CustomRunValidationReport,
   NewAnalysisFormData,
   WorkbookStructure,
 } from "./types";
@@ -122,19 +123,20 @@ export function mapBackendAnalysis(data: BackendAnalysisResponse): AnalysisRecor
           {
             id: "infra-workbook",
             label: "Workbook parsed",
-            status: "pass",
+            status: "pass" as const,
             detail: "Prefilled workbook structure was parsed successfully.",
           },
           {
             id: "infra-custom-run",
             label: "custom_run_filter validated",
-            status: "pass",
-            detail: "custom_run_filter mappings were validated against the workbook.",
+            status: "pass" as const,
+            detail:
+              "custom_run_filter validation report produced. Template was not populated.",
           },
           {
             id: "infra-filings",
             label: "Filing collection",
-            status: "pending",
+            status: "pending" as const,
             detail: "SEC filing collection is not implemented yet.",
           },
         ]
@@ -213,4 +215,10 @@ export async function startAnalysisWorkflow(data: NewAnalysisFormData): Promise<
 
 export async function fetchWorkbookStructure(analysisId: string): Promise<WorkbookStructure> {
   return request<WorkbookStructure>(`/analysis/${analysisId}/workbook-structure`);
+}
+
+export async function fetchCustomRunValidation(
+  analysisId: string,
+): Promise<CustomRunValidationReport> {
+  return request<CustomRunValidationReport>(`/analysis/${analysisId}/custom-run-validation`);
 }

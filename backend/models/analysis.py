@@ -85,4 +85,5 @@ class Analysis(BaseModel):
             == PipelineStage.WAITING_FOR_FILING_COLLECTION
             and self.pipeline.outputs.workbook_structure is not None
             and self.pipeline.outputs.custom_run_mapping is not None
+            and self.pipeline.outputs.custom_run_validation_report is not None
         )

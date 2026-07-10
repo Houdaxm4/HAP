@@ -118,11 +118,11 @@ class PipelineOrchestrator:
                 ),
             )
 
-            # Stage 4 — custom_run_filter validated
+            # Stage 4 — custom_run_filter validated (report only; no template fill)
             analysis.pipeline.current_stage = PipelineStage.CUSTOM_RUN_FILTER_VALIDATED
             analysis.pipeline.progress_pct = 70
             self.analysis_service.save(analysis)
-            _, mapping_path, log = self.validate_custom_run_stage.run(
+            _mapping, _report, mapping_path, report_path, log = self.validate_custom_run_stage.run(
                 analysis,
                 custom_run_path,
                 structure,
@@ -132,6 +132,7 @@ class PipelineOrchestrator:
                 PipelineStage.CUSTOM_RUN_FILTER_VALIDATED,
                 log,
                 custom_run_mapping=mapping_path,
+                custom_run_validation_report=report_path,
             )
 
             # Stage 5 — Waiting for filing collection (stop here; no SEC yet)

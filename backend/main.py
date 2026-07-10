@@ -9,10 +9,12 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 
 from models.analysis import CreateAnalysisRequest, CreateAnalysisResponse
+from models.custom_run import CustomRunValidationReport
 from models.pipeline import PIPELINE_STAGE_LABELS, PipelineStage
 from models.workbook_schema import WorkbookStructure, WorkbookSummary
 from pipeline.orchestrator import PipelineError, PipelineOrchestrator
 from services.analysis_service import AnalysisNotFoundError, AnalysisService
+from services.custom_run_service import CustomRunParseError, CustomRunService
 from services.file_service import FileService, FileUploadError
 from services.output_service import OutputService
 from services.workbook_service import WorkbookParseError, WorkbookService
@@ -34,6 +36,7 @@ app.add_middleware(
 analysis_service = AnalysisService()
 file_service = FileService()
 workbook_service = WorkbookService()
+custom_run_service = CustomRunService()
 output_service = OutputService()
 pipeline_orchestrator = PipelineOrchestrator(
     analysis_service=analysis_service,
@@ -190,6 +193,58 @@ def get_workbook_structure(analysis_id: str) -> WorkbookStructure:
     except FileUploadError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except WorkbookParseError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.get(
+    "/analysis/{analysis_id}/custom-run-validation",
+    response_model=CustomRunValidationReport,
+)
+def get_custom_run_validation(analysis_id: str) -> CustomRunValidationReport:
+    """
+    Return the custom_run_filter validation report.
+
+    Prefers the pipeline artifact when available; otherwise validates on demand.
+    Never populates the workbook template.
+    """
+    try:
+        analysis = analysis_service.get(analysis_id)
+    except AnalysisNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    artifact = output_service.artifact_path(analysis_id, "custom_run_validation_report.json")
+    if artifact.exists():
+        return CustomRunValidationReport.model_validate(
+            output_service.read_json(analysis_id, "custom_run_validation_report.json")
+        )
+
+    try:
+        custom_run_path = file_service.get_custom_run_filter_path(analysis)
+        original_filename = analysis.files.custom_run_filter.filename  # type: ignore[union-attr]
+        mapping = custom_run_service.parse(custom_run_path, original_filename)
+
+        structure = None
+        workbook_artifact = output_service.artifact_path(analysis_id, "workbook_structure.json")
+        if workbook_artifact.exists():
+            structure = WorkbookStructure.model_validate(
+                output_service.read_json(analysis_id, "workbook_structure.json")
+            )
+        elif analysis.files.prefilled_workbook is not None:
+            workbook_path = file_service.get_prefilled_workbook_path(analysis)
+            structure = workbook_service.parse_structure(
+                workbook_path,
+                analysis.files.prefilled_workbook.filename,
+            )
+
+        return custom_run_service.validate(
+            mapping,
+            analysis_id=analysis.analysis_id,
+            ticker=analysis.ticker,
+            structure=structure,
+        )
+    except FileUploadError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except CustomRunParseError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 

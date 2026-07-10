@@ -33,6 +33,7 @@ export interface PipelineOutputs {
   sec_filings_manifest?: string | null;
   workbook_structure?: string | null;
   custom_run_mapping?: string | null;
+  custom_run_validation_report?: string | null;
 }
 
 export interface BackendDecisionLogEntry {
@@ -212,6 +213,41 @@ export interface WorkbookStructure {
   non_empty_cell_count: number;
   formula_cells: string[];
   editable_cells: string[];
+}
+
+export type CustomRunCheckType =
+  | "required_columns"
+  | "ticker"
+  | "fiscal_dates"
+  | "quarter_sequence"
+  | "duplicate_periods"
+  | "missing_quarters"
+  | "numeric_consistency"
+  | "workbook_reference";
+
+export interface CustomRunValidationIssue {
+  check_type: CustomRunCheckType;
+  status: "pass" | "warn" | "fail";
+  message: string;
+  row_number?: number | null;
+  concept?: string | null;
+  period?: string | null;
+  cell_ref?: string | null;
+  details?: Record<string, unknown>;
+}
+
+export interface CustomRunValidationReport {
+  analysis_id: string;
+  ticker: string;
+  source_filename: string;
+  entry_count: number;
+  columns_found: string[];
+  checks: CustomRunValidationIssue[];
+  pass_count: number;
+  warn_count: number;
+  fail_count: number;
+  is_valid: boolean;
+  summary: string;
 }
 
 /** @deprecated Prefer AnalysisRecord — kept for existing tab imports */

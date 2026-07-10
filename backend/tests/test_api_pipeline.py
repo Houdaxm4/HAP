@@ -85,6 +85,13 @@ def test_create_upload_runs_infrastructure_pipeline(
     assert "workbook_parsed" in payload["pipeline"]["stages_completed"]
     assert "custom_run_filter_uploaded" in payload["pipeline"]["stages_completed"]
     assert "custom_run_filter_validated" in payload["pipeline"]["stages_completed"]
+    assert payload["pipeline"]["outputs"]["custom_run_validation_report"] is not None
+
+    validation = client.get(f"/analysis/{analysis_id}/custom-run-validation")
+    assert validation.status_code == 200
+    report = validation.json()
+    assert report["is_valid"] is True
+    assert "Template was not populated" in report["summary"]
 
     list_response = client.get("/analysis")
     assert list_response.status_code == 200

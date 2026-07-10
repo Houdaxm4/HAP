@@ -78,6 +78,7 @@ def test_infrastructure_pipeline_stops_at_filing_collection(pipeline_env):
 
     assert result.pipeline.outputs.workbook_structure is not None
     assert result.pipeline.outputs.custom_run_mapping is not None
+    assert result.pipeline.outputs.custom_run_validation_report is not None
     # SEC / fill outputs must not be produced in this milestone.
     assert result.pipeline.outputs.sec_filings_manifest is None
     assert result.pipeline.outputs.completed_workbook is None
@@ -87,6 +88,11 @@ def test_infrastructure_pipeline_stops_at_filing_collection(pipeline_env):
 
     mapping = output_service.read_json("test-analysis", "custom_run_mapping.json")
     assert mapping["entry_count"] == 3
+
+    report = output_service.read_json("test-analysis", "custom_run_validation_report.json")
+    assert report["is_valid"] is True
+    assert report["fail_count"] == 0
+    assert "Template was not populated" in report["summary"]
 
     assert any(entry.action == "waiting_for_filing_collection" for entry in result.decision_log)
 
