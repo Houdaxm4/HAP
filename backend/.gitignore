@@ -2,10 +2,14 @@
 storage/analyses/*.json
 storage/uploads/*/
 storage/outputs/*/
+storage/filings/
+storage/*.db
+storage/*.db-*
 
 !storage/analyses/.gitkeep
 !storage/uploads/.gitkeep
 !storage/outputs/.gitkeep
+!storage/filings/.gitkeep
 
 __pycache__/
 *.py[cod]

@@ -2,12 +2,13 @@
 
 import { useCallback, useEffect, useState } from "react";
 import FileUploadBox from "./FileUploadBox";
+import { ApiError, startAnalysisWorkflow } from "@/lib/api";
 import type { NewAnalysisFormData } from "@/lib/types";
 
 type NewAnalysisModalProps = {
   isOpen: boolean;
   onClose: () => void;
-  onSubmit: (data: NewAnalysisFormData) => void;
+  onSubmit: (analysisId: string) => void | Promise<void>;
 };
 
 const ANALYSIS_TYPES: {
@@ -37,11 +38,13 @@ export default function NewAnalysisModal({
 }: NewAnalysisModalProps) {
   const [form, setForm] = useState<NewAnalysisFormData>(initialForm);
   const [errors, setErrors] = useState<Partial<Record<keyof NewAnalysisFormData, string>>>({});
+  const [submitError, setSubmitError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const resetForm = useCallback(() => {
     setForm(initialForm);
     setErrors({});
+    setSubmitError(null);
     setIsSubmitting(false);
   }, []);
 
@@ -74,6 +77,12 @@ export default function NewAnalysisModal({
     } else if (!/^[A-Za-z]{1,5}$/.test(form.ticker.trim())) {
       next.ticker = "Enter a valid ticker (1–5 letters)";
     }
+    if (!form.prefilledWorkbook) {
+      next.prefilledWorkbook = "Partially completed Excel workbook is required";
+    }
+    if (!form.customRunFilter) {
+      next.customRunFilter = "custom_run_filter is required";
+    }
     setErrors(next);
     return Object.keys(next).length === 0;
   };
@@ -83,15 +92,25 @@ export default function NewAnalysisModal({
     if (!validate()) return;
 
     setIsSubmitting(true);
-    await new Promise((r) => setTimeout(r, 600));
+    setSubmitError(null);
 
-    onSubmit({
-      ...form,
-      ticker: form.ticker.toUpperCase(),
-    });
-
-    resetForm();
-    setIsSubmitting(false);
+    try {
+      const analysisId = await startAnalysisWorkflow({
+        ...form,
+        ticker: form.ticker.toUpperCase(),
+      });
+      await onSubmit(analysisId);
+      resetForm();
+    } catch (err) {
+      const message =
+        err instanceof ApiError
+          ? err.message
+          : err instanceof Error
+            ? err.message
+            : "Failed to start analysis.";
+      setSubmitError(message);
+      setIsSubmitting(false);
+    }
   };
 
   const update = <K extends keyof NewAnalysisFormData>(
@@ -130,7 +149,7 @@ export default function NewAnalysisModal({
               New Analysis
             </h2>
             <p className="text-xs text-hap-muted">
-              Configure and launch an investment analysis run
+              Upload workbook and custom_run_filter to start the infrastructure pipeline
             </p>
           </div>
           <button
@@ -223,24 +242,34 @@ export default function NewAnalysisModal({
                   Workbooks &amp; Filters
                 </span>
                 <div className="grid gap-3 sm:grid-cols-3">
-                  <FileUploadBox
-                    label="Prefilled Workbook"
-                    description=".xlsx, .xls"
-                    file={form.prefilledWorkbook}
-                    onFileChange={(f) => update("prefilledWorkbook", f)}
-                  />
+                  <div>
+                    <FileUploadBox
+                      label="Partially Completed Workbook"
+                      description=".xlsx, .xls (required)"
+                      file={form.prefilledWorkbook}
+                      onFileChange={(f) => update("prefilledWorkbook", f)}
+                    />
+                    {errors.prefilledWorkbook && (
+                      <p className="mt-1 text-xs text-red-400">{errors.prefilledWorkbook}</p>
+                    )}
+                  </div>
                   <FileUploadBox
                     label="Previous Workbook"
-                    description=".xlsx, .xls"
+                    description=".xlsx, .xls (optional)"
                     file={form.previousWorkbook}
                     onFileChange={(f) => update("previousWorkbook", f)}
                   />
-                  <FileUploadBox
-                    label="custom_run_filter"
-                    description=".csv, .xlsx"
-                    file={form.customRunFilter}
-                    onFileChange={(f) => update("customRunFilter", f)}
-                  />
+                  <div>
+                    <FileUploadBox
+                      label="custom_run_filter"
+                      description=".csv, .xlsx (required)"
+                      file={form.customRunFilter}
+                      onFileChange={(f) => update("customRunFilter", f)}
+                    />
+                    {errors.customRunFilter && (
+                      <p className="mt-1 text-xs text-red-400">{errors.customRunFilter}</p>
+                    )}
+                  </div>
                 </div>
               </div>
 
@@ -257,6 +286,12 @@ export default function NewAnalysisModal({
                   className="w-full resize-none rounded-lg border border-hap-border bg-background px-3 py-2.5 text-sm transition-colors focus:border-hap-orange/50 focus:outline-none focus:ring-1 focus:ring-hap-orange/30"
                 />
               </div>
+
+              {submitError && (
+                <p className="rounded border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-300">
+                  {submitError}
+                </p>
+              )}
             </div>
           </div>
 
