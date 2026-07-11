@@ -57,6 +57,7 @@ class Analysis(BaseModel):
     decision_log: list[DecisionLogEntry] = Field(default_factory=list)
     cik: str | None = None
     filing_collection_id: str | None = None
+    financial_statements_id: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         """Serialize the analysis to a plain dictionary."""

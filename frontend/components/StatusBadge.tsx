@@ -6,6 +6,7 @@ const statusStyles: Record<DisplayStatus, string> = {
   Processing: "bg-hap-info/15 text-hap-info border-hap-info/30",
   "Waiting for filing collection": "bg-hap-warning/15 text-hap-warning border-hap-warning/30",
   "Filings collected": "bg-hap-success/15 text-hap-success border-hap-success/30",
+  "Statements extracted": "bg-hap-success/15 text-hap-success border-hap-success/30",
   Complete: "bg-hap-success/15 text-hap-success border-hap-success/30",
   Failed: "bg-red-500/15 text-red-400 border-red-500/30",
 };

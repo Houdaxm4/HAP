@@ -1,4 +1,4 @@
-"""HAP backend v0.5 — FastAPI application entry point."""
+"""HAP backend v0.6 — FastAPI application entry point."""
 
 from __future__ import annotations
 
@@ -13,6 +13,7 @@ from models.common import utc_now_iso
 from models.custom_run import CustomRunValidationReport
 from models.filings import CollectFilingsRequest, FilingCollectionResult
 from models.pipeline import PIPELINE_STAGE_LABELS, DecisionLogEntry, PipelineStage
+from models.statements import ExtractStatementsRequest, FinancialStatementsResult
 from models.workbook_schema import WorkbookStructure, WorkbookSummary
 from pipeline.orchestrator import PipelineError, PipelineOrchestrator
 from services.analysis_service import AnalysisNotFoundError, AnalysisService
@@ -20,12 +21,13 @@ from services.custom_run_service import CustomRunParseError, CustomRunService
 from services.file_service import FileService, FileUploadError
 from services.filing_collector import FilingCollector, FilingCollectorError
 from services.output_service import OutputService
+from services.statement_extractor import FinancialStatementExtractor, StatementExtractorError
 from services.workbook_service import WorkbookParseError, WorkbookService
 
 app = FastAPI(
     title="HAP Backend",
     description="Houda's Analyst Platform API",
-    version="0.5.0",
+    version="0.6.0",
 )
 
 app.add_middleware(
@@ -42,6 +44,7 @@ workbook_service = WorkbookService()
 custom_run_service = CustomRunService()
 output_service = OutputService()
 filing_collector = FilingCollector()
+statement_extractor = FinancialStatementExtractor()
 pipeline_orchestrator = PipelineOrchestrator(
     analysis_service=analysis_service,
     file_service=file_service,
@@ -52,7 +55,7 @@ pipeline_orchestrator = PipelineOrchestrator(
 @app.get("/health")
 def health() -> dict[str, str]:
     """Liveness check for the API service."""
-    return {"status": "ok", "service": "HAP backend", "version": "0.5.0"}
+    return {"status": "ok", "service": "HAP backend", "version": "0.6.0"}
 
 
 @app.get("/analysis")
@@ -388,10 +391,100 @@ def collect_filings_for_analysis(
     return result
 
 
+@app.post("/statements/extract", response_model=FinancialStatementsResult)
+def extract_financial_statements(request: ExtractStatementsRequest) -> FinancialStatementsResult:
+    """
+    Extract Balance Sheet, Income Statement, and Cash Flow for a ticker.
+
+    Uses SEC company facts (XBRL). Does not compute ratios or produce analysis.
+    """
+    try:
+        return statement_extractor.extract(request)
+    except StatementExtractorError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.post(
+    "/analysis/{analysis_id}/extract-statements",
+    response_model=FinancialStatementsResult,
+)
+def extract_statements_for_analysis(
+    analysis_id: str,
+    max_annual_periods: int = 10,
+    max_quarterly_periods: int = 8,
+    include_quarters: bool = True,
+) -> FinancialStatementsResult:
+    """
+    Extract the three primary financial statements for an analysis ticker.
+
+    Balance Sheet, Income Statement, and Cash Flow only. No ratios. No analysis.
+    """
+    try:
+        analysis = analysis_service.get(analysis_id)
+    except AnalysisNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    try:
+        result = statement_extractor.extract(
+            ExtractStatementsRequest(
+                ticker=analysis.ticker,
+                max_annual_periods=max_annual_periods,
+                max_quarterly_periods=max_quarterly_periods,
+                include_quarters=include_quarters,
+            )
+        )
+    except StatementExtractorError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    analysis.cik = result.cik
+    analysis.financial_statements_id = result.extraction_id
+    analysis.status = "statements_extracted"
+    analysis.updated_at = utc_now_iso()
+    analysis.pipeline.outputs.financial_statements = output_service.write_json(
+        analysis.analysis_id,
+        "financial_statements.json",
+        result,
+    )
+    analysis.decision_log.append(
+        DecisionLogEntry(
+            agent="Financial Statement Extractor",
+            action="extract_statements",
+            detail=(
+                f"Extracted Balance Sheet ({result.balance_sheet.populated_value_count} values), "
+                f"Income Statement ({result.income_statement.populated_value_count} values), "
+                f"and Cash Flow ({result.cash_flow.populated_value_count} values) for {result.ticker}. "
+                "No ratios or analysis performed."
+            ),
+            confidence=1.0,
+            citations=[analysis.pipeline.outputs.financial_statements],
+        )
+    )
+    analysis_service.save(analysis)
+    return result
+
+
+@app.get("/analysis/{analysis_id}/statements", response_model=FinancialStatementsResult)
+def get_analysis_statements(analysis_id: str) -> FinancialStatementsResult:
+    """Return previously extracted financial statements for an analysis."""
+    try:
+        analysis_service.get(analysis_id)
+    except AnalysisNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    path = output_service.artifact_path(analysis_id, "financial_statements.json")
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="Financial statements not extracted yet.")
+    return FinancialStatementsResult.model_validate(
+        output_service.read_json(analysis_id, "financial_statements.json")
+    )
+
+
 def _display_status(analysis) -> str:
     """UI-facing status for the infrastructure pipeline."""
     if analysis.pipeline.state == "failed" or analysis.status == "failed":
         return "Failed"
+    if analysis.financial_statements_id or analysis.status == "statements_extracted":
+        return "Statements extracted"
     if analysis.filing_collection_id or analysis.status == "filings_collected":
         return "Filings collected"
     if analysis.pipeline.state == "waiting" or analysis.is_pipeline_complete:
