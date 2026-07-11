@@ -5,6 +5,7 @@ export type DisplayStatus =
   | "Uploaded"
   | "Processing"
   | "Waiting for filing collection"
+  | "Filings collected"
   | "Failed"
   | "Complete";
 
@@ -34,6 +35,7 @@ export interface PipelineOutputs {
   workbook_structure?: string | null;
   custom_run_mapping?: string | null;
   custom_run_validation_report?: string | null;
+  filing_collection?: string | null;
 }
 
 export interface BackendDecisionLogEntry {

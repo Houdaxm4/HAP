@@ -1,4 +1,4 @@
-"""HAP backend v0.4 — FastAPI application entry point."""
+"""HAP backend v0.5 — FastAPI application entry point."""
 
 from __future__ import annotations
 
@@ -9,20 +9,23 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 
 from models.analysis import CreateAnalysisRequest, CreateAnalysisResponse
+from models.common import utc_now_iso
 from models.custom_run import CustomRunValidationReport
-from models.pipeline import PIPELINE_STAGE_LABELS, PipelineStage
+from models.filings import CollectFilingsRequest, FilingCollectionResult
+from models.pipeline import PIPELINE_STAGE_LABELS, DecisionLogEntry, PipelineStage
 from models.workbook_schema import WorkbookStructure, WorkbookSummary
 from pipeline.orchestrator import PipelineError, PipelineOrchestrator
 from services.analysis_service import AnalysisNotFoundError, AnalysisService
 from services.custom_run_service import CustomRunParseError, CustomRunService
 from services.file_service import FileService, FileUploadError
+from services.filing_collector import FilingCollector, FilingCollectorError
 from services.output_service import OutputService
 from services.workbook_service import WorkbookParseError, WorkbookService
 
 app = FastAPI(
     title="HAP Backend",
     description="Houda's Analyst Platform API",
-    version="0.4.0",
+    version="0.5.0",
 )
 
 app.add_middleware(
@@ -38,6 +41,7 @@ file_service = FileService()
 workbook_service = WorkbookService()
 custom_run_service = CustomRunService()
 output_service = OutputService()
+filing_collector = FilingCollector()
 pipeline_orchestrator = PipelineOrchestrator(
     analysis_service=analysis_service,
     file_service=file_service,
@@ -48,7 +52,7 @@ pipeline_orchestrator = PipelineOrchestrator(
 @app.get("/health")
 def health() -> dict[str, str]:
     """Liveness check for the API service."""
-    return {"status": "ok", "service": "HAP backend", "version": "0.4.0"}
+    return {"status": "ok", "service": "HAP backend", "version": "0.5.0"}
 
 
 @app.get("/analysis")
@@ -296,10 +300,100 @@ def get_cell_provenance(analysis_id: str, cell_ref: str) -> dict:
     raise HTTPException(status_code=404, detail=f"No provenance found for '{normalized_ref}'.")
 
 
+@app.post("/filings/collect", response_model=FilingCollectionResult)
+def collect_filings(request: CollectFilingsRequest) -> FilingCollectionResult:
+    """
+    Collect latest 10-K, latest 10-Q, and historical 10-Ks for a ticker.
+
+    Uses the SEC EDGAR API, resolves CIK automatically, supports amendments,
+    downloads HTML/XBRL into the local cache, and stores metadata in SQLite.
+    Does not extract financial values.
+    """
+    try:
+        return filing_collector.collect(request)
+    except FilingCollectorError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.get("/filings/collection/{collection_id}", response_model=FilingCollectionResult)
+def get_filing_collection(collection_id: str) -> FilingCollectionResult:
+    """Return one filing collection by id."""
+    result = filing_collector.get_collection(collection_id)
+    if result is None:
+        raise HTTPException(status_code=404, detail=f"Filing collection '{collection_id}' not found.")
+    return result
+
+
+@app.get("/filings/{ticker}", response_model=FilingCollectionResult)
+def get_filings_for_ticker(ticker: str) -> FilingCollectionResult:
+    """Return the latest stored filing collection for a ticker."""
+    result = filing_collector.get_filings_for_ticker(ticker)
+    if result is None:
+        raise HTTPException(status_code=404, detail=f"No filings collected for '{ticker}'.")
+    return result
+
+
+@app.post("/analysis/{analysis_id}/collect-filings", response_model=FilingCollectionResult)
+def collect_filings_for_analysis(
+    analysis_id: str,
+    historical_years: int = 10,
+    download_documents: bool = True,
+) -> FilingCollectionResult:
+    """
+    Run the Filing Collector for an analysis ticker and attach the result.
+
+    Intended for analyses waiting on filing collection. No extraction is performed.
+    """
+    try:
+        analysis = analysis_service.get(analysis_id)
+    except AnalysisNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    try:
+        result = filing_collector.collect(
+            CollectFilingsRequest(
+                ticker=analysis.ticker,
+                historical_years=historical_years,
+                download_documents=download_documents,
+            )
+        )
+    except FilingCollectorError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    analysis.cik = result.cik
+    analysis.filing_collection_id = result.collection_id
+    analysis.status = "filings_collected"
+    analysis.updated_at = utc_now_iso()
+    analysis.pipeline.outputs.filing_collection = output_service.write_json(
+        analysis.analysis_id,
+        "filing_collection.json",
+        result,
+    )
+    analysis.decision_log.append(
+        DecisionLogEntry(
+            agent="Document Collection Agent",
+            action="collect_filings",
+            detail=(
+                f"Collected filings for {result.ticker} (CIK {result.cik}): "
+                f"latest 10-K={'yes' if result.latest_10k else 'no'}, "
+                f"latest 10-Q={'yes' if result.latest_10q else 'no'}, "
+                f"historical 10-Ks={len(result.historical_10ks)}. "
+                "No extraction performed."
+            ),
+            confidence=1.0,
+            citations=[analysis.pipeline.outputs.filing_collection],
+        )
+    )
+    analysis_service.save(analysis)
+    return result
+
+
 def _display_status(analysis) -> str:
     """UI-facing status for the infrastructure pipeline."""
     if analysis.pipeline.state == "failed" or analysis.status == "failed":
         return "Failed"
+    if analysis.filing_collection_id or analysis.status == "filings_collected":
+        return "Filings collected"
     if analysis.pipeline.state == "waiting" or analysis.is_pipeline_complete:
         return "Waiting for filing collection"
     if analysis.pipeline.state == "processing" or analysis.status == "processing":

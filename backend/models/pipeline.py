@@ -61,6 +61,7 @@ class PipelineOutputs(BaseModel):
     workbook_structure: str | None = None
     custom_run_mapping: str | None = None
     custom_run_validation_report: str | None = None
+    filing_collection: str | None = None
 
 
 class PipelineStatus(BaseModel):
