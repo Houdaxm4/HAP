@@ -63,12 +63,19 @@ class Analysis(BaseModel):
         """Serialize the analysis to a plain dictionary."""
         data = self.model_dump()
         data["pipeline"] = self.pipeline.to_dict()
+        data["is_pipeline_complete"] = self.is_pipeline_complete
+        data["is_trusted_model_complete"] = self.is_trusted_model_complete
+        data["artifacts_available"] = self.artifacts_available
         return data
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> Analysis:
         """Deserialize an analysis from a plain dictionary."""
         normalized = dict(data)
+        # Drop computed fields if present in stored JSON.
+        normalized.pop("is_pipeline_complete", None)
+        normalized.pop("is_trusted_model_complete", None)
+        normalized.pop("artifacts_available", None)
         if "pipeline" in normalized:
             normalized["pipeline"] = PipelineStatus.from_dict(normalized["pipeline"])
         return cls.model_validate(normalized)
@@ -77,15 +84,53 @@ class Analysis(BaseModel):
     def is_pipeline_complete(self) -> bool:
         """
         True when the infrastructure pipeline has finished and is waiting
-        for filing collection (SEC download is not implemented yet).
+        for filing collection / trusted-model continuation.
         """
         from models.pipeline import PipelineStage
 
         return (
-            self.pipeline.state == "waiting"
-            and self.pipeline.current_stage
-            == PipelineStage.WAITING_FOR_FILING_COLLECTION
+            self.pipeline.state in {"waiting", "complete"}
+            and PipelineStage.WAITING_FOR_FILING_COLLECTION in self.pipeline.stages_completed
             and self.pipeline.outputs.workbook_structure is not None
             and self.pipeline.outputs.custom_run_mapping is not None
             and self.pipeline.outputs.custom_run_validation_report is not None
         )
+
+    @property
+    def is_trusted_model_complete(self) -> bool:
+        """
+        True when the trusted financial model milestone is done:
+
+        - completed workbook artifact exists
+        - provenance report exists
+        - validation report exists
+        - no critical validation errors
+        """
+        from models.pipeline import PipelineStage
+
+        outputs = self.pipeline.outputs
+        return (
+            self.pipeline.state == "complete"
+            and self.pipeline.current_stage == PipelineStage.COMPLETE
+            and outputs.completed_workbook is not None
+            and outputs.provenance_report is not None
+            and outputs.validation_report is not None
+            and self.pipeline.validation_status in {"passed", "passed_with_warnings"}
+            and self.pipeline.critical_issue_count == 0
+        )
+
+    @property
+    def artifacts_available(self) -> dict[str, bool]:
+        """Artifact availability flags for API / frontend consumers."""
+        outputs = self.pipeline.outputs
+        return {
+            "workbook_structure": outputs.workbook_structure is not None,
+            "custom_run_mapping": outputs.custom_run_mapping is not None,
+            "custom_run_validation_report": outputs.custom_run_validation_report is not None,
+            "sec_filings_manifest": outputs.sec_filings_manifest is not None,
+            "completed_workbook": outputs.completed_workbook is not None,
+            "provenance_report": outputs.provenance_report is not None,
+            "validation_report": outputs.validation_report is not None,
+            "discrepancy_report": outputs.discrepancy_report is not None,
+            "financial_statements": outputs.financial_statements is not None,
+        }

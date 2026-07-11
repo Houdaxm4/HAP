@@ -338,6 +338,53 @@ class WorkbookService:
         finally:
             workbook.close()
 
+    def get_cell_formula(self, workbook_path: Path, worksheet: str, cell: str) -> str | None:
+        """Return the formula string for a cell, or None if it is not a formula."""
+        workbook = load_workbook(workbook_path, read_only=True, data_only=False)
+        try:
+            sheet = self._get_sheet(workbook, worksheet)
+            value = sheet[cell.upper()].value
+            if isinstance(value, str) and value.startswith("="):
+                return value
+            cell_obj = sheet[cell.upper()]
+            if getattr(cell_obj, "data_type", None) == "f":
+                return str(value) if value is not None else None
+            return None
+        finally:
+            workbook.close()
+
+    def get_structure_cell_value(
+        self, structure: WorkbookStructure, worksheet: str, cell: str
+    ) -> Any:
+        """Return the original parsed value for a cell from workbook structure."""
+        target = cell.upper()
+        for sheet in structure.worksheets:
+            if sheet.name != worksheet:
+                continue
+            for cell_info in sheet.cells:
+                if cell_info.address == target:
+                    return cell_info.value
+            for cell_info in sheet.editable_cells:
+                if cell_info.address == target:
+                    return cell_info.value
+            for cell_info in sheet.formula_cells:
+                if cell_info.address == target:
+                    return cell_info.formula or cell_info.value
+        return None
+
+    def cell_is_populated(
+        self, structure: WorkbookStructure, worksheet: str, cell: str
+    ) -> bool:
+        """True when the cell already holds a non-blank non-formula value."""
+        if self.cell_contains_formula(structure, worksheet, cell):
+            return False
+        value = self.get_structure_cell_value(structure, worksheet, cell)
+        if value is None:
+            return False
+        if isinstance(value, str) and value.strip() == "":
+            return False
+        return True
+
     def cell_contains_formula(self, structure: WorkbookStructure, worksheet: str, cell: str) -> bool:
         """Return True if the target cell is a formula in the parsed structure."""
         target = cell.upper()

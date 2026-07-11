@@ -160,6 +160,73 @@ def run_analysis_pipeline(analysis_id: str, background_tasks: BackgroundTasks) -
     }
 
 
+@app.post("/analysis/{analysis_id}/continue-trusted-model")
+def continue_trusted_model(analysis_id: str, background_tasks: BackgroundTasks) -> dict:
+    """
+    Continue into the trusted financial model milestone:
+
+    fetch filings → fill workbook with provenance → validate → write reports.
+    """
+    try:
+        analysis = analysis_service.get(analysis_id)
+    except AnalysisNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    try:
+        pipeline_orchestrator.assert_ready_for_trusted_model(analysis)
+    except PipelineError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    background_tasks.add_task(pipeline_orchestrator.continue_trusted_model, analysis_id)
+    return {
+        "analysis_id": analysis_id,
+        "status": "processing",
+        "message": (
+            "Trusted-model pipeline started. Poll GET /analysis/{id} for progress, "
+            "validation status, and artifact availability."
+        ),
+        "stages": [
+            PIPELINE_STAGE_LABELS[stage]
+            for stage in (
+                PipelineStage.FILINGS_FETCHED,
+                PipelineStage.PROVENANCE_RECORDED,
+                PipelineStage.WORKBOOK_VALIDATED,
+                PipelineStage.VALIDATION_REPORT_GENERATED,
+                PipelineStage.PROVENANCE_REPORT_GENERATED,
+                PipelineStage.COMPLETE,
+            )
+        ],
+    }
+
+
+@app.get("/analysis/{analysis_id}/validation-report")
+def get_validation_report(analysis_id: str) -> dict:
+    """Return the trusted-model validation report artifact."""
+    try:
+        analysis_service.get(analysis_id)
+    except AnalysisNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    path = output_service.artifact_path(analysis_id, "validation_report.json")
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="Validation report not available yet.")
+    return output_service.read_json(analysis_id, "validation_report.json")
+
+
+@app.get("/analysis/{analysis_id}/provenance-report")
+def get_provenance_report(analysis_id: str) -> dict:
+    """Return the full provenance report artifact."""
+    try:
+        analysis_service.get(analysis_id)
+    except AnalysisNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    path = output_service.artifact_path(analysis_id, "provenance_report.json")
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="Provenance report not available yet.")
+    return output_service.read_json(analysis_id, "provenance_report.json")
+
+
 @app.post("/analysis/{analysis_id}/read-workbook", response_model=WorkbookSummary)
 def read_workbook(analysis_id: str) -> WorkbookSummary:
     """Inspect the prefilled workbook without modifying it (summary view)."""
@@ -480,14 +547,26 @@ def get_analysis_statements(analysis_id: str) -> FinancialStatementsResult:
 
 
 def _display_status(analysis) -> str:
-    """UI-facing status for the infrastructure pipeline."""
+    """UI-facing status for infrastructure + trusted-model pipeline."""
+    if analysis.status == "validation_failed" or (
+        analysis.pipeline.state == "failed"
+        and analysis.pipeline.validation_status == "failed"
+    ):
+        return "Validation failed"
     if analysis.pipeline.state == "failed" or analysis.status == "failed":
         return "Failed"
+    if analysis.is_trusted_model_complete or analysis.pipeline.state == "complete":
+        if analysis.pipeline.validation_status == "passed_with_warnings":
+            return "Complete with warnings"
+        return "Complete"
     if analysis.financial_statements_id or analysis.status == "statements_extracted":
         return "Statements extracted"
     if analysis.filing_collection_id or analysis.status == "filings_collected":
         return "Filings collected"
-    if analysis.pipeline.state == "waiting" or analysis.is_pipeline_complete:
+    if (
+        analysis.pipeline.state == "waiting"
+        or analysis.status == "waiting_for_filing_collection"
+    ):
         return "Waiting for filing collection"
     if analysis.pipeline.state == "processing" or analysis.status == "processing":
         return "Processing"

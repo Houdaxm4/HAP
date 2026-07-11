@@ -8,6 +8,8 @@ const statusStyles: Record<DisplayStatus, string> = {
   "Filings collected": "bg-hap-success/15 text-hap-success border-hap-success/30",
   "Statements extracted": "bg-hap-success/15 text-hap-success border-hap-success/30",
   Complete: "bg-hap-success/15 text-hap-success border-hap-success/30",
+  "Complete with warnings": "bg-hap-warning/15 text-hap-warning border-hap-warning/30",
+  "Validation failed": "bg-red-500/15 text-red-400 border-red-500/30",
   Failed: "bg-red-500/15 text-red-400 border-red-500/30",
 };
 

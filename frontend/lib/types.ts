@@ -8,7 +8,9 @@ export type DisplayStatus =
   | "Filings collected"
   | "Statements extracted"
   | "Failed"
-  | "Complete";
+  | "Validation failed"
+  | "Complete"
+  | "Complete with warnings";
 
 export interface NewAnalysisFormData {
   companyName: string;
@@ -57,6 +59,10 @@ export interface BackendPipelineStatus {
   started_at: string | null;
   completed_at: string | null;
   outputs: PipelineOutputs;
+  validation_status?: "passed" | "passed_with_warnings" | "failed" | null;
+  critical_issue_count?: number;
+  warning_issue_count?: number;
+  informational_issue_count?: number;
 }
 
 export interface UploadedFileInfo {

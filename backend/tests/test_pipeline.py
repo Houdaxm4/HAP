@@ -63,7 +63,7 @@ def test_infrastructure_pipeline_stops_at_filing_collection(pipeline_env):
 
     assert result.pipeline.state == "waiting"
     assert result.pipeline.current_stage == PipelineStage.WAITING_FOR_FILING_COLLECTION
-    assert result.pipeline.progress_pct == 100
+    assert result.pipeline.progress_pct == 50
     assert result.is_pipeline_complete
     assert result.status == "waiting_for_filing_collection"
 
