@@ -7,8 +7,16 @@ from ingestion.company_financial_model_builder import CompanyFinancialModelBuild
 from ingestion.custom_run_parser import CustomRunParser
 
 
-def test_builder_and_analysis_engine(sample_custom_run_workbook, mock_company_facts, mock_filings_manifest):
-    custom_run = CustomRunParser().parse(sample_custom_run_workbook, "custom_run_filter.xlsx")
+def test_builder_and_analysis_engine(
+    sample_custom_run_workbook,
+    test_custom_run_profile,
+    mock_company_facts,
+    mock_filings_manifest,
+):
+    custom_run = CustomRunParser(profile=test_custom_run_profile).parse(
+        sample_custom_run_workbook,
+        "custom_run_filter.xlsx",
+    )
     model = CompanyFinancialModelBuilder().build(
         analysis_id="test",
         ticker="AAPL",

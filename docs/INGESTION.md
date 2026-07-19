@@ -1,6 +1,6 @@
 # HAP v1 Ingestion Layer
 
-This document describes the HAP v1 ingestion architecture restored in Sprint 5.
+This document describes the HAP v1 ingestion architecture.
 
 ## Product inputs (external interface)
 
@@ -13,17 +13,14 @@ Users do **not** provide worksheet/cell mapping CSV files. Mapping tables were a
 
 ## Bloomberg Custom_Run_Filter workbook structure
 
-All companies (AAPL, MSFT, AMZN, TJX, …) use the same standardized workbook layout:
+The parser does **not** assume worksheet names or a standardized layout.
 
-| Worksheet | Layout | Content |
-|-----------|--------|---------|
-| Metadata | Key-value (Field \| Value) | Ticker, Company Name, Currency, Fiscal Year End |
-| Market Data | Key-value | Share Price, Market Cap, Shares Outstanding |
-| Historical Metrics | Time series (Metric \| FY20xx …) | Historical financial and operating metrics |
-| Proprietary Metrics | Time series | Bloomberg proprietary analytics |
-| Valuation Metrics | Time series | P/E, EV/EBITDA, etc. |
-| Quality Metrics | Metric \| Score | Business quality scores |
-| Assumptions | Key-value | Terminal growth, WACC, etc. |
+The production workbook is the contract. The parser adapts to it using an evidence-based profile reverse-engineered from the real AAPL workbook.
+
+See:
+
+- `docs/CUSTOM_RUN_REVERSE_ENGINEERING.md` — reverse-engineering status and unblock steps
+- `backend/fixtures/production/README.md` — where to commit production workbooks
 
 ## Ingestion flow
 
@@ -61,20 +58,28 @@ AnalysisEngine.run()
 2. Custom_Run provides proprietary analytics and historical metrics — never recompute proprietary metrics.
 3. Never overwrite formulas in the prefilled workbook.
 4. Every populated value must have provenance.
+5. Never invent workbook layout — generalize only from evidence across company workbooks.
 
 ## Code layout
 
 ```
 backend/ingestion/
-  custom_run_parser.py          # Bloomberg workbook parser
+  workbook_introspector.py      # Reverse-engineer actual worksheet layout
+  production_workbook_profile.py
+  custom_run_parser.py          # Profile-driven Bloomberg workbook parser
   custom_run_validator.py       # Structure + content validation
-  custom_run_schema.py          # Worksheet names and required fields
+  custom_run_schema.py          # Semantic sections (not worksheet names)
   company_financial_model_builder.py
   analysis_engine.py            # Entry point after ingestion
   prefilled_workbook_mapper.py  # Internal fill plan (implementation detail)
   models/
     custom_run_data.py
     company_financial_model.py
+backend/scripts/
+  inspect_custom_run_workbook.py
+backend/fixtures/production/
+  custom_run_filter_aapl.xlsx           # REQUIRED production workbook
+  custom_run_filter_aapl.profile.json   # Evidence-based parser profile
 ```
 
 ## Pipeline stages

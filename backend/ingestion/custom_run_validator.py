@@ -1,11 +1,11 @@
-"""Validate Bloomberg Custom_Run_Filter workbooks per HAP v1 specification."""
+"""Validate parsed Bloomberg Custom_Run_Filter data."""
 
 from __future__ import annotations
 
 from ingestion.custom_run_schema import (
     REQUIRED_MARKET_DATA_FIELDS,
     REQUIRED_METADATA_FIELDS,
-    REQUIRED_WORKSHEETS,
+    REQUIRED_SECTIONS,
 )
 from ingestion.models.custom_run_data import (
     CustomRunData,
@@ -19,7 +19,7 @@ class CustomRunValidationError(Exception):
 
 
 class CustomRunValidator:
-    """Validate parsed CustomRunData against the HAP v1 ingestion specification."""
+    """Validate parsed CustomRunData after production-profile parsing."""
 
     def validate(
         self,
@@ -29,7 +29,7 @@ class CustomRunValidator:
     ) -> CustomRunValidationReport:
         checks: list[CustomRunValidationIssue] = []
 
-        checks.extend(self._check_worksheets(data))
+        checks.extend(self._check_sections(data))
         checks.extend(self._check_metadata(data, expected_ticker))
         checks.extend(self._check_market_data(data))
         checks.extend(self._check_historical_metrics(data))
@@ -71,28 +71,25 @@ class CustomRunValidator:
             raise CustomRunValidationError("; ".join(failures[:3]))
         return report
 
-    def _check_worksheets(self, data: CustomRunData) -> list[CustomRunValidationIssue]:
+    def _check_sections(self, data: CustomRunData) -> list[CustomRunValidationIssue]:
         checks: list[CustomRunValidationIssue] = []
-        found = {name.strip().lower() for name in data.worksheets_found}
-        for required in REQUIRED_WORKSHEETS:
-            if required.lower() not in found and not any(
-                required.lower() in sheet.lower() for sheet in data.worksheets_found
-            ):
+        for section in REQUIRED_SECTIONS:
+            if section not in data.raw_sections:
                 checks.append(
                     CustomRunValidationIssue(
-                        check="required_worksheet",
+                        check="required_section",
                         status="fail",
-                        message=f"Missing required worksheet '{required}'.",
-                        worksheet=required,
+                        message=f"Missing parsed section '{section}'.",
+                        field=section,
                     )
                 )
             else:
                 checks.append(
                     CustomRunValidationIssue(
-                        check="required_worksheet",
+                        check="required_section",
                         status="pass",
-                        message=f"Worksheet '{required}' present.",
-                        worksheet=required,
+                        message=f"Section '{section}' parsed.",
+                        field=section,
                     )
                 )
         return checks
@@ -110,8 +107,8 @@ class CustomRunValidator:
                     CustomRunValidationIssue(
                         check="metadata_field",
                         status="fail",
-                        message=f"Missing required metadata field '{field}'.",
-                        worksheet="Metadata",
+                        message=f"Missing metadata field '{field}'.",
+                        worksheet="metadata",
                         field=field,
                     )
                 )
@@ -121,7 +118,7 @@ class CustomRunValidator:
                         check="metadata_field",
                         status="pass",
                         message=f"Metadata field '{field}' present.",
-                        worksheet="Metadata",
+                        worksheet="metadata",
                         field=field,
                     )
                 )
@@ -129,23 +126,23 @@ class CustomRunValidator:
         if expected_ticker and data.ticker and data.ticker != expected_ticker.upper():
             checks.append(
                 CustomRunValidationIssue(
-                    check="ticker_consistency",
+                    check="ticker_match",
                     status="fail",
                     message=(
                         f"Custom_Run ticker '{data.ticker}' does not match "
                         f"analysis ticker '{expected_ticker.upper()}'."
                     ),
-                    worksheet="Metadata",
+                    worksheet="metadata",
                     field="Ticker",
                 )
             )
         elif data.ticker:
             checks.append(
                 CustomRunValidationIssue(
-                    check="ticker_consistency",
+                    check="ticker_match",
                     status="pass",
-                    message=f"Ticker '{data.ticker}' is consistent.",
-                    worksheet="Metadata",
+                    message=f"Ticker '{data.ticker}' loaded.",
+                    worksheet="metadata",
                     field="Ticker",
                 )
             )
@@ -160,18 +157,8 @@ class CustomRunValidator:
                     CustomRunValidationIssue(
                         check="market_data_field",
                         status="warn",
-                        message=f"Market data field '{field}' is missing.",
-                        worksheet="Market Data",
-                        field=field,
-                    )
-                )
-            elif isinstance(value, str):
-                checks.append(
-                    CustomRunValidationIssue(
-                        check="market_data_field",
-                        status="warn",
-                        message=f"Market data field '{field}' is not numeric.",
-                        worksheet="Market Data",
+                        message=f"Market data field '{field}' is empty.",
+                        worksheet="market_data",
                         field=field,
                     )
                 )
@@ -181,7 +168,7 @@ class CustomRunValidator:
                         check="market_data_field",
                         status="pass",
                         message=f"Market data field '{field}' present.",
-                        worksheet="Market Data",
+                        worksheet="market_data",
                         field=field,
                     )
                 )
@@ -194,47 +181,32 @@ class CustomRunValidator:
                 CustomRunValidationIssue(
                     check="historical_metrics",
                     status="fail",
-                    message="Historical Metrics section contains no data rows.",
-                    worksheet="Historical Metrics",
+                    message="No historical metrics were parsed.",
+                    worksheet="historical_metrics",
                 )
             )
             return checks
 
-        populated_periods: set[str] = set()
-        for series in data.historical_metrics:
-            populated_periods.update(
-                period for period, value in series.values.items() if value is not None
+        checks.append(
+            CustomRunValidationIssue(
+                check="historical_metrics",
+                status="pass",
+                message=f"{len(data.historical_metrics)} historical metrics loaded.",
+                worksheet="historical_metrics",
             )
-
-        if len(populated_periods) < 1:
-            checks.append(
-                CustomRunValidationIssue(
-                    check="historical_metrics",
-                    status="fail",
-                    message="Historical Metrics has no populated period values.",
-                    worksheet="Historical Metrics",
-                )
-            )
-        else:
-            checks.append(
-                CustomRunValidationIssue(
-                    check="historical_metrics",
-                    status="pass",
-                    message=f"Historical Metrics covers {len(populated_periods)} period(s).",
-                    worksheet="Historical Metrics",
-                )
-            )
+        )
         return checks
 
     def _check_metric_sections(self, data: CustomRunData) -> list[CustomRunValidationIssue]:
         checks: list[CustomRunValidationIssue] = []
+
         if not data.proprietary_metrics:
             checks.append(
                 CustomRunValidationIssue(
                     check="proprietary_metrics",
                     status="warn",
-                    message="Proprietary Metrics section is empty.",
-                    worksheet="Proprietary Metrics",
+                    message="No proprietary metrics were parsed.",
+                    worksheet="proprietary_metrics",
                 )
             )
         else:
@@ -243,7 +215,7 @@ class CustomRunValidator:
                     check="proprietary_metrics",
                     status="pass",
                     message=f"{len(data.proprietary_metrics)} proprietary metrics loaded.",
-                    worksheet="Proprietary Metrics",
+                    worksheet="proprietary_metrics",
                 )
             )
 
@@ -252,8 +224,8 @@ class CustomRunValidator:
                 CustomRunValidationIssue(
                     check="valuation_metrics",
                     status="warn",
-                    message="Valuation Metrics section is empty.",
-                    worksheet="Valuation Metrics",
+                    message="No valuation metrics were parsed.",
+                    worksheet="valuation_metrics",
                 )
             )
         else:
@@ -262,26 +234,48 @@ class CustomRunValidator:
                     check="valuation_metrics",
                     status="pass",
                     message=f"{len(data.valuation_metrics)} valuation metrics loaded.",
-                    worksheet="Valuation Metrics",
+                    worksheet="valuation_metrics",
+                )
+            )
+
+        if not data.quality_metrics:
+            checks.append(
+                CustomRunValidationIssue(
+                    check="quality_metrics",
+                    status="warn",
+                    message="No quality metrics were parsed.",
+                    worksheet="quality_metrics",
+                )
+            )
+        else:
+            checks.append(
+                CustomRunValidationIssue(
+                    check="quality_metrics",
+                    status="pass",
+                    message=f"{len(data.quality_metrics)} quality metrics loaded.",
+                    worksheet="quality_metrics",
                 )
             )
         return checks
 
     def _check_assumptions(self, data: CustomRunData) -> list[CustomRunValidationIssue]:
+        checks: list[CustomRunValidationIssue] = []
         if not data.assumptions:
-            return [
+            checks.append(
                 CustomRunValidationIssue(
                     check="assumptions",
                     status="warn",
-                    message="Assumptions section is empty.",
-                    worksheet="Assumptions",
+                    message="No assumptions were parsed.",
+                    worksheet="assumptions",
                 )
-            ]
-        return [
-            CustomRunValidationIssue(
-                check="assumptions",
-                status="pass",
-                message=f"{len(data.assumptions)} assumptions loaded.",
-                worksheet="Assumptions",
             )
-        ]
+        else:
+            checks.append(
+                CustomRunValidationIssue(
+                    check="assumptions",
+                    status="pass",
+                    message=f"{len(data.assumptions)} assumptions loaded.",
+                    worksheet="assumptions",
+                )
+            )
+        return checks

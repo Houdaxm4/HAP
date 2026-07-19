@@ -8,6 +8,7 @@ from unittest.mock import patch
 import pytest
 
 from models.analysis import Analysis, AnalysisFiles, UploadedFileMetadata
+from ingestion.custom_run_parser import CustomRunParser
 from pipeline.orchestrator import PipelineOrchestrator
 from services.analysis_service import AnalysisService
 from services.file_service import FileService
@@ -15,7 +16,12 @@ from services.output_service import OutputService
 
 
 @pytest.fixture
-def pipeline_env(tmp_path: Path, sample_workbook: Path, sample_custom_run_workbook: Path):
+def pipeline_env(
+    tmp_path: Path,
+    sample_workbook: Path,
+    sample_custom_run_workbook: Path,
+    test_custom_run_profile,
+):
     analysis_service = AnalysisService(storage_dir=tmp_path / "analyses")
     file_service = FileService(uploads_dir=tmp_path / "uploads")
     output_service = OutputService(outputs_dir=tmp_path / "outputs")
@@ -53,6 +59,7 @@ def pipeline_env(tmp_path: Path, sample_workbook: Path, sample_custom_run_workbo
         file_service=file_service,
         output_service=output_service,
     )
+    orchestrator.parse_custom_run_stage.parser = CustomRunParser(profile=test_custom_run_profile)
     return orchestrator, analysis_service, output_service
 
 
