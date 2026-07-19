@@ -19,7 +19,7 @@ from models.workbook_schema import WorkbookSummary
 app = FastAPI(
     title="HAP Backend",
     description="Houda's Analyst Platform API",
-    version="0.3.0",
+    version="0.4.0",
 )
 
 app.add_middleware(
@@ -44,7 +44,7 @@ pipeline_orchestrator = PipelineOrchestrator(
 @app.get("/health")
 def health() -> dict[str, str]:
     """Liveness check for the API service."""
-    return {"status": "ok", "service": "HAP backend", "version": "0.3.0"}
+    return {"status": "ok", "service": "HAP backend", "version": "0.4.0"}
 
 
 @app.post("/analysis/create", response_model=CreateAnalysisResponse)

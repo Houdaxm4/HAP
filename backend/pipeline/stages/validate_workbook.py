@@ -4,11 +4,13 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from ingestion.models.company_financial_model import CompanyFinancialModel
+from ingestion.prefilled_workbook_mapper import PrefilledWorkbookMapper
 from models.analysis import Analysis
-from models.custom_run import CustomRunMapping
 from models.pipeline import DecisionLogEntry
 from models.provenance import ProvenanceReport
 from models.validation import DiscrepancyReport
+from models.workbook_schema import WorkbookStructure
 from services.output_service import OutputService
 from services.validation_service import ValidationService
 
@@ -19,22 +21,26 @@ class ValidateWorkbookStage:
     def __init__(
         self,
         validation_service: ValidationService | None = None,
+        mapper: PrefilledWorkbookMapper | None = None,
         output_service: OutputService | None = None,
     ) -> None:
         self.validation_service = validation_service or ValidationService()
+        self.mapper = mapper or PrefilledWorkbookMapper()
         self.output_service = output_service or OutputService()
 
     def run(
         self,
         analysis: Analysis,
-        custom_run_mapping: CustomRunMapping,
+        financial_model: CompanyFinancialModel,
+        workbook_structure: WorkbookStructure,
         provenance_report: ProvenanceReport,
         completed_workbook_path: Path,
     ) -> tuple[DiscrepancyReport, str, str, DecisionLogEntry]:
-        discrepancy_report = self.validation_service.validate(
+        fill_targets = self.mapper.build_fill_plan(workbook_structure, financial_model)
+        discrepancy_report = self.validation_service.validate_targets(
             analysis_id=analysis.analysis_id,
             ticker=analysis.ticker,
-            custom_run_entries=custom_run_mapping.entries,
+            fill_targets=fill_targets,
             provenance_report=provenance_report,
             completed_workbook_path=completed_workbook_path,
         )

@@ -1,19 +1,23 @@
-"""HAP pipeline orchestrator for the first production milestone."""
+"""HAP pipeline orchestrator — ingestion layer + analysis engine handoff."""
 
 from __future__ import annotations
 
 from pathlib import Path
 
+from ingestion.custom_run_parser import CustomRunParseError
+from ingestion.custom_run_validator import CustomRunValidationError
 from models.analysis import Analysis
 from models.common import utc_now_iso
-from models.pipeline import DecisionLogEntry, PipelineStage, PipelineStatus
+from models.pipeline import PIPELINE_STAGE_ORDER, DecisionLogEntry, PipelineStage, PipelineStatus
+from pipeline.stages.build_financial_model import BuildFinancialModelStage
 from pipeline.stages.fetch_sec_filings import FetchSecFilingsStage
 from pipeline.stages.fill_workbook import FillWorkbookStage
 from pipeline.stages.parse_custom_run import ParseCustomRunStage
 from pipeline.stages.parse_workbook import ParseWorkbookStage
+from pipeline.stages.run_analysis import RunAnalysisStage
+from pipeline.stages.validate_custom_run import ValidateCustomRunStage
 from pipeline.stages.validate_workbook import ValidateWorkbookStage
 from services.analysis_service import AnalysisService
-from services.custom_run_service import CustomRunParseError
 from services.file_service import FileService
 from services.output_service import OutputService
 from services.sec_service import SecServiceError
@@ -25,10 +29,23 @@ class PipelineError(Exception):
 
 class PipelineOrchestrator:
     """
-    Run the fixed HAP workflow for milestone 1:
+    HAP v1 ingestion workflow:
 
-    Upload → Parse workbook → Parse custom_run → SEC filings → Fill → Validate
+    Prefilled Workbook + Bloomberg Custom_Run_Filter + SEC + Market Data
+    → Validation → CompanyFinancialModelBuilder → fill workbook → AnalysisEngine.run()
     """
+
+    STAGE_PROGRESS: dict[PipelineStage, int] = {
+        PipelineStage.PARSE_WORKBOOK: 10,
+        PipelineStage.PARSE_CUSTOM_RUN: 20,
+        PipelineStage.VALIDATE_CUSTOM_RUN: 30,
+        PipelineStage.FETCH_SEC_FILINGS: 45,
+        PipelineStage.BUILD_FINANCIAL_MODEL: 55,
+        PipelineStage.FILL_WORKBOOK: 75,
+        PipelineStage.VALIDATE_WORKBOOK: 88,
+        PipelineStage.RUN_ANALYSIS: 95,
+        PipelineStage.COMPLETE: 100,
+    }
 
     def __init__(
         self,
@@ -41,9 +58,12 @@ class PipelineOrchestrator:
         self.output_service = output_service or OutputService()
         self.parse_workbook_stage = ParseWorkbookStage(output_service=self.output_service)
         self.parse_custom_run_stage = ParseCustomRunStage(output_service=self.output_service)
+        self.validate_custom_run_stage = ValidateCustomRunStage(output_service=self.output_service)
         self.fetch_sec_stage = FetchSecFilingsStage(output_service=self.output_service)
+        self.build_model_stage = BuildFinancialModelStage(output_service=self.output_service)
         self.fill_workbook_stage = FillWorkbookStage(output_service=self.output_service)
         self.validate_workbook_stage = ValidateWorkbookStage(output_service=self.output_service)
+        self.run_analysis_stage = RunAnalysisStage(output_service=self.output_service)
 
     def run(self, analysis_id: str) -> Analysis:
         """Execute all pipeline stages sequentially."""
@@ -65,10 +85,22 @@ class PipelineOrchestrator:
             custom_run_path = self.file_service.get_custom_run_filter_path(analysis)
 
             structure, structure_path, log = self.parse_workbook_stage.run(analysis, workbook_path)
-            self._complete_stage(analysis, PipelineStage.PARSE_WORKBOOK, 20, log, workbook_structure=structure_path)
+            self._complete_stage(
+                analysis, PipelineStage.PARSE_WORKBOOK, log, workbook_structure=structure_path
+            )
 
-            mapping, mapping_path, log = self.parse_custom_run_stage.run(analysis, custom_run_path)
-            self._complete_stage(analysis, PipelineStage.PARSE_CUSTOM_RUN, 35, log, custom_run_mapping=mapping_path)
+            custom_run_data, data_path, log = self.parse_custom_run_stage.run(
+                analysis, custom_run_path
+            )
+            self._complete_stage(analysis, PipelineStage.PARSE_CUSTOM_RUN, log, custom_run_data=data_path)
+
+            _, validation_path, log = self.validate_custom_run_stage.run(analysis, custom_run_data)
+            self._complete_stage(
+                analysis,
+                PipelineStage.VALIDATE_CUSTOM_RUN,
+                log,
+                custom_run_validation=validation_path,
+            )
 
             cache_dir = self.output_service.analysis_output_dir(analysis_id) / "sec_cache"
             manifest, company_facts, manifest_path, _, log = self.fetch_sec_stage.run(
@@ -79,23 +111,35 @@ class PipelineOrchestrator:
             self._complete_stage(
                 analysis,
                 PipelineStage.FETCH_SEC_FILINGS,
-                55,
                 log,
                 sec_filings_manifest=manifest_path,
             )
 
-            provenance_report, workbook_path_rel, provenance_path, log = self.fill_workbook_stage.run(
+            financial_model, model_path, log = self.build_model_stage.run(
                 analysis,
-                workbook_path,
-                mapping,
-                structure,
+                custom_run_data,
                 company_facts,
                 manifest,
             )
             self._complete_stage(
                 analysis,
+                PipelineStage.BUILD_FINANCIAL_MODEL,
+                log,
+                company_financial_model=model_path,
+            )
+
+            provenance_report, workbook_path_rel, provenance_path, log = (
+                self.fill_workbook_stage.run(
+                    analysis,
+                    workbook_path,
+                    financial_model,
+                    structure,
+                    manifest,
+                )
+            )
+            self._complete_stage(
+                analysis,
                 PipelineStage.FILL_WORKBOOK,
-                80,
                 log,
                 completed_workbook=workbook_path_rel,
                 provenance_report=provenance_path,
@@ -105,19 +149,27 @@ class PipelineOrchestrator:
                 analysis_id,
                 "completed_workbook.xlsx",
             )
-            _, validation_path, discrepancy_path, log = self.validate_workbook_stage.run(
+            _, validation_report_path, discrepancy_path, log = self.validate_workbook_stage.run(
                 analysis,
-                mapping,
+                financial_model,
+                structure,
                 provenance_report,
                 completed_workbook_path,
             )
             self._complete_stage(
                 analysis,
                 PipelineStage.VALIDATE_WORKBOOK,
-                95,
                 log,
-                validation_report=validation_path,
+                validation_report=validation_report_path,
                 discrepancy_report=discrepancy_path,
+            )
+
+            _, engine_result_path, log = self.run_analysis_stage.run(analysis, financial_model)
+            self._complete_stage(
+                analysis,
+                PipelineStage.RUN_ANALYSIS,
+                log,
+                analysis_engine_result=engine_result_path,
             )
 
             analysis.pipeline.state = "complete"
@@ -128,21 +180,26 @@ class PipelineOrchestrator:
             analysis.updated_at = utc_now_iso()
             self.analysis_service.save(analysis)
             return analysis
-        except (CustomRunParseError, SecServiceError, PipelineError, OSError, ValueError) as exc:
+        except (
+            CustomRunParseError,
+            CustomRunValidationError,
+            SecServiceError,
+            PipelineError,
+            OSError,
+            ValueError,
+        ) as exc:
             return self._fail(analysis, str(exc))
 
     def _complete_stage(
         self,
         analysis: Analysis,
         stage: PipelineStage,
-        progress_pct: int,
         log_entry: DecisionLogEntry,
         **output_fields: str,
     ) -> None:
         analysis.pipeline.stages_completed.append(stage)
-        next_stage = self._next_stage(stage)
-        analysis.pipeline.current_stage = next_stage
-        analysis.pipeline.progress_pct = progress_pct
+        analysis.pipeline.current_stage = self._next_stage(stage)
+        analysis.pipeline.progress_pct = self.STAGE_PROGRESS.get(stage, analysis.pipeline.progress_pct)
         for field_name, value in output_fields.items():
             setattr(analysis.pipeline.outputs, field_name, value)
         analysis.decision_log.append(log_entry)
@@ -169,19 +226,14 @@ class PipelineOrchestrator:
 
     @staticmethod
     def _next_stage(stage: PipelineStage) -> PipelineStage | None:
-        order = [
-            PipelineStage.PARSE_WORKBOOK,
-            PipelineStage.PARSE_CUSTOM_RUN,
-            PipelineStage.FETCH_SEC_FILINGS,
-            PipelineStage.FILL_WORKBOOK,
-            PipelineStage.VALIDATE_WORKBOOK,
-            PipelineStage.COMPLETE,
-        ]
         try:
-            index = order.index(stage)
+            index = PIPELINE_STAGE_ORDER.index(stage)
         except ValueError:
             return None
-        return order[index + 1] if index + 1 < len(order) else PipelineStage.COMPLETE
+        next_index = index + 1
+        if next_index < len(PIPELINE_STAGE_ORDER):
+            return PIPELINE_STAGE_ORDER[next_index]
+        return PipelineStage.COMPLETE
 
     def assert_ready_for_pipeline(self, analysis: Analysis) -> None:
         """Validate that an analysis has the uploads required to start the pipeline."""
@@ -192,6 +244,8 @@ class PipelineOrchestrator:
         if analysis.files.prefilled_workbook is None:
             raise PipelineError("prefilled_workbook must be uploaded before running the pipeline.")
         if analysis.files.custom_run_filter is None:
-            raise PipelineError("custom_run_filter is required before running the pipeline.")
+            raise PipelineError(
+                "custom_run_filter (Bloomberg Custom_Run_Filter workbook) is required."
+            )
         if analysis.pipeline.state == "processing":
             raise PipelineError("Pipeline is already running for this analysis.")
