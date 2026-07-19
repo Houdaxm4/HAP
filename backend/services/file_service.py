@@ -91,7 +91,7 @@ class FileService:
             stored_name = self._stored_filename(
                 custom_run_filter.filename,
                 default_stem="custom_run_filter",
-                allowed_extensions={".csv", ".xlsx", ".xlsm", ".xls"},
+                allowed_extensions={".xlsx", ".xlsm"},
             )
             files.custom_run_filter = await self.save_upload(
                 analysis_id,

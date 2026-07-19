@@ -4,45 +4,45 @@ from __future__ import annotations
 
 from typing import Any
 
-from models.custom_run import CustomRunEntry
-from models.provenance import CellProvenance, ProvenanceReport
+from ingestion.prefilled_workbook_mapper import InternalFillTarget
+from models.provenance import ProvenanceReport
 from models.validation import DiscrepancyReport, ValidationCheck
 from services.workbook_service import WorkbookService
 
 
 class ValidationService:
-    """Validate populated workbook values against provenance and custom_run."""
+    """Validate populated workbook values against provenance and fill targets."""
 
     def __init__(self, workbook_service: WorkbookService | None = None) -> None:
         self.workbook_service = workbook_service or WorkbookService()
 
-    def validate(
+    def validate_targets(
         self,
         analysis_id: str,
         ticker: str,
-        custom_run_entries: list[CustomRunEntry],
+        fill_targets: list[InternalFillTarget],
         provenance_report: ProvenanceReport,
         completed_workbook_path: Any,
     ) -> DiscrepancyReport:
-        """Run validation checks and build a discrepancy report."""
+        """Run validation checks using internally derived fill targets."""
         provenance_by_ref = {entry.cell_ref: entry for entry in provenance_report.entries}
         checks: list[ValidationCheck] = []
 
-        for mapping in custom_run_entries:
-            cell_ref = self.workbook_service.make_cell_ref(mapping.worksheet, mapping.cell)
+        for target in fill_targets:
+            cell_ref = self.workbook_service.make_cell_ref(target.worksheet, target.cell)
             provenance = provenance_by_ref.get(cell_ref)
 
             if provenance is None:
                 checks.append(
                     ValidationCheck(
                         cell_ref=cell_ref,
-                        worksheet=mapping.worksheet,
-                        cell=mapping.cell,
-                        concept=mapping.concept,
-                        period=mapping.period,
+                        worksheet=target.worksheet,
+                        cell=target.cell,
+                        concept=target.concept,
+                        period=target.period,
                         check_type="missing_value",
                         status="fail",
-                        message="No provenance record was generated for this mapping.",
+                        message="No provenance record was generated for this fill target.",
                     )
                 )
                 continue
@@ -51,10 +51,10 @@ class ValidationService:
                 checks.append(
                     ValidationCheck(
                         cell_ref=cell_ref,
-                        worksheet=mapping.worksheet,
-                        cell=mapping.cell,
-                        concept=mapping.concept,
-                        period=mapping.period,
+                        worksheet=target.worksheet,
+                        cell=target.cell,
+                        concept=target.concept,
+                        period=target.period,
                         check_type="formula_preserved",
                         status="pass",
                         message="Formula cell was correctly preserved and not overwritten.",
@@ -66,30 +66,30 @@ class ValidationService:
                 checks.append(
                     ValidationCheck(
                         cell_ref=cell_ref,
-                        worksheet=mapping.worksheet,
-                        cell=mapping.cell,
-                        concept=mapping.concept,
-                        period=mapping.period,
+                        worksheet=target.worksheet,
+                        cell=target.cell,
+                        concept=target.concept,
+                        period=target.period,
                         check_type="unfilled",
                         status="warn",
-                        message=provenance.failure_reason or "Value could not be sourced from SEC filings.",
+                        message=provenance.failure_reason or "Value could not be sourced.",
                     )
                 )
                 continue
 
             actual_value = self.workbook_service.get_cell_value(
                 completed_workbook_path,
-                mapping.worksheet,
-                mapping.cell,
+                target.worksheet,
+                target.cell,
             )
             if not self._values_match(provenance.value, actual_value):
                 checks.append(
                     ValidationCheck(
                         cell_ref=cell_ref,
-                        worksheet=mapping.worksheet,
-                        cell=mapping.cell,
-                        concept=mapping.concept,
-                        period=mapping.period,
+                        worksheet=target.worksheet,
+                        cell=target.cell,
+                        concept=target.concept,
+                        period=target.period,
                         check_type="inconsistency",
                         status="fail",
                         expected_value=provenance.value,
@@ -103,18 +103,18 @@ class ValidationService:
 
             confidence = provenance.confidence or 0.0
             status = "pass" if confidence >= 0.6 else "warn"
-            message = "Value matches provenance and SEC source."
+            message = "Value matches provenance and source."
             if confidence < 0.6:
                 message = "Value matches provenance but confidence is below threshold."
 
-            if self._is_impossible_value(mapping.concept, provenance.value):
+            if self._is_impossible_value(target.concept, provenance.value):
                 checks.append(
                     ValidationCheck(
                         cell_ref=cell_ref,
-                        worksheet=mapping.worksheet,
-                        cell=mapping.cell,
-                        concept=mapping.concept,
-                        period=mapping.period,
+                        worksheet=target.worksheet,
+                        cell=target.cell,
+                        concept=target.concept,
+                        period=target.period,
                         check_type="impossible_value",
                         status="fail",
                         expected_value=provenance.value,
@@ -129,10 +129,10 @@ class ValidationService:
             checks.append(
                 ValidationCheck(
                     cell_ref=cell_ref,
-                    worksheet=mapping.worksheet,
-                    cell=mapping.cell,
-                    concept=mapping.concept,
-                    period=mapping.period,
+                    worksheet=target.worksheet,
+                    cell=target.cell,
+                    concept=target.concept,
+                    period=target.period,
                     check_type="value_match",
                     status=status,
                     expected_value=provenance.value,
