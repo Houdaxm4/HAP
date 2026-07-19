@@ -11,14 +11,17 @@ from models.common import utc_now_iso
 
 
 class PipelineStage(str, Enum):
-    """Ordered stages in the first production milestone."""
+    """Ordered stages in the HAP v1 ingestion + analysis workflow."""
 
     UPLOAD = "upload"
     PARSE_WORKBOOK = "parse_workbook"
     PARSE_CUSTOM_RUN = "parse_custom_run"
+    VALIDATE_CUSTOM_RUN = "validate_custom_run"
     FETCH_SEC_FILINGS = "fetch_sec_filings"
+    BUILD_FINANCIAL_MODEL = "build_financial_model"
     FILL_WORKBOOK = "fill_workbook"
     VALIDATE_WORKBOOK = "validate_workbook"
+    RUN_ANALYSIS = "run_analysis"
     COMPLETE = "complete"
     FAILED = "failed"
 
@@ -27,9 +30,12 @@ PIPELINE_STAGE_ORDER: list[PipelineStage] = [
     PipelineStage.UPLOAD,
     PipelineStage.PARSE_WORKBOOK,
     PipelineStage.PARSE_CUSTOM_RUN,
+    PipelineStage.VALIDATE_CUSTOM_RUN,
     PipelineStage.FETCH_SEC_FILINGS,
+    PipelineStage.BUILD_FINANCIAL_MODEL,
     PipelineStage.FILL_WORKBOOK,
     PipelineStage.VALIDATE_WORKBOOK,
+    PipelineStage.RUN_ANALYSIS,
     PipelineStage.COMPLETE,
 ]
 
@@ -54,6 +60,11 @@ class PipelineOutputs(BaseModel):
     validation_report: str | None = None
     sec_filings_manifest: str | None = None
     workbook_structure: str | None = None
+    custom_run_data: str | None = None
+    custom_run_validation: str | None = None
+    company_financial_model: str | None = None
+    analysis_engine_result: str | None = None
+    # Deprecated — replaced by custom_run_data (Bloomberg workbook ingestion).
     custom_run_mapping: str | None = None
 
 
