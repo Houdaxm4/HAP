@@ -146,6 +146,20 @@ def read_workbook(analysis_id: str) -> WorkbookSummary:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
+@app.get("/analysis/{analysis_id}/outputs")
+def list_output_artifacts(analysis_id: str) -> dict:
+    """List downloadable pipeline output artifacts for an analysis."""
+    try:
+        analysis_service.get(analysis_id)
+    except AnalysisNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    return {
+        "analysis_id": analysis_id,
+        "artifacts": output_service.list_artifacts(analysis_id),
+    }
+
+
 @app.get("/analysis/{analysis_id}/outputs/{artifact_name}")
 def download_output_artifact(analysis_id: str, artifact_name: str) -> FileResponse:
     """Download a pipeline output artifact."""
@@ -154,8 +168,12 @@ def download_output_artifact(analysis_id: str, artifact_name: str) -> FileRespon
     except AnalysisNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
+    # Prevent path traversal into sec_cache or parent directories.
+    if "/" in artifact_name or "\\" in artifact_name or artifact_name in {".", ".."}:
+        raise HTTPException(status_code=400, detail="Invalid artifact name.")
+
     path = output_service.artifact_path(analysis_id, artifact_name)
-    if not path.exists():
+    if not path.exists() or not path.is_file():
         raise HTTPException(status_code=404, detail=f"Artifact '{artifact_name}' not found.")
 
     return FileResponse(

@@ -8,6 +8,7 @@ const TABS = [
   "Expected Return",
   "Recommendation",
   "Verification",
+  "Deliverables",
 ] as const;
 
 export type AnalysisTab = (typeof TABS)[number];

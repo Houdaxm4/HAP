@@ -1,0 +1,455 @@
+{
+  "baseline": "AAPL",
+  "compared": [
+    "MSFT",
+    "AMZN",
+    "TJX"
+  ],
+  "sheet_names_identical": true,
+  "sheet_names_by_ticker": {
+    "AAPL": [
+      "Balance Sheet - Standardized",
+      "BS%",
+      "Income - GAAP",
+      "IS%",
+      "Cash Flow - Standardized",
+      "CF%",
+      "FCF",
+      "Last Quarter BS Standardized",
+      "Last Quarter IS Standardized",
+      "Last Quarter CF Standardized",
+      "Last Quarter BS As Reported",
+      "Last Quarter IS As Reported",
+      "Last Quarter CF As Reported",
+      "DividendHelper",
+      "Inputs",
+      "IC & NOPAT & ROIC ",
+      "Tax",
+      "Leases",
+      "R&D",
+      "All Ratios",
+      "Final Metrics",
+      "Expected Returns & Buybacks",
+      "Enterprise Value",
+      "Template Version"
+    ],
+    "MSFT": [
+      "Balance Sheet - Standardized",
+      "BS%",
+      "Income - GAAP",
+      "IS%",
+      "Cash Flow - Standardized",
+      "CF%",
+      "FCF",
+      "Last Quarter BS Standardized",
+      "Last Quarter IS Standardized",
+      "Last Quarter CF Standardized",
+      "Last Quarter BS As Reported",
+      "Last Quarter IS As Reported",
+      "Last Quarter CF As Reported",
+      "DividendHelper",
+      "Inputs",
+      "IC & NOPAT & ROIC ",
+      "Tax",
+      "Leases",
+      "R&D",
+      "All Ratios",
+      "Final Metrics",
+      "Expected Returns & Buybacks",
+      "Enterprise Value",
+      "Template Version"
+    ],
+    "AMZN": [
+      "Balance Sheet - Standardized",
+      "BS%",
+      "Income - GAAP",
+      "IS%",
+      "Cash Flow - Standardized",
+      "CF%",
+      "FCF",
+      "Last Quarter BS Standardized",
+      "Last Quarter IS Standardized",
+      "Last Quarter CF Standardized",
+      "Last Quarter BS As Reported",
+      "Last Quarter IS As Reported",
+      "Last Quarter CF As Reported",
+      "DividendHelper",
+      "Inputs",
+      "IC & NOPAT & ROIC ",
+      "Tax",
+      "Leases",
+      "R&D",
+      "All Ratios",
+      "Final Metrics",
+      "Expected Returns & Buybacks",
+      "Enterprise Value",
+      "Template Version"
+    ],
+    "TJX": [
+      "Balance Sheet - Standardized",
+      "BS%",
+      "Income - GAAP",
+      "IS%",
+      "Cash Flow - Standardized",
+      "CF%",
+      "FCF",
+      "Last Quarter BS Standardized",
+      "Last Quarter IS Standardized",
+      "Last Quarter CF Standardized",
+      "Last Quarter BS As Reported",
+      "Last Quarter IS As Reported",
+      "Last Quarter CF As Reported",
+      "DividendHelper",
+      "Inputs",
+      "IC & NOPAT & ROIC ",
+      "Tax",
+      "Leases",
+      "R&D",
+      "All Ratios",
+      "Final Metrics",
+      "Expected Returns & Buybacks",
+      "Enterprise Value",
+      "Template Version"
+    ]
+  },
+  "named_range_diffs_vs_AAPL": {},
+  "per_sheet_structural_diffs_vs_AAPL": {
+    "Last Quarter IS Standardized": {
+      "MSFT": {
+        "role_hint": {
+          "AAPL": "hybrid",
+          "MSFT": "data_heavy"
+        }
+      },
+      "AMZN": {
+        "role_hint": {
+          "AAPL": "hybrid",
+          "AMZN": "data_heavy"
+        }
+      },
+      "TJX": {
+        "role_hint": {
+          "AAPL": "hybrid",
+          "TJX": "data_heavy"
+        }
+      }
+    },
+    "Last Quarter BS As Reported": {
+      "MSFT": {
+        "max_row": {
+          "AAPL": 145,
+          "MSFT": 188
+        }
+      },
+      "AMZN": {
+        "max_row": {
+          "AAPL": 145,
+          "AMZN": 158
+        }
+      },
+      "TJX": {
+        "max_row": {
+          "AAPL": 145,
+          "TJX": 147
+        }
+      }
+    },
+    "Last Quarter IS As Reported": {
+      "MSFT": {
+        "max_row": {
+          "AAPL": 71,
+          "MSFT": 100
+        }
+      },
+      "AMZN": {
+        "max_row": {
+          "AAPL": 71,
+          "AMZN": 88
+        }
+      },
+      "TJX": {
+        "max_row": {
+          "AAPL": 71,
+          "TJX": 104
+        }
+      }
+    },
+    "Last Quarter CF As Reported": {
+      "MSFT": {
+        "max_row": {
+          "AAPL": 38,
+          "MSFT": 47
+        }
+      },
+      "AMZN": {
+        "max_row": {
+          "AAPL": 38,
+          "AMZN": 44
+        }
+      },
+      "TJX": {
+        "max_row": {
+          "AAPL": 38,
+          "TJX": 44
+        }
+      }
+    }
+  },
+  "core_label_diffs_vs_AAPL": {
+    "Income - GAAP": {
+      "MSFT": {
+        "aapl_count": 97,
+        "MSFT_count": 97,
+        "length_equal": true,
+        "first_mismatches": [
+          {
+            "index": 4,
+            "AAPL": [
+              8,
+              "2016-09-24 00:00:00",
+              0
+            ],
+            "MSFT": [
+              8,
+              "2016-06-30 00:00:00",
+              0
+            ]
+          }
+        ]
+      },
+      "AMZN": {
+        "aapl_count": 97,
+        "AMZN_count": 97,
+        "length_equal": true,
+        "first_mismatches": [
+          {
+            "index": 4,
+            "AAPL": [
+              8,
+              "2016-09-24 00:00:00",
+              0
+            ],
+            "AMZN": [
+              8,
+              "2016-12-31 00:00:00",
+              0
+            ]
+          }
+        ]
+      },
+      "TJX": {
+        "aapl_count": 97,
+        "TJX_count": 97,
+        "length_equal": true,
+        "first_mismatches": [
+          {
+            "index": 4,
+            "AAPL": [
+              8,
+              "2016-09-24 00:00:00",
+              0
+            ],
+            "TJX": [
+              8,
+              "2017-01-28 00:00:00",
+              0
+            ]
+          },
+          {
+            "index": 86,
+            "AAPL": [
+              96,
+              "Retained Earnings FY 2015",
+              0
+            ],
+            "TJX": [
+              96,
+              "Retained Earnings FY 2016",
+              0
+            ]
+          }
+        ]
+      }
+    },
+    "Balance Sheet - Standardized": {
+      "MSFT": {
+        "aapl_count": 130,
+        "MSFT_count": 130,
+        "length_equal": true,
+        "first_mismatches": [
+          {
+            "index": 3,
+            "AAPL": [
+              4,
+              "2016-09-24 00:00:00",
+              0
+            ],
+            "MSFT": [
+              4,
+              "2016-06-30 00:00:00",
+              0
+            ]
+          },
+          {
+            "index": 6,
+            "AAPL": [
+              8,
+              "2016-09-24 00:00:00",
+              0
+            ],
+            "MSFT": [
+              8,
+              "2016-06-30 00:00:00",
+              0
+            ]
+          }
+        ]
+      },
+      "AMZN": {
+        "aapl_count": 130,
+        "AMZN_count": 130,
+        "length_equal": true,
+        "first_mismatches": [
+          {
+            "index": 3,
+            "AAPL": [
+              4,
+              "2016-09-24 00:00:00",
+              0
+            ],
+            "AMZN": [
+              4,
+              "2016-12-31 00:00:00",
+              0
+            ]
+          },
+          {
+            "index": 6,
+            "AAPL": [
+              8,
+              "2016-09-24 00:00:00",
+              0
+            ],
+            "AMZN": [
+              8,
+              "2016-12-31 00:00:00",
+              0
+            ]
+          }
+        ]
+      },
+      "TJX": {
+        "aapl_count": 130,
+        "TJX_count": 130,
+        "length_equal": true,
+        "first_mismatches": [
+          {
+            "index": 3,
+            "AAPL": [
+              4,
+              "2016-09-24 00:00:00",
+              0
+            ],
+            "TJX": [
+              4,
+              "2017-01-28 00:00:00",
+              0
+            ]
+          },
+          {
+            "index": 4,
+            "AAPL": [
+              5,
+              "2016 A",
+              0
+            ],
+            "TJX": [
+              5,
+              "2017 A",
+              0
+            ]
+          },
+          {
+            "index": 6,
+            "AAPL": [
+              8,
+              "2016-09-24 00:00:00",
+              0
+            ],
+            "TJX": [
+              8,
+              "2017-01-28 00:00:00",
+              0
+            ]
+          }
+        ]
+      }
+    },
+    "Cash Flow - Standardized": {
+      "MSFT": {
+        "aapl_count": 72,
+        "MSFT_count": 72,
+        "length_equal": true,
+        "first_mismatches": [
+          {
+            "index": 4,
+            "AAPL": [
+              8,
+              "2016-09-24 00:00:00",
+              0
+            ],
+            "MSFT": [
+              8,
+              "2016-06-30 00:00:00",
+              0
+            ]
+          }
+        ]
+      },
+      "AMZN": {
+        "aapl_count": 72,
+        "AMZN_count": 72,
+        "length_equal": true,
+        "first_mismatches": [
+          {
+            "index": 4,
+            "AAPL": [
+              8,
+              "2016-09-24 00:00:00",
+              0
+            ],
+            "AMZN": [
+              8,
+              "2016-12-31 00:00:00",
+              0
+            ]
+          }
+        ]
+      },
+      "TJX": {
+        "aapl_count": 72,
+        "TJX_count": 72,
+        "length_equal": true,
+        "first_mismatches": [
+          {
+            "index": 4,
+            "AAPL": [
+              8,
+              "2016-09-24 00:00:00",
+              0
+            ],
+            "TJX": [
+              8,
+              "2017-01-28 00:00:00",
+              0
+            ]
+          }
+        ]
+      }
+    }
+  },
+  "notes": [
+    "Value/formula cell counts differ by company fill state; treat role_hint and layout fields as structural.",
+    "Label mismatches on core statements are high-priority mapping risks."
+  ]
+}

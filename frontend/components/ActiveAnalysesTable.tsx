@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useAnalysisStore } from "@/lib/analysis-store-context";
-import { formatScore } from "@/lib/map-backend-analysis";
+import { formatScore, formatStageLabel } from "@/lib/map-backend-analysis";
 import StatusBadge from "./StatusBadge";
 
 function formatDate(value: string): string {
@@ -21,7 +21,7 @@ export default function ActiveAnalysesTable() {
   const { analyses, isLoadingList, listError } = useAnalysisStore();
 
   return (
-    <div className="overflow-hidden rounded border border-hap-border bg-hap-panel">
+    <div id="active-analyses" className="overflow-hidden rounded border border-hap-border bg-hap-panel">
       <div className="border-b border-hap-border px-4 py-3">
         <h3 className="text-xs font-semibold uppercase tracking-widest text-hap-muted">
           Active Analyses
@@ -44,6 +44,8 @@ export default function ActiveAnalysesTable() {
                 <th className="px-4 py-3 font-medium">Company</th>
                 <th className="px-4 py-3 font-medium">Ticker</th>
                 <th className="px-4 py-3 font-medium">Status</th>
+                <th className="px-4 py-3 font-medium">Progress</th>
+                <th className="px-4 py-3 font-medium">Stage</th>
                 <th className="px-4 py-3 font-medium">Date</th>
                 <th className="px-4 py-3 font-medium">Recommendation</th>
                 <th className="px-4 py-3 font-medium">Business Quality</th>
@@ -60,6 +62,11 @@ export default function ActiveAnalysesTable() {
                       <div className="font-medium group-hover:text-hap-orange">
                         {row.company}
                       </div>
+                      {row.pipelineError ? (
+                        <div className="mt-0.5 max-w-[220px] truncate text-[10px] text-red-400">
+                          {row.pipelineError}
+                        </div>
+                      ) : null}
                     </Link>
                   </td>
                   <td className="px-4 py-3 font-mono text-xs text-hap-orange">
@@ -67,6 +74,22 @@ export default function ActiveAnalysesTable() {
                   </td>
                   <td className="px-4 py-3">
                     <StatusBadge status={row.status} />
+                  </td>
+                  <td className="px-4 py-3">
+                    <div className="flex items-center gap-2">
+                      <div className="h-1.5 w-16 overflow-hidden rounded-full bg-hap-border">
+                        <div
+                          className="h-full rounded-full bg-hap-orange"
+                          style={{ width: `${row.progress}%` }}
+                        />
+                      </div>
+                      <span className="font-mono text-xs text-hap-muted">
+                        {row.progress}%
+                      </span>
+                    </div>
+                  </td>
+                  <td className="px-4 py-3 text-xs text-hap-muted">
+                    {formatStageLabel(row.currentStage)}
                   </td>
                   <td className="px-4 py-3 text-hap-muted">{formatDate(row.startedAt)}</td>
                   <td className="px-4 py-3">

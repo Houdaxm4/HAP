@@ -1,4 +1,9 @@
-"""Parse Bloomberg-derived Custom_Run_Filter workbooks (HAP v1 product input)."""
+"""Parse Bloomberg-derived Custom_Run_Filter workbooks (HAP v1 product input).
+
+Layout constants are taken from production Custom_Run_Filter workbooks for
+AAPL, MSFT, AMZN, and TJX (see validation_campaign/reports/CRF_REVERSE_ENGINEERING.md).
+Do not invent worksheet names — production files are the source of truth.
+"""
 
 from __future__ import annotations
 
@@ -9,14 +14,15 @@ from openpyxl import load_workbook
 
 from models.custom_run import CustomRunData, CustomRunPeriods, CustomRunSeries
 
-# Fixed layout of the ticker sheet (identical across Industrial CRF exports).
+# Observed identically on AAPL / MSFT / AMZN / TJX production CRF exports.
+# Sheets: [<TICKER>, Summary]. Period width: 102. Numeric trailer from row 265.
 _META_START = 2
 _META_END = 12
 _DATE_ROW = 15
 _FISCAL_QUARTER_ROW = 16
 _SERIES_START = 18
 _FISCAL_YEAR_ROW = 146
-_SERIES_END = 153
+_SERIES_END = 153  # includes post–Fiscal Year wide series band (rows 147–153)
 _SCALAR_START = 158
 _SCALAR_END = 261
 _PE10_HEADER_ROW = 264
@@ -100,14 +106,17 @@ class CustomRunService:
                     "Custom_Run_Filter workbook is missing required worksheet 'Summary'."
                 )
             ticker_sheet_name = self._resolve_ticker_sheet(workbook.sheetnames)
-            ticker_ws = workbook[ticker_sheet_name]
-            summary_ws = workbook["Summary"]
+            # Production CRFs are ~4k rows; materialize once (read_only random .cell is unusable).
+            ticker_rows = self._sheet_matrix(workbook[ticker_sheet_name])
+            summary_rows = self._sheet_matrix(workbook["Summary"])
 
-            metadata = self._parse_meta_block(ticker_ws)
-            periods = self._parse_periods(ticker_ws)
-            historical = self._parse_series_block(ticker_ws, periods)
-            scalars = self._parse_scalar_block(ticker_ws)
-            summary = self._parse_summary(summary_ws)
+            self._assert_observed_anchors(ticker_rows)
+
+            metadata = self._parse_meta_block(ticker_rows)
+            periods = self._parse_periods(ticker_rows)
+            historical = self._parse_series_block(ticker_rows, periods)
+            scalars = self._parse_scalar_block(ticker_rows)
+            summary = self._parse_summary(summary_rows)
 
             ticker = str(
                 metadata.get("Ticker")
@@ -119,7 +128,6 @@ class CustomRunService:
             market_data = self._section_from_pools(
                 summary, scalars, metadata, keys=_MARKET_KEYS
             )
-            # Prefer live price / EV / mkt cap from summary when present.
             for key in list(_MARKET_KEYS):
                 if key in summary and summary[key] is not None:
                     market_data[key] = summary[key]
@@ -179,21 +187,63 @@ class CustomRunService:
             )
         return non_summary[0]
 
-    def _parse_meta_block(self, worksheet: Any) -> dict[str, Any]:
+    @staticmethod
+    def _sheet_matrix(worksheet: Any) -> list[list[Any]]:
+        """Read a worksheet once into a dense 1-indexed-friendly row list (0-based)."""
+        rows: list[list[Any]] = []
+        for row in worksheet.iter_rows(values_only=True):
+            cells = list(row)
+            last = 0
+            for idx, value in enumerate(cells, start=1):
+                if value is not None and not (isinstance(value, str) and value.strip() == ""):
+                    last = idx
+            rows.append(cells[:last])
+        return rows
+
+    @staticmethod
+    def _cell(rows: list[list[Any]], row_idx: int, col_idx: int) -> Any:
+        """1-based row/col access into a materialized sheet matrix."""
+        if row_idx < 1 or row_idx > len(rows):
+            return None
+        row = rows[row_idx - 1]
+        if col_idx < 1 or col_idx > len(row):
+            return None
+        return row[col_idx - 1]
+
+    def _assert_observed_anchors(self, rows: list[list[Any]]) -> None:
+        """Fail fast if production anchors are not present at observed rows."""
+        date_label = self._cell(rows, _DATE_ROW, 1)
+        fq_label = self._cell(rows, _FISCAL_QUARTER_ROW, 1)
+        fy_label = self._cell(rows, _FISCAL_YEAR_ROW, 1)
+        if str(date_label).strip().lower() != "date":
+            raise CustomRunParseError(
+                f"Expected 'date' at ticker sheet row {_DATE_ROW}, found {date_label!r}."
+            )
+        if str(fq_label).strip().lower() != "fiscal quarter":
+            raise CustomRunParseError(
+                f"Expected 'Fiscal Quarter' at ticker sheet row {_FISCAL_QUARTER_ROW}, "
+                f"found {fq_label!r}."
+            )
+        if str(fy_label).strip().lower() != "fiscal year":
+            raise CustomRunParseError(
+                f"Expected 'Fiscal Year' at ticker sheet row {_FISCAL_YEAR_ROW}, "
+                f"found {fy_label!r}."
+            )
+
+    def _parse_meta_block(self, rows: list[list[Any]]) -> dict[str, Any]:
         meta: dict[str, Any] = {}
         for row_idx in range(_META_START, _META_END + 1):
-            label = worksheet.cell(row_idx, 1).value
-            value = worksheet.cell(row_idx, 2).value
+            label = self._cell(rows, row_idx, 1)
+            value = self._cell(rows, row_idx, 2)
             if label is None or str(label).strip() == "":
                 continue
             meta[str(label).strip()] = _normalize_value(value)
         return meta
 
-    def _parse_periods(self, worksheet: Any) -> CustomRunPeriods:
-        dates = self._row_values(worksheet, _DATE_ROW)
-        quarters = self._row_values(worksheet, _FISCAL_QUARTER_ROW)
-        years = self._row_values(worksheet, _FISCAL_YEAR_ROW)
-        # Column A is the header label; periods start at column B (index 0 after drop).
+    def _parse_periods(self, rows: list[list[Any]]) -> CustomRunPeriods:
+        dates = self._row_values(rows, _DATE_ROW)
+        quarters = self._row_values(rows, _FISCAL_QUARTER_ROW)
+        years = self._row_values(rows, _FISCAL_YEAR_ROW)
         return CustomRunPeriods(
             dates=[_stringify_period(v) for v in dates],
             fiscal_quarters=[_stringify_period(v) for v in quarters],
@@ -202,7 +252,7 @@ class CustomRunService:
 
     def _parse_series_block(
         self,
-        worksheet: Any,
+        rows: list[list[Any]],
         periods: CustomRunPeriods,
     ) -> dict[str, CustomRunSeries]:
         expected = len(periods.fiscal_quarters) or len(periods.dates)
@@ -210,13 +260,13 @@ class CustomRunService:
         for row_idx in range(_SERIES_START, _SERIES_END + 1):
             if row_idx == _FISCAL_YEAR_ROW:
                 continue
-            label = worksheet.cell(row_idx, 1).value
+            label = self._cell(rows, row_idx, 1)
             if label is None or str(label).strip() == "":
                 continue
             label_text = str(label).strip()
             if label_text.lower() in {"date", "fiscal quarter", "fiscal year"}:
                 continue
-            values = self._row_values(worksheet, row_idx)
+            values = self._row_values(rows, row_idx)
             if expected and len(values) > expected:
                 values = values[:expected]
             while expected and len(values) < expected:
@@ -233,14 +283,13 @@ class CustomRunService:
             )
         return series
 
-    def _parse_scalar_block(self, worksheet: Any) -> dict[str, Any]:
+    def _parse_scalar_block(self, rows: list[list[Any]]) -> dict[str, Any]:
         scalars: dict[str, Any] = {}
         for row_idx in range(_SCALAR_START, _SCALAR_END + 1):
-            label = worksheet.cell(row_idx, 1).value
-            value = worksheet.cell(row_idx, 2).value
+            label = self._cell(rows, row_idx, 1)
+            value = self._cell(rows, row_idx, 2)
             if label is None or str(label).strip() == "":
                 continue
-            # Trailer indices are numeric labels — skip once we hit pure index runs.
             if isinstance(label, (int, float)) and value is not None and row_idx >= _PE10_HEADER_ROW:
                 break
             label_text = str(label).strip()
@@ -249,30 +298,31 @@ class CustomRunService:
             scalars[label_text] = _normalize_value(value)
         return scalars
 
-    def _parse_summary(self, worksheet: Any) -> dict[str, Any]:
+    def _parse_summary(self, rows: list[list[Any]]) -> dict[str, Any]:
+        if not rows:
+            raise CustomRunParseError("Summary worksheet is empty.")
+        header_row = rows[0]
         headers = [
-            str(cell.value).strip()
-            for cell in worksheet[1]
-            if cell.value is not None and str(cell.value).strip() != ""
+            str(cell).strip()
+            for cell in header_row
+            if cell is not None and str(cell).strip() != ""
         ]
         if not headers:
             raise CustomRunParseError("Summary worksheet is missing a header row.")
-        values_row = list(worksheet[2])
+        values_row = rows[1] if len(rows) > 1 else []
         summary: dict[str, Any] = {}
         for index, header in enumerate(headers):
-            raw = values_row[index].value if index < len(values_row) else None
+            raw = values_row[index] if index < len(values_row) else None
             summary[header] = _normalize_value(raw)
         return summary
 
-    @staticmethod
-    def _row_values(worksheet: Any, row_idx: int) -> list[Any]:
+    def _row_values(self, rows: list[list[Any]], row_idx: int) -> list[Any]:
         """Return values from column B onward until trailing empties dominate."""
         values: list[Any] = []
         empty_streak = 0
         col = 2
-        # CRF period width is ~102; allow headroom.
         while col <= 120 and empty_streak < 5:
-            value = worksheet.cell(row_idx, col).value
+            value = self._cell(rows, row_idx, col)
             if value is None or (isinstance(value, str) and value.strip() == ""):
                 empty_streak += 1
                 values.append(None)

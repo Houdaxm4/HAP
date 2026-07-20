@@ -59,6 +59,7 @@ class PipelineOutputs(BaseModel):
     custom_run_data: str | None = None
     company_financial_model: str | None = None
     analysis_engine_result: str | None = None
+    hap_workbook: str | None = None
 
 
 class PipelineStatus(BaseModel):

@@ -54,6 +54,8 @@ export function mapSummaryToAnalysisDetail(summary: AnalysisSummary): AnalysisDe
       summary.status,
     ),
     progress: summary.progress_pct,
+    currentStage: summary.current_stage,
+    pipelineError: summary.pipeline_error,
     startedAt: summary.created_at,
     updatedAt: summary.updated_at,
     isComplete: summary.is_complete,
@@ -62,6 +64,7 @@ export function mapSummaryToAnalysisDetail(summary: AnalysisSummary): AnalysisDe
     businessQualityScore: summary.business_quality_score,
     investmentAttractivenessScore: summary.investment_attractiveness_score,
     decisionLog: [],
+    outputs: {},
     hasEngineResult: false,
     hasValidationReport: false,
     engineResult: null,
@@ -73,8 +76,20 @@ export function mapDetailDtoToAnalysisDetail(
   detail: AnalysisDetailDto,
   previous?: AnalysisDetail,
 ): AnalysisDetail {
+  const pipelineStage =
+    detail.pipeline?.current_stage != null
+      ? String(detail.pipeline.current_stage)
+      : detail.current_stage;
+  const pipelineError = detail.pipeline?.error ?? detail.pipeline_error;
+  const outputs =
+    (detail.outputs as Record<string, string | null> | undefined) ??
+    (detail.pipeline?.outputs as Record<string, string | null> | undefined) ??
+    {};
+
   return {
     ...mapSummaryToAnalysisDetail(detail),
+    currentStage: pipelineStage,
+    pipelineError,
     decisionLog: (detail.decision_log ?? []).map((entry, index) => ({
       id: `d-${detail.analysis_id}-${index}`,
       timestamp: formatTimestamp(entry.timestamp),
@@ -82,11 +97,35 @@ export function mapDetailDtoToAnalysisDetail(
       action: entry.action,
       detail: entry.detail,
     })),
+    outputs,
     hasEngineResult: detail.has_engine_result,
     hasValidationReport: detail.has_validation_report,
     engineResult: previous?.engineResult ?? null,
     validationReport: previous?.validationReport ?? null,
   };
+}
+
+export function formatStageLabel(stage: string | null | undefined): string {
+  if (!stage) {
+    return "Waiting";
+  }
+  return stage
+    .split("_")
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
+export function formatBytes(sizeBytes: number): string {
+  if (sizeBytes < 1024) {
+    return `${sizeBytes} B`;
+  }
+  if (sizeBytes < 1024 * 1024) {
+    return `${(sizeBytes / 1024).toFixed(1)} KB`;
+  }
+  if (sizeBytes < 1024 * 1024 * 1024) {
+    return `${(sizeBytes / (1024 * 1024)).toFixed(1)} MB`;
+  }
+  return `${(sizeBytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
 }
 
 export function getModule(

@@ -28,12 +28,13 @@ Within one week, HAP should allow the analyst to:
    - previous analysis workbook, if applicable
    - custom_run_filter workbook
 4. Run the analysis workflow.
-5. Receive:
-   - updated workbook
-   - verification report
-   - discrepancy report
-   - decision log
-   - analyst summary
+5. Receive the two professional deliverables (same analysis spine):
+   - **Excel workbook** — financial model (Mode A: completed Industrial Template; Mode B: template-like HAP workbook)
+   - **Word investment report** — narrative thesis (Owner Earnings primary valuation; price vs intrinsic value decision)
+
+See [`docs/HAP_PRODUCT_SPEC.md`](HAP_PRODUCT_SPEC.md) (frozen product vision) and [`docs/HAP_DELIVERABLES_CONTRACT.md`](HAP_DELIVERABLES_CONTRACT.md).
+
+Also produced as working artifacts: verification / discrepancy reports, decision log, engine JSON.
 
 ## Interfaces
 

@@ -46,3 +46,19 @@ class OutputService:
     def relative_path(self, analysis_id: str, filename: str) -> str:
         """Return the storage-relative path for an artifact."""
         return f"outputs/{analysis_id}/{filename}"
+
+    def list_artifacts(self, analysis_id: str) -> list[dict[str, Any]]:
+        """List downloadable files in the analysis output directory (top-level only)."""
+        directory = self.analysis_output_dir(analysis_id)
+        artifacts: list[dict[str, Any]] = []
+        for path in sorted(directory.iterdir(), key=lambda p: p.name.lower()):
+            if not path.is_file():
+                continue
+            artifacts.append(
+                {
+                    "name": path.name,
+                    "size_bytes": path.stat().st_size,
+                    "download_path": f"/analysis/{analysis_id}/outputs/{path.name}",
+                }
+            )
+        return artifacts

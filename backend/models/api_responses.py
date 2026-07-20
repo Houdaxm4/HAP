@@ -24,6 +24,8 @@ class AnalysisSummaryResponse(BaseModel):
     status: str
     pipeline_state: Literal["idle", "processing", "complete", "failed"]
     progress_pct: int = Field(ge=0, le=100)
+    current_stage: str | None = None
+    pipeline_error: str | None = None
     is_complete: bool
     created_at: str
     updated_at: str
@@ -64,6 +66,11 @@ def build_summary_response(
         business_quality_score = bq.get("score")
         investment_attractiveness_score = ia.get("score")
 
+    current_stage = (
+        analysis.pipeline.current_stage.value
+        if analysis.pipeline.current_stage is not None
+        else None
+    )
     return AnalysisSummaryResponse(
         analysis_id=analysis.analysis_id,
         company=analysis.company,
@@ -72,6 +79,8 @@ def build_summary_response(
         status=analysis.status,
         pipeline_state=analysis.pipeline.state,
         progress_pct=analysis.pipeline.progress_pct,
+        current_stage=current_stage,
+        pipeline_error=analysis.pipeline.error,
         is_complete=analysis.is_pipeline_complete,
         created_at=analysis.created_at,
         updated_at=analysis.updated_at,

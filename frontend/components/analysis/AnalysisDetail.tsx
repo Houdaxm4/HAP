@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import type { AnalysisDetail as AnalysisDetailType } from "@/lib/types";
 import Sidebar from "../Sidebar";
-import AnalystChat from "../AnalystChat";
+import RunActivityPanel from "../RunActivityPanel";
 import AnalysisHeader from "./AnalysisHeader";
 import AnalysisTabs, { type AnalysisTab } from "./AnalysisTabs";
 import OverviewTab from "./tabs/OverviewTab";
@@ -15,6 +15,7 @@ import {
 import { ExpectedReturnTab, ValuationTab } from "./tabs/ModuleTabs";
 import RecommendationTab from "./tabs/RecommendationTab";
 import VerificationTab from "./tabs/VerificationTab";
+import DeliverablesTab from "./tabs/DeliverablesTab";
 
 type AnalysisDetailProps = {
   analysis: AnalysisDetailType;
@@ -40,6 +41,8 @@ export default function AnalysisDetail({ analysis }: AnalysisDetailProps) {
         return <RecommendationTab analysis={analysis} />;
       case "Verification":
         return <VerificationTab analysis={analysis} />;
+      case "Deliverables":
+        return <DeliverablesTab analysis={analysis} />;
     }
   };
 
@@ -51,13 +54,16 @@ export default function AnalysisDetail({ analysis }: AnalysisDetailProps) {
 
       <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-          <AnalysisHeader analysis={analysis} />
+          <AnalysisHeader
+            analysis={analysis}
+            onOpenDeliverables={() => setActiveTab("Deliverables")}
+          />
           <AnalysisTabs activeTab={activeTab} onTabChange={setActiveTab} />
           <div className="flex-1 overflow-y-auto px-6 py-6 lg:px-8">
             {renderTab()}
           </div>
         </div>
-        <AnalystChat />
+        <RunActivityPanel analysis={analysis} />
       </div>
     </div>
   );

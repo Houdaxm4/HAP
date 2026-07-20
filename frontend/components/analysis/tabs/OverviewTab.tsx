@@ -8,11 +8,23 @@ export default function OverviewTab({ analysis }: { analysis: AnalysisDetail }) 
 
   if (!engine) {
     return (
-      <p className="text-sm text-hap-muted">
-        {analysis.status === "Complete"
-          ? "Analysis engine result is not available yet."
-          : "Pipeline in progress. Overview will populate when analysis completes."}
-      </p>
+      <div className="space-y-4">
+        {analysis.pipelineError ? (
+          <div className="rounded border border-red-500/40 bg-red-500/10 px-4 py-3">
+            <p className="text-xs font-semibold uppercase tracking-wider text-red-400">
+              Pipeline failed
+            </p>
+            <p className="mt-1 text-sm text-red-300">{analysis.pipelineError}</p>
+          </div>
+        ) : null}
+        <p className="text-sm text-hap-muted">
+          {analysis.status === "Complete"
+            ? "Analysis engine result is not available yet."
+            : analysis.status === "Failed"
+              ? "No overview is available because the analysis failed."
+              : `Pipeline in progress (${analysis.progress}%). Overview will populate when analysis completes.`}
+        </p>
+      </div>
     );
   }
 

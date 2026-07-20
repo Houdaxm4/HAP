@@ -21,6 +21,8 @@ export type AnalysisSummary = {
   status: string;
   pipeline_state: "idle" | "processing" | "complete" | "failed";
   progress_pct: number;
+  current_stage: string | null;
+  pipeline_error: string | null;
   is_complete: boolean;
   created_at: string;
   updated_at: string;
@@ -36,6 +38,8 @@ export type AnalysisDetailDto = AnalysisSummary & {
   pipeline: {
     state: "idle" | "processing" | "complete" | "failed";
     progress_pct: number;
+    current_stage?: string | null;
+    stages_completed?: string[];
     outputs?: Record<string, string | null>;
     error?: string | null;
   };
@@ -193,6 +197,8 @@ export interface AnalysisDetail {
   type: string;
   status: AnalysisStatus;
   progress: number;
+  currentStage: string | null;
+  pipelineError: string | null;
   startedAt: string;
   updatedAt: string;
   isComplete: boolean;
@@ -207,8 +213,15 @@ export interface AnalysisDetail {
     action: string;
     detail: string;
   }[];
+  outputs: Record<string, string | null>;
   hasEngineResult: boolean;
   hasValidationReport: boolean;
   engineResult: AnalysisEngineResult | null;
   validationReport: ValidationReport | null;
 }
+
+export type OutputArtifact = {
+  name: string;
+  size_bytes: number;
+  download_path: string;
+};

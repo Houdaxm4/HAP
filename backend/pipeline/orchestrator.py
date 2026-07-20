@@ -136,7 +136,7 @@ class PipelineOrchestrator:
                 discrepancy_report=discrepancy_path,
             )
 
-            _, _, model_path, result_path, log = self.run_analysis_stage.run(
+            _, _, model_path, result_path, hap_workbook_path, log = self.run_analysis_stage.run(
                 analysis,
                 provenance_report,
                 discrepancy_report,
@@ -150,6 +150,7 @@ class PipelineOrchestrator:
                 log,
                 company_financial_model=model_path,
                 analysis_engine_result=result_path,
+                hap_workbook=hap_workbook_path,
             )
 
             analysis.pipeline.state = "complete"

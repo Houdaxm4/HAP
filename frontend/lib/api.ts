@@ -135,6 +135,29 @@ export async function getAnalysisOutputJson<T>(
   return response.json() as Promise<T>;
 }
 
+export type OutputArtifactDto = {
+  name: string;
+  size_bytes: number;
+  download_path: string;
+};
+
+export async function listAnalysisOutputs(
+  analysisId: string,
+): Promise<OutputArtifactDto[]> {
+  const payload = await requestJson<{
+    analysis_id: string;
+    artifacts: OutputArtifactDto[];
+  }>(`/analysis/${analysisId}/outputs`);
+  return payload.artifacts;
+}
+
+export function getOutputDownloadUrl(
+  analysisId: string,
+  artifactName: string,
+): string {
+  return `${API_BASE}/analysis/${analysisId}/outputs/${encodeURIComponent(artifactName)}`;
+}
+
 export function isAnalysisTerminal(detail: {
   pipeline_state: string;
   is_complete: boolean;

@@ -11,12 +11,18 @@ type SidebarProps = {
   onNewAnalysis: () => void;
 };
 
-const navItems = [
-  { label: "Dashboard", href: "/", action: null },
-  { label: "New Analysis", href: null, action: "new" as const },
-  { label: "Active Analyses", href: "/", action: null },
-  { label: "History", href: "/", action: null },
-  { label: "Settings", href: "/", action: null },
+type NavItem =
+  | { label: string; kind: "link"; href: string }
+  | { label: string; kind: "action"; action: "new" }
+  | { label: string; kind: "anchor"; href: string }
+  | { label: string; kind: "disabled"; reason: string };
+
+const navItems: NavItem[] = [
+  { label: "Dashboard", kind: "link", href: "/" },
+  { label: "New Analysis", kind: "action", action: "new" },
+  { label: "Active Analyses", kind: "anchor", href: "/#active-analyses" },
+  { label: "History", kind: "disabled", reason: "Coming soon" },
+  { label: "Settings", kind: "disabled", reason: "Coming soon" },
 ];
 
 export default function Sidebar({ onNewAnalysis }: SidebarProps) {
@@ -43,17 +49,17 @@ export default function Sidebar({ onNewAnalysis }: SidebarProps) {
       <nav className="flex flex-1 flex-col gap-0.5 p-3">
         {navItems.map((item) => {
           const isActive =
-            item.label === "Dashboard"
+            item.kind === "link" && item.label === "Dashboard"
               ? pathname === "/"
-              : pathname.startsWith("/analysis");
+              : false;
 
           const className = `rounded px-3 py-2.5 text-left text-sm transition-colors ${
-            isActive && item.label === "Dashboard"
+            isActive
               ? "border-l-2 border-hap-orange bg-hap-panel-elevated font-medium text-hap-orange"
               : "border-l-2 border-transparent text-hap-muted hover:bg-hap-panel-elevated hover:text-foreground"
           }`;
 
-          if (item.action === "new") {
+          if (item.kind === "action") {
             return (
               <button key={item.label} onClick={onNewAnalysis} className={className}>
                 {item.label}
@@ -61,8 +67,23 @@ export default function Sidebar({ onNewAnalysis }: SidebarProps) {
             );
           }
 
+          if (item.kind === "disabled") {
+            return (
+              <div
+                key={item.label}
+                className="cursor-not-allowed rounded border-l-2 border-transparent px-3 py-2.5 text-left text-sm text-hap-muted/50"
+                title={item.reason}
+              >
+                <span>{item.label}</span>
+                <span className="mt-0.5 block text-[10px] uppercase tracking-wider">
+                  {item.reason}
+                </span>
+              </div>
+            );
+          }
+
           return (
-            <Link key={item.label} href={item.href!} className={className}>
+            <Link key={item.label} href={item.href} className={className}>
               {item.label}
             </Link>
           );
@@ -72,7 +93,7 @@ export default function Sidebar({ onNewAnalysis }: SidebarProps) {
       <div className="border-t border-hap-border px-5 py-3">
         <div className="flex items-center gap-2 text-xs text-hap-muted">
           <span className="h-1.5 w-1.5 rounded-full bg-hap-success" />
-          Systems operational
+          Backend: localhost:8000
         </div>
       </div>
     </aside>

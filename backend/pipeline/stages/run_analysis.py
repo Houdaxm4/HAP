@@ -12,7 +12,10 @@ from models.custom_run import CustomRunData
 from models.pipeline import DecisionLogEntry
 from models.provenance import ProvenanceReport
 from models.validation import DiscrepancyReport
+from services.hap_workbook_service import HapWorkbookService
 from services.output_service import OutputService
+
+ENGINE_VERSION = "0.3.0"
 
 
 class RunAnalysisStage:
@@ -25,9 +28,11 @@ class RunAnalysisStage:
         self,
         output_service: OutputService | None = None,
         analysis_engine: AnalysisEngine | None = None,
+        hap_workbook_service: HapWorkbookService | None = None,
     ) -> None:
         self.output_service = output_service or OutputService()
         self.analysis_engine = analysis_engine or AnalysisEngine()
+        self.hap_workbook_service = hap_workbook_service or HapWorkbookService()
 
     def run(
         self,
@@ -36,7 +41,7 @@ class RunAnalysisStage:
         discrepancy_report: DiscrepancyReport,
         custom_run: CustomRunData,
         company_facts: dict[str, Any],
-    ) -> tuple[CompanyFinancialModel, AnalysisEngineResult, str, str, DecisionLogEntry]:
+    ) -> tuple[CompanyFinancialModel, AnalysisEngineResult, str, str, str, DecisionLogEntry]:
         model = build_company_financial_model(
             analysis_id=analysis.analysis_id,
             ticker=analysis.ticker,
@@ -70,6 +75,25 @@ class RunAnalysisStage:
             engine_result,
         )
 
+        hap_workbook_path = self.output_service.artifact_path(
+            analysis.analysis_id,
+            "hap_workbook.xlsx",
+        )
+        self.hap_workbook_service.write(
+            hap_workbook_path,
+            analysis=analysis,
+            model=model,
+            engine_result=engine_result,
+            custom_run=custom_run,
+            validation_report=discrepancy_report,
+            provenance_report=provenance_report,
+            engine_version=ENGINE_VERSION,
+        )
+        hap_workbook_rel = self.output_service.relative_path(
+            analysis.analysis_id,
+            "hap_workbook.xlsx",
+        )
+
         recommendation = (
             engine_result.recommendation.recommendation
             if engine_result.recommendation is not None
@@ -91,9 +115,10 @@ class RunAnalysisStage:
             action="run_analysis",
             detail=(
                 f"AnalysisEngine completed for {analysis.ticker}: "
-                f"BQ={bq_score}, IA={ia_score}, recommendation={recommendation}."
+                f"BQ={bq_score}, IA={ia_score}, recommendation={recommendation}. "
+                f"HAP workbook written."
             ),
             confidence=engine_result.confidence,
-            citations=[model_path, result_path],
+            citations=[model_path, result_path, hap_workbook_rel],
         )
-        return model, engine_result, model_path, result_path, log_entry
+        return model, engine_result, model_path, result_path, hap_workbook_rel, log_entry

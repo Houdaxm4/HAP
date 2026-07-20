@@ -141,7 +141,8 @@ export default function NewAnalysisModal({
               New Analysis
             </h2>
             <p className="text-xs text-hap-muted">
-              Configure and launch an investment analysis run
+              Mode A: Industrial Template + Custom Run Filter + SEC. Mode B
+              (internet-only) is not available yet.
             </p>
           </div>
           <button
@@ -248,11 +249,16 @@ export default function NewAnalysisModal({
                   />
                   <FileUploadBox
                     label="custom_run_filter"
-                    description=".csv, .xlsx"
+                    description=".xlsx (Bloomberg CRF)"
                     file={form.customRunFilter}
                     onFileChange={(f) => update("customRunFilter", f)}
                   />
                 </div>
+                <p className="mt-2 text-[11px] text-hap-muted">
+                  Prefilled Industrial Template is required. Custom Run Filter is
+                  strongly recommended for market/valuation overlays. Previous
+                  workbook is stored but not yet used by the update workflow.
+                </p>
               </div>
 
               <div>

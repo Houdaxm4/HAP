@@ -6,7 +6,7 @@ import { useAnalysisStore } from "@/lib/analysis-store-context";
 import type { NewAnalysisFormData } from "@/lib/types";
 import Sidebar from "./Sidebar";
 import CommandCenter from "./CommandCenter";
-import AnalystChat from "./AnalystChat";
+import RunActivityPanel from "./RunActivityPanel";
 import NewAnalysisModal from "./NewAnalysisModal";
 
 export default function Dashboard() {
@@ -39,7 +39,7 @@ export default function Dashboard() {
 
         <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
           <CommandCenter onNewAnalysis={openModal} />
-          <AnalystChat />
+          <RunActivityPanel />
         </div>
       </div>
 
