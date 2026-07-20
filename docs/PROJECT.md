@@ -47,6 +47,28 @@ HAP will eventually have two main interfaces:
 1. Never overwrite formulas.
 2. Never invent financial data.
 3. Never recompute proprietary metrics from custom_run_filter.
-4. Preserve traceability for every important number.
-5. Prefer SEC filings as the source of truth for financial statements.
-6. Human judgment always overrides automation.
+4. Never overwrite analyst-calculated Workbook Metrics — HAP computes independent HAP Metrics and compares when equivalents exist.
+5. Preserve traceability for every important number.
+6. Prefer SEC filings as the source of truth for financial statements.
+7. Human judgment always overrides automation.
+
+## Ingestion (HAP v1)
+
+Product inputs: prefilled workbook + Bloomberg `custom_run_filter` workbook + SEC filings.
+See [`docs/INGESTION_ARCHITECTURE.md`](INGESTION_ARCHITECTURE.md). Custom_Run_Filter is proprietary analytics, not a cell-mapping table.
+
+## Architecture Freeze
+
+The core HAP architecture is considered stable.
+
+No new packages, contracts, or architectural layers may be introduced unless they solve a clearly identified limitation that cannot be addressed within the current design.
+
+Future development should focus on:
+
+- Financial intelligence
+- Analysis modules
+- Investment methodology
+- Testing
+- User experience
+
+not architecture.

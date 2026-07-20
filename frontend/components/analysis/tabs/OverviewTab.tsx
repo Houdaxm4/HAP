@@ -1,56 +1,79 @@
 import type { AnalysisDetail } from "@/lib/types";
+import { formatMetricValue, formatScore } from "@/lib/map-backend-analysis";
 
 export default function OverviewTab({ analysis }: { analysis: AnalysisDetail }) {
+  const engine = analysis.engineResult;
+  const recommendation = engine?.recommendation;
+  const metrics = engine?.metrics?.slice(0, 8) ?? [];
+
+  if (!engine) {
+    return (
+      <p className="text-sm text-hap-muted">
+        {analysis.status === "Complete"
+          ? "Analysis engine result is not available yet."
+          : "Pipeline in progress. Overview will populate when analysis completes."}
+      </p>
+    );
+  }
+
   return (
     <div className="space-y-6">
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        {analysis.keyMetrics.map((metric) => (
-          <div
-            key={metric.label}
-            className="rounded border border-hap-border bg-hap-panel p-4"
-          >
-            <p className="text-xs uppercase tracking-wider text-hap-muted">
-              {metric.label}
-            </p>
-            <p className="mt-1 font-mono text-xl font-semibold">{metric.value}</p>
-            {metric.change && (
-              <p className="mt-0.5 text-xs text-hap-success">{metric.change}</p>
-            )}
-          </div>
-        ))}
-      </div>
-
-      <div className="grid gap-4 lg:grid-cols-2">
-        <div className="rounded border border-hap-border bg-hap-panel p-5">
-          <h3 className="text-xs font-semibold uppercase tracking-widest text-hap-muted">
-            Investment Thesis
-          </h3>
-          <p className="mt-3 text-sm leading-relaxed text-foreground/90">
-            {analysis.thesis}
+        <div className="rounded border border-hap-border bg-hap-panel p-4">
+          <p className="text-xs uppercase tracking-wider text-hap-muted">Recommendation</p>
+          <p className="mt-1 text-xl font-semibold text-hap-orange">
+            {recommendation?.recommendation_label ?? analysis.recommendationLabel ?? "—"}
           </p>
         </div>
-
-        <div className="rounded border border-hap-border bg-hap-panel p-5">
-          <h3 className="text-xs font-semibold uppercase tracking-widest text-hap-muted">
-            Valuation
-          </h3>
-          <div className="mt-3 space-y-3">
-            <div className="flex justify-between">
-              <span className="text-sm text-hap-muted">Price Target</span>
-              <span className="font-mono font-semibold text-hap-orange">
-                {analysis.priceTarget}
-              </span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-sm text-hap-muted">Rating</span>
-              <span className="font-medium text-hap-success">{analysis.rating}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-sm text-hap-muted">Market Cap</span>
-              <span className="font-mono">{analysis.marketCap}</span>
-            </div>
-          </div>
+        <div className="rounded border border-hap-border bg-hap-panel p-4">
+          <p className="text-xs uppercase tracking-wider text-hap-muted">Business Quality</p>
+          <p className="mt-1 font-mono text-xl font-semibold">
+            {formatScore(engine.business_quality?.score)}
+          </p>
+          <p className="mt-0.5 text-xs text-hap-muted">
+            {engine.business_quality?.classification_label ?? "—"}
+          </p>
         </div>
+        <div className="rounded border border-hap-border bg-hap-panel p-4">
+          <p className="text-xs uppercase tracking-wider text-hap-muted">
+            Investment Attractiveness
+          </p>
+          <p className="mt-1 font-mono text-xl font-semibold">
+            {formatScore(engine.investment_attractiveness?.score)}
+          </p>
+          <p className="mt-0.5 text-xs text-hap-muted">
+            {engine.investment_attractiveness?.classification_label ?? "—"}
+          </p>
+        </div>
+        <div className="rounded border border-hap-border bg-hap-panel p-4">
+          <p className="text-xs uppercase tracking-wider text-hap-muted">Confidence</p>
+          <p className="mt-1 font-mono text-xl font-semibold">
+            {engine.confidence == null ? "—" : engine.confidence.toFixed(2)}
+          </p>
+        </div>
+      </div>
+
+      <div className="rounded border border-hap-border bg-hap-panel p-5">
+        <h3 className="text-xs font-semibold uppercase tracking-widest text-hap-muted">
+          Key Metrics
+        </h3>
+        {metrics.length === 0 ? (
+          <p className="mt-3 text-sm text-hap-muted">No metrics available from the engine result.</p>
+        ) : (
+          <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            {metrics.map((metric) => (
+              <div key={`${metric.code}-${metric.period ?? ""}`} className="rounded border border-hap-border/60 p-3">
+                <p className="text-xs text-hap-muted">{metric.name ?? metric.label ?? metric.code}</p>
+                <p className="mt-1 font-mono text-lg font-semibold">
+                  {formatMetricValue(metric.value)}
+                </p>
+                {metric.period && (
+                  <p className="mt-0.5 text-[10px] text-hap-muted">{metric.period}</p>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );

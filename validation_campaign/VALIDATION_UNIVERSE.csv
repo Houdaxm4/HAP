@@ -1,0 +1,92 @@
+Ticker,Company,Sector,Sampling_Quality_Tier,Package_Path
+AAPL,Apple Inc.,Technology,Exceptional,C:\Users\G\HAP\validation_campaign\universe\AAPL
+MSFT,Microsoft Corporation,Technology,Exceptional,C:\Users\G\HAP\validation_campaign\universe\MSFT
+GOOGL,Alphabet Inc.,Technology,Excellent,C:\Users\G\HAP\validation_campaign\universe\GOOGL
+NVDA,NVIDIA Corporation,Technology,Excellent,C:\Users\G\HAP\validation_campaign\universe\NVDA
+META,Meta Platforms Inc.,Technology,Excellent,C:\Users\G\HAP\validation_campaign\universe\META
+ORCL,Oracle Corporation,Technology,Excellent,C:\Users\G\HAP\validation_campaign\universe\ORCL
+ADBE,Adobe Inc.,Technology,Excellent,C:\Users\G\HAP\validation_campaign\universe\ADBE
+CRM,Salesforce Inc.,Technology,Average,C:\Users\G\HAP\validation_campaign\universe\CRM
+IBM,International Business Machines,Technology,Average,C:\Users\G\HAP\validation_campaign\universe\IBM
+INTC,Intel Corporation,Technology,Weak,C:\Users\G\HAP\validation_campaign\universe\INTC
+SNAP,Snap Inc.,Technology,Weak,C:\Users\G\HAP\validation_campaign\universe\SNAP
+JPM,JPMorgan Chase & Co.,Financials,Excellent,C:\Users\G\HAP\validation_campaign\universe\JPM
+BAC,Bank of America Corporation,Financials,Average,C:\Users\G\HAP\validation_campaign\universe\BAC
+WFC,Wells Fargo & Company,Financials,Average,C:\Users\G\HAP\validation_campaign\universe\WFC
+GS,Goldman Sachs Group Inc.,Financials,Excellent,C:\Users\G\HAP\validation_campaign\universe\GS
+MS,Morgan Stanley,Financials,Excellent,C:\Users\G\HAP\validation_campaign\universe\MS
+BLK,BlackRock Inc.,Financials,Excellent,C:\Users\G\HAP\validation_campaign\universe\BLK
+SCHW,Charles Schwab Corporation,Financials,Average,C:\Users\G\HAP\validation_campaign\universe\SCHW
+C,Citigroup Inc.,Financials,Average,C:\Users\G\HAP\validation_campaign\universe\C
+KEY,KeyCorp,Financials,Weak,C:\Users\G\HAP\validation_campaign\universe\KEY
+NYCB,New York Community Bancorp,Financials,Distressed,C:\Users\G\HAP\validation_campaign\universe\NYCB
+PG,Procter & Gamble Co.,Consumer Staples,Excellent,C:\Users\G\HAP\validation_campaign\universe\PG
+KO,Coca-Cola Company,Consumer Staples,Excellent,C:\Users\G\HAP\validation_campaign\universe\KO
+PEP,PepsiCo Inc.,Consumer Staples,Excellent,C:\Users\G\HAP\validation_campaign\universe\PEP
+WMT,Walmart Inc.,Consumer Staples,Excellent,C:\Users\G\HAP\validation_campaign\universe\WMT
+COST,Costco Wholesale Corporation,Consumer Staples,Exceptional,C:\Users\G\HAP\validation_campaign\universe\COST
+CL,Colgate-Palmolive Company,Consumer Staples,Excellent,C:\Users\G\HAP\validation_campaign\universe\CL
+MDLZ,Mondelez International,Consumer Staples,Average,C:\Users\G\HAP\validation_campaign\universe\MDLZ
+KHC,Kraft Heinz Company,Consumer Staples,Average,C:\Users\G\HAP\validation_campaign\universe\KHC
+WBA,Walgreens Boots Alliance,Consumer Staples,Weak,C:\Users\G\HAP\validation_campaign\universe\WBA
+GIS,General Mills Inc.,Consumer Staples,Average,C:\Users\G\HAP\validation_campaign\universe\GIS
+AMZN,Amazon.com Inc.,Consumer Discretionary,Excellent,C:\Users\G\HAP\validation_campaign\universe\AMZN
+HD,Home Depot Inc.,Consumer Discretionary,Excellent,C:\Users\G\HAP\validation_campaign\universe\HD
+MCD,McDonald's Corporation,Consumer Discretionary,Excellent,C:\Users\G\HAP\validation_campaign\universe\MCD
+NKE,Nike Inc.,Consumer Discretionary,Average,C:\Users\G\HAP\validation_campaign\universe\NKE
+SBUX,Starbucks Corporation,Consumer Discretionary,Average,C:\Users\G\HAP\validation_campaign\universe\SBUX
+TJX,TJX Companies Inc.,Consumer Discretionary,Excellent,C:\Users\G\HAP\validation_campaign\universe\TJX
+LOW,Lowe's Companies Inc.,Consumer Discretionary,Excellent,C:\Users\G\HAP\validation_campaign\universe\LOW
+TSLA,Tesla Inc.,Consumer Discretionary,Average,C:\Users\G\HAP\validation_campaign\universe\TSLA
+CMG,Chipotle Mexican Grill,Consumer Discretionary,Excellent,C:\Users\G\HAP\validation_campaign\universe\CMG
+AMC,AMC Entertainment Holdings,Consumer Discretionary,Distressed,C:\Users\G\HAP\validation_campaign\universe\AMC
+CAT,Caterpillar Inc.,Industrials,Excellent,C:\Users\G\HAP\validation_campaign\universe\CAT
+GE,GE Aerospace,Industrials,Excellent,C:\Users\G\HAP\validation_campaign\universe\GE
+HON,Honeywell International,Industrials,Excellent,C:\Users\G\HAP\validation_campaign\universe\HON
+UNP,Union Pacific Corporation,Industrials,Excellent,C:\Users\G\HAP\validation_campaign\universe\UNP
+DE,Deere & Company,Industrials,Excellent,C:\Users\G\HAP\validation_campaign\universe\DE
+BA,Boeing Company,Industrials,Weak,C:\Users\G\HAP\validation_campaign\universe\BA
+RTX,RTX Corporation,Industrials,Average,C:\Users\G\HAP\validation_campaign\universe\RTX
+MMM,3M Company,Industrials,Average,C:\Users\G\HAP\validation_campaign\universe\MMM
+UPS,United Parcel Service,Industrials,Average,C:\Users\G\HAP\validation_campaign\universe\UPS
+FDX,FedEx Corporation,Industrials,Average,C:\Users\G\HAP\validation_campaign\universe\FDX
+UNH,UnitedHealth Group,Healthcare,Excellent,C:\Users\G\HAP\validation_campaign\universe\UNH
+LLY,Eli Lilly and Company,Healthcare,Exceptional,C:\Users\G\HAP\validation_campaign\universe\LLY
+JNJ,Johnson & Johnson,Healthcare,Excellent,C:\Users\G\HAP\validation_campaign\universe\JNJ
+ABBV,AbbVie Inc.,Healthcare,Excellent,C:\Users\G\HAP\validation_campaign\universe\ABBV
+MRK,Merck & Co. Inc.,Healthcare,Excellent,C:\Users\G\HAP\validation_campaign\universe\MRK
+PFE,Pfizer Inc.,Healthcare,Average,C:\Users\G\HAP\validation_campaign\universe\PFE
+ISRG,Intuitive Surgical,Healthcare,Excellent,C:\Users\G\HAP\validation_campaign\universe\ISRG
+MRNA,Moderna Inc.,Healthcare,Weak,C:\Users\G\HAP\validation_campaign\universe\MRNA
+BMY,Bristol-Myers Squibb,Healthcare,Average,C:\Users\G\HAP\validation_campaign\universe\BMY
+CVS,CVS Health Corporation,Healthcare,Weak,C:\Users\G\HAP\validation_campaign\universe\CVS
+XOM,Exxon Mobil Corporation,Energy,Excellent,C:\Users\G\HAP\validation_campaign\universe\XOM
+CVX,Chevron Corporation,Energy,Excellent,C:\Users\G\HAP\validation_campaign\universe\CVX
+COP,ConocoPhillips,Energy,Average,C:\Users\G\HAP\validation_campaign\universe\COP
+OXY,Occidental Petroleum,Energy,Average,C:\Users\G\HAP\validation_campaign\universe\OXY
+SLB,Schlumberger Limited,Energy,Average,C:\Users\G\HAP\validation_campaign\universe\SLB
+DVN,Devon Energy Corporation,Energy,Average,C:\Users\G\HAP\validation_campaign\universe\DVN
+HAL,Halliburton Company,Energy,Average,C:\Users\G\HAP\validation_campaign\universe\HAL
+APA,APA Corporation,Energy,Weak,C:\Users\G\HAP\validation_campaign\universe\APA
+NEE,NextEra Energy Inc.,Utilities,Excellent,C:\Users\G\HAP\validation_campaign\universe\NEE
+DUK,Duke Energy Corporation,Utilities,Average,C:\Users\G\HAP\validation_campaign\universe\DUK
+SO,Southern Company,Utilities,Average,C:\Users\G\HAP\validation_campaign\universe\SO
+AEP,American Electric Power,Utilities,Average,C:\Users\G\HAP\validation_campaign\universe\AEP
+EXC,Exelon Corporation,Utilities,Average,C:\Users\G\HAP\validation_campaign\universe\EXC
+D,Dominion Energy Inc.,Utilities,Average,C:\Users\G\HAP\validation_campaign\universe\D
+SRE,Sempra,Utilities,Average,C:\Users\G\HAP\validation_campaign\universe\SRE
+PCG,PG&E Corporation,Utilities,Weak,C:\Users\G\HAP\validation_campaign\universe\PCG
+O,Realty Income Corporation,REITs,Excellent,C:\Users\G\HAP\validation_campaign\universe\O
+AMT,American Tower Corporation,REITs,Excellent,C:\Users\G\HAP\validation_campaign\universe\AMT
+PLD,Prologis Inc.,REITs,Excellent,C:\Users\G\HAP\validation_campaign\universe\PLD
+SPG,Simon Property Group,REITs,Average,C:\Users\G\HAP\validation_campaign\universe\SPG
+VICI,VICI Properties Inc.,REITs,Average,C:\Users\G\HAP\validation_campaign\universe\VICI
+WELL,Welltower Inc.,REITs,Average,C:\Users\G\HAP\validation_campaign\universe\WELL
+EQIX,Equinix Inc.,REITs,Excellent,C:\Users\G\HAP\validation_campaign\universe\EQIX
+ARE,Alexandria Real Estate,REITs,Average,C:\Users\G\HAP\validation_campaign\universe\ARE
+T,AT&T Inc.,Telecommunications,Average,C:\Users\G\HAP\validation_campaign\universe\T
+VZ,Verizon Communications,Telecommunications,Average,C:\Users\G\HAP\validation_campaign\universe\VZ
+TMUS,T-Mobile US Inc.,Telecommunications,Excellent,C:\Users\G\HAP\validation_campaign\universe\TMUS
+CMCSA,Comcast Corporation,Telecommunications,Average,C:\Users\G\HAP\validation_campaign\universe\CMCSA
+CHTR,Charter Communications,Telecommunications,Average,C:\Users\G\HAP\validation_campaign\universe\CHTR
+TU,TELUS Corporation,Telecommunications,Average,C:\Users\G\HAP\validation_campaign\universe\TU

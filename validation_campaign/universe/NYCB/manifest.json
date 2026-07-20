@@ -1,0 +1,13 @@
+{
+  "company": "New York Community Bancorp",
+  "ticker": "NYCB",
+  "industry": "Financials",
+  "sector": "Financials",
+  "sampling_quality_tier": "Distressed",
+  "notes": "Sampling label for campaign coverage only \u2014 not a HAP engine score.",
+  "required_inputs": {
+    "workbook": "workbook.xlsx or prefilled*.xlsx",
+    "custom_run_filter": "custom_run_filter.csv (or .xlsx)",
+    "manifest": "manifest.json (this file)"
+  }
+}

@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import type { AnalysisDetail } from "@/lib/types";
+import { formatScore } from "@/lib/map-backend-analysis";
 import StatusBadge from "../StatusBadge";
 
 type AnalysisHeaderProps = {
@@ -25,7 +26,13 @@ export default function AnalysisHeader({ analysis }: AnalysisHeaderProps) {
             <span className="font-mono text-lg text-hap-orange">{analysis.ticker}</span>
           </div>
           <p className="mt-1 text-sm text-hap-muted">
-            {analysis.type} &middot; {analysis.sector}
+            {analysis.type}
+            {analysis.recommendationLabel
+              ? ` · ${analysis.recommendationLabel}`
+              : ""}
+            {analysis.businessQualityScore != null
+              ? ` · BQ ${formatScore(analysis.businessQualityScore)}`
+              : ""}
           </p>
         </div>
 

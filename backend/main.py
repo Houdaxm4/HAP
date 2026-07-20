@@ -9,12 +9,19 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 
 from models.analysis import CreateAnalysisRequest, CreateAnalysisResponse
+from models.api_responses import (
+    AnalysisDetailResponse,
+    AnalysisSummaryResponse,
+    build_detail_response,
+    build_summary_response,
+    load_engine_result_dict,
+)
+from models.workbook_schema import WorkbookSummary
 from pipeline.orchestrator import PipelineError, PipelineOrchestrator
 from services.analysis_service import AnalysisNotFoundError, AnalysisService
 from services.file_service import FileService, FileUploadError
 from services.output_service import OutputService
 from services.workbook_service import WorkbookService
-from models.workbook_schema import WorkbookSummary
 
 app = FastAPI(
     title="HAP Backend",
@@ -81,16 +88,25 @@ async def upload_analysis_files(
     return updated.to_dict()
 
 
-@app.get("/analysis/{analysis_id}")
-def get_analysis(analysis_id: str) -> dict:
-    """Return full metadata for an analysis."""
+@app.get("/analyses", response_model=list[AnalysisSummaryResponse])
+def list_analyses() -> list[AnalysisSummaryResponse]:
+    """Return summary DTOs for all analyses (no full engine artifacts)."""
+    items: list[AnalysisSummaryResponse] = []
+    for analysis in analysis_service.list_all():
+        engine_result = load_engine_result_dict(output_service, analysis)
+        items.append(build_summary_response(analysis, engine_result))
+    return items
+
+
+@app.get("/analysis/{analysis_id}", response_model=AnalysisDetailResponse)
+def get_analysis(analysis_id: str) -> AnalysisDetailResponse:
+    """Return detail metadata DTO. Engine JSON is available via outputs API."""
     try:
         analysis = analysis_service.get(analysis_id)
     except AnalysisNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
-    payload = analysis.to_dict()
-    payload["display_status"] = _display_status(analysis)
-    return payload
+    engine_result = load_engine_result_dict(output_service, analysis)
+    return build_detail_response(analysis, engine_result)
 
 
 @app.post("/analysis/{analysis_id}/run")
@@ -176,19 +192,6 @@ def get_cell_provenance(analysis_id: str, cell_ref: str) -> dict:
             return entry
 
     raise HTTPException(status_code=404, detail=f"No provenance found for '{normalized_ref}'.")
-
-
-def _display_status(analysis) -> str:
-    """UI-facing status that never shows Complete until required outputs exist."""
-    if analysis.is_pipeline_complete:
-        return "Complete"
-    if analysis.pipeline.state in {"processing", "idle"} and analysis.status != "failed":
-        if analysis.status == "uploaded":
-            return "Waiting for backend pipeline."
-        return "Processing"
-    if analysis.pipeline.state == "failed":
-        return "Failed"
-    return "Processing"
 
 
 def _media_type_for(path: Path) -> str:

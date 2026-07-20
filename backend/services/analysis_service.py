@@ -58,3 +58,12 @@ class AnalysisService:
         if not self._path_for(analysis.analysis_id).exists():
             raise AnalysisNotFoundError(f"Analysis '{analysis.analysis_id}' not found.")
         return self.save(analysis)
+
+    def list_all(self) -> list[Analysis]:
+        """Return all persisted analyses, newest first."""
+        analyses: list[Analysis] = []
+        for path in self.storage_dir.glob("*.json"):
+            with path.open("r", encoding="utf-8") as handle:
+                analyses.append(Analysis.from_dict(json.load(handle)))
+        analyses.sort(key=lambda item: item.updated_at, reverse=True)
+        return analyses

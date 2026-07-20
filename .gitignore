@@ -1,0 +1,86 @@
+# =============================================================================
+# HAP — root .gitignore
+# Keep application source, docs, and tests. Exclude runtime, caches, secrets,
+# and proprietary analyst/Bloomberg workbooks.
+# =============================================================================
+
+# ----- OS / editor -----
+.DS_Store
+Thumbs.db
+Desktop.ini
+*.swp
+*.swo
+*~
+.idea/
+.vscode/
+*.code-workspace
+
+# ----- Secrets / local environment -----
+.env
+.env.*
+!.env.example
+*.pem
+
+# ----- Python -----
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.eggs/
+dist/
+build/
+.venv/
+venv/
+.env/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+.tox/
+.cache/
+*.log
+
+# ----- Node / Next.js -----
+# (frontend/.gitignore also covers the frontend package)
+node_modules/
+.next/
+out/
+.vercel/
+*.tsbuildinfo
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# Accidental root npm lockfile (real lockfile is frontend/package-lock.json)
+/package-lock.json
+
+# ----- Office temporary / lock files -----
+~$*
+*.tmp
+*.temp
+
+# ----- Backend runtime storage -----
+# Keep only .gitkeep placeholders (also enforced in backend/.gitignore).
+backend/storage/analyses/*.json
+backend/storage/uploads/*/
+backend/storage/outputs/*/
+
+# ----- Validation campaign: runtime / generated / private -----
+# Run outputs and harness results (regenerable)
+validation_campaign/runs/
+validation_campaign/results/
+validation_campaign/**/output/
+
+# Proprietary Bloomberg Custom_Run_Filter + analyst Industrial Templates
+# Keep manifests, scripts, and reports; do not publish workbook binaries.
+validation_campaign/universe/**/*.xlsx
+validation_campaign/universe/**/*.xls
+validation_campaign/universe/**/*.xlsm
+validation_campaign/universe/**/*.csv
+!validation_campaign/VALIDATION_UNIVERSE.csv
+
+# Generated CRF inspection dumps (scripts regenerate these)
+validation_campaign/_crf_inventory.json
+validation_campaign/_crf_structure.json

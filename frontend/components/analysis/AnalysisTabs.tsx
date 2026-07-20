@@ -2,11 +2,12 @@
 
 const TABS = [
   "Overview",
-  "Workbook",
+  "Business Quality",
+  "Investment Attractiveness",
+  "Valuation",
+  "Expected Return",
+  "Recommendation",
   "Verification",
-  "Decision Log",
-  "Summary",
-  "Chat",
 ] as const;
 
 export type AnalysisTab = (typeof TABS)[number];

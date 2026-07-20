@@ -6,6 +6,15 @@ type CommandCenterProps = {
   onNewAnalysis: () => void;
 };
 
+function formatToday(): string {
+  return new Date().toLocaleDateString("en-US", {
+    weekday: "long",
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  });
+}
+
 export default function CommandCenter({ onNewAnalysis }: CommandCenterProps) {
   return (
     <main className="flex h-full flex-1 flex-col overflow-hidden">
@@ -14,17 +23,7 @@ export default function CommandCenter({ onNewAnalysis }: CommandCenterProps) {
           <h2 className="text-2xl font-semibold tracking-tight lg:text-3xl">
             Command Center
           </h2>
-          <p className="mt-0.5 text-xs text-hap-muted">
-            Monday, July 6, 2026 &middot; Market Open
-          </p>
-        </div>
-        <div className="hidden items-center gap-4 font-mono text-xs text-hap-muted sm:flex">
-          <span>
-            S&amp;P 500 <span className="text-hap-success">+0.42%</span>
-          </span>
-          <span>
-            NASDAQ <span className="text-hap-success">+0.68%</span>
-          </span>
+          <p className="mt-0.5 text-xs text-hap-muted">{formatToday()}</p>
         </div>
       </header>
 

@@ -5,8 +5,12 @@ import type { AnalysisDetail, NewAnalysisFormData } from "./types";
 
 export type AnalysisStoreContextValue = {
   analyses: AnalysisDetail[];
-  addAnalysis: (data: NewAnalysisFormData) => string;
+  isLoadingList: boolean;
+  listError: string | null;
+  reloadAnalyses: () => Promise<void>;
+  startAnalysis: (data: NewAnalysisFormData) => Promise<string>;
   getById: (id: string) => AnalysisDetail | undefined;
+  hydrateAnalysis: (analysisId: string) => Promise<AnalysisDetail | undefined>;
 };
 
 export const AnalysisStoreContext =

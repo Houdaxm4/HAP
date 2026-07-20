@@ -11,7 +11,7 @@ import NewAnalysisModal from "./NewAnalysisModal";
 
 export default function Dashboard() {
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const { addAnalysis } = useAnalysisStore();
+  const { startAnalysis } = useAnalysisStore();
   const router = useRouter();
   const searchParams = useSearchParams();
 
@@ -24,8 +24,8 @@ export default function Dashboard() {
   const openModal = () => setIsModalOpen(true);
   const closeModal = () => setIsModalOpen(false);
 
-  const handleStartAnalysis = (data: NewAnalysisFormData) => {
-    const id = addAnalysis(data);
+  const handleStartAnalysis = async (data: NewAnalysisFormData) => {
+    const id = await startAnalysis(data);
     closeModal();
     router.push(`/analysis/${id}`);
   };

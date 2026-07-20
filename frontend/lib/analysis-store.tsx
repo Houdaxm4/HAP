@@ -4,134 +4,224 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
+import {
+  createAnalysis,
+  getAnalysis,
+  getAnalysisOutputJson,
+  isAnalysisTerminal,
+  listAnalyses,
+  runAnalysis,
+  uploadAnalysisFiles,
+} from "./api";
 import { AnalysisStoreContext } from "./analysis-store-context";
-import { getAnalystLabel } from "./app_config";
-import { MOCK_ANALYSES } from "./mock-analyses";
-import type { AnalysisDetail, AnalysisStatus, NewAnalysisFormData } from "./types";
+import {
+  mapDetailDtoToAnalysisDetail,
+  mapSummaryToAnalysisDetail,
+} from "./map-backend-analysis";
+import type {
+  AnalysisDetail,
+  AnalysisEngineResult,
+  NewAnalysisFormData,
+  ValidationReport,
+} from "./types";
 
-function typeLabel(type: NewAnalysisFormData["analysisType"]): string {
-  const labels = {
-    new_company: "New Company Initiation",
-    annual_update: "Annual Update",
-    quarterly_update: "Quarterly Update",
-  };
-  return labels[type];
+const POLL_INTERVAL_MS = 2500;
+
+function upsertAnalysis(
+  analyses: AnalysisDetail[],
+  next: AnalysisDetail,
+): AnalysisDetail[] {
+  const index = analyses.findIndex((item) => item.id === next.id);
+  if (index === -1) {
+    return [next, ...analyses];
+  }
+  const updated = [...analyses];
+  updated[index] = next;
+  return updated;
 }
 
-function advanceStatus(status: AnalysisStatus, progress: number): AnalysisStatus {
-  if (status === "Queued" && progress >= 20) return "Running";
-  if (status === "Running" && progress >= 95) return "Review";
-  if (status === "Review" && progress >= 100) return "Complete";
-  return status;
-}
+async function loadDetailArtifacts(
+  analysisId: string,
+  hasEngineResult: boolean,
+  hasValidationReport: boolean,
+  previous?: AnalysisDetail,
+): Promise<{
+  engineResult: AnalysisEngineResult | null;
+  validationReport: ValidationReport | null;
+}> {
+  let engineResult = previous?.engineResult ?? null;
+  let validationReport = previous?.validationReport ?? null;
 
-function advanceProgress(status: AnalysisStatus, progress: number): number {
-  if (status === "Complete") return 100;
-  if (status === "Review") return Math.min(100, progress + 1);
-  if (status === "Queued") return Math.min(20, progress + 2);
-  return Math.min(94, progress + Math.floor(Math.random() * 3) + 1);
+  if (hasEngineResult) {
+    const fetched = await getAnalysisOutputJson<AnalysisEngineResult>(
+      analysisId,
+      "analysis_engine_result.json",
+    );
+    if (fetched) {
+      engineResult = fetched;
+    }
+  }
+
+  if (hasValidationReport) {
+    const fetched = await getAnalysisOutputJson<ValidationReport>(
+      analysisId,
+      "validation_report.json",
+    );
+    if (fetched) {
+      validationReport = fetched;
+    }
+  }
+
+  return { engineResult, validationReport };
 }
 
 export function AnalysisStoreProvider({ children }: { children: ReactNode }) {
-  const [analyses, setAnalyses] = useState<AnalysisDetail[]>(MOCK_ANALYSES);
+  const [analyses, setAnalyses] = useState<AnalysisDetail[]>([]);
+  const [isLoadingList, setIsLoadingList] = useState(true);
+  const [listError, setListError] = useState<string | null>(null);
+  const pollingIdsRef = useRef<Set<string>>(new Set());
+  const analysesRef = useRef<AnalysisDetail[]>([]);
+  analysesRef.current = analyses;
+
+  const startPolling = useCallback((analysisId: string) => {
+    pollingIdsRef.current.add(analysisId);
+  }, []);
+
+  const stopPolling = useCallback((analysisId: string) => {
+    pollingIdsRef.current.delete(analysisId);
+  }, []);
+
+  const applyDetail = useCallback(async (analysisId: string) => {
+    const previous = analysesRef.current.find((item) => item.id === analysisId);
+    const detail = await getAnalysis(analysisId);
+    const mapped = mapDetailDtoToAnalysisDetail(detail, previous);
+
+    if (detail.has_engine_result || detail.has_validation_report) {
+      const artifacts = await loadDetailArtifacts(
+        analysisId,
+        detail.has_engine_result,
+        detail.has_validation_report,
+        previous,
+      );
+      mapped.engineResult = artifacts.engineResult;
+      mapped.validationReport = artifacts.validationReport;
+    }
+
+    setAnalyses((prev) => upsertAnalysis(prev, mapped));
+
+    if (isAnalysisTerminal(detail)) {
+      stopPolling(analysisId);
+    } else {
+      startPolling(analysisId);
+    }
+
+    return mapped;
+  }, [startPolling, stopPolling]);
+
+  const loadAnalyses = useCallback(async () => {
+    setIsLoadingList(true);
+    setListError(null);
+    try {
+      const summaries = await listAnalyses();
+      const details = summaries.map((summary) => {
+        if (!summary.is_complete && summary.pipeline_state !== "failed") {
+          startPolling(summary.analysis_id);
+        }
+        return mapSummaryToAnalysisDetail(summary);
+      });
+      setAnalyses(details);
+    } catch (error) {
+      setListError(error instanceof Error ? error.message : "Failed to load analyses.");
+      setAnalyses([]);
+    } finally {
+      setIsLoadingList(false);
+    }
+  }, [startPolling]);
 
   useEffect(() => {
-    const interval = setInterval(() => {
-      setAnalyses((prev) =>
-        prev.map((analysis) => {
-          if (analysis.status === "Complete") return analysis;
+    void loadAnalyses();
+  }, [loadAnalyses]);
 
-          const nextProgress = advanceProgress(analysis.status, analysis.progress);
-          const nextStatus = advanceStatus(analysis.status, nextProgress);
-
-          return {
-            ...analysis,
-            progress: nextProgress,
-            status: nextStatus,
-          };
+  useEffect(() => {
+    const poll = async () => {
+      const ids = [...pollingIdsRef.current];
+      if (ids.length === 0) {
+        return;
+      }
+      await Promise.all(
+        ids.map(async (analysisId) => {
+          try {
+            await applyDetail(analysisId);
+          } catch {
+            stopPolling(analysisId);
+          }
         }),
       );
-    }, 4000);
-
-    return () => clearInterval(interval);
-  }, []);
-
-  const addAnalysis = useCallback((data: NewAnalysisFormData): string => {
-    const id = data.ticker.toLowerCase();
-    const newAnalysis: AnalysisDetail = {
-      id,
-      company: data.companyName,
-      ticker: data.ticker.toUpperCase(),
-      type: typeLabel(data.analysisType),
-      status: "Queued",
-      progress: 5,
-      startedAt: new Date().toISOString(),
-      analyst: getAnalystLabel(),
-      sector: "Pending classification",
-      marketCap: "—",
-      thesis: data.notes || "Analysis initiated. Awaiting data ingestion.",
-      priceTarget: "—",
-      rating: "Pending",
-      keyMetrics: [],
-      workbookSheets: [
-        {
-          name: "Model",
-          rows: 0,
-          lastUpdated: "Just now",
-          status: "pending",
-        },
-      ],
-      verificationChecks: [],
-      decisionLog: [
-        {
-          id: `d-${Date.now()}`,
-          timestamp: new Date().toLocaleTimeString("en-US", {
-            hour: "2-digit",
-            minute: "2-digit",
-          }),
-          agent: "Orchestrator",
-          action: "Run initiated",
-          detail: `${typeLabel(data.analysisType)} for ${data.ticker.toUpperCase()}`,
-        },
-      ],
-      executiveSummary: "Analysis queued. Workbooks uploaded and awaiting processing.",
-      chatHistory: [
-        {
-          id: `c-${Date.now()}`,
-          role: "assistant",
-          content: `Starting ${typeLabel(data.analysisType)} for ${data.companyName} (${data.ticker.toUpperCase()}). I'll notify you when data ingestion completes.`,
-          timestamp: new Date().toLocaleTimeString("en-US", {
-            hour: "2-digit",
-            minute: "2-digit",
-          }),
-        },
-      ],
     };
 
-    setAnalyses((prev) => {
-      const existing = prev.findIndex((a) => a.id === id);
-      if (existing >= 0) {
-        const updated = [...prev];
-        updated[existing] = newAnalysis;
-        return updated;
-      }
-      return [newAnalysis, ...prev];
-    });
+    const interval = window.setInterval(() => {
+      void poll();
+    }, POLL_INTERVAL_MS);
 
-    return id;
-  }, []);
+    return () => window.clearInterval(interval);
+  }, [applyDetail, stopPolling]);
+
+  const startAnalysis = useCallback(
+    async (data: NewAnalysisFormData): Promise<string> => {
+      if (!data.prefilledWorkbook) {
+        throw new Error("Prefilled workbook is required.");
+      }
+
+      const created = await createAnalysis({
+        company: data.companyName,
+        ticker: data.ticker,
+        analysis_type: data.analysisType,
+      });
+
+      await uploadAnalysisFiles(created.analysis_id, {
+        prefilledWorkbook: data.prefilledWorkbook,
+        previousWorkbook: data.previousWorkbook,
+        customRunFilter: data.customRunFilter,
+      });
+
+      await runAnalysis(created.analysis_id);
+      await applyDetail(created.analysis_id);
+      return created.analysis_id;
+    },
+    [applyDetail],
+  );
+
+  const hydrateAnalysis = useCallback(
+    async (analysisId: string): Promise<AnalysisDetail | undefined> => {
+      try {
+        return await applyDetail(analysisId);
+      } catch {
+        return undefined;
+      }
+    },
+    [applyDetail],
+  );
 
   const getById = useCallback(
-    (id: string) => analyses.find((a) => a.id === id.toLowerCase()),
+    (id: string) => analyses.find((analysis) => analysis.id === id),
     [analyses],
   );
 
   const value = useMemo(
-    () => ({ analyses, addAnalysis, getById }),
-    [analyses, addAnalysis, getById],
+    () => ({
+      analyses,
+      isLoadingList,
+      listError,
+      reloadAnalyses: loadAnalyses,
+      startAnalysis,
+      getById,
+      hydrateAnalysis,
+    }),
+    [analyses, isLoadingList, listError, loadAnalyses, startAnalysis, getById, hydrateAnalysis],
   );
 
   return (

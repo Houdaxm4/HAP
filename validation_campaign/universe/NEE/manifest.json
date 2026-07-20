@@ -1,0 +1,13 @@
+{
+  "company": "NextEra Energy Inc.",
+  "ticker": "NEE",
+  "industry": "Utilities",
+  "sector": "Utilities",
+  "sampling_quality_tier": "Excellent",
+  "notes": "Sampling label for campaign coverage only \u2014 not a HAP engine score.",
+  "required_inputs": {
+    "workbook": "workbook.xlsx or prefilled*.xlsx",
+    "custom_run_filter": "custom_run_filter.csv (or .xlsx)",
+    "manifest": "manifest.json (this file)"
+  }
+}

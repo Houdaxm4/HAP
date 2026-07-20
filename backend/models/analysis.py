@@ -73,11 +73,13 @@ class Analysis(BaseModel):
 
     @property
     def is_pipeline_complete(self) -> bool:
-        """True only when all required milestone outputs exist."""
+        """True only when required pipeline and analysis-engine outputs exist."""
         outputs = self.pipeline.outputs
         return (
             self.pipeline.state == "complete"
             and outputs.completed_workbook is not None
             and outputs.provenance_report is not None
             and outputs.validation_report is not None
+            and outputs.company_financial_model is not None
+            and outputs.analysis_engine_result is not None
         )

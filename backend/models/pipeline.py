@@ -11,7 +11,7 @@ from models.common import utc_now_iso
 
 
 class PipelineStage(str, Enum):
-    """Ordered stages in the first production milestone."""
+    """Ordered stages in the HAP production pipeline."""
 
     UPLOAD = "upload"
     PARSE_WORKBOOK = "parse_workbook"
@@ -19,6 +19,7 @@ class PipelineStage(str, Enum):
     FETCH_SEC_FILINGS = "fetch_sec_filings"
     FILL_WORKBOOK = "fill_workbook"
     VALIDATE_WORKBOOK = "validate_workbook"
+    RUN_ANALYSIS = "run_analysis"
     COMPLETE = "complete"
     FAILED = "failed"
 
@@ -30,6 +31,7 @@ PIPELINE_STAGE_ORDER: list[PipelineStage] = [
     PipelineStage.FETCH_SEC_FILINGS,
     PipelineStage.FILL_WORKBOOK,
     PipelineStage.VALIDATE_WORKBOOK,
+    PipelineStage.RUN_ANALYSIS,
     PipelineStage.COMPLETE,
 ]
 
@@ -54,7 +56,9 @@ class PipelineOutputs(BaseModel):
     validation_report: str | None = None
     sec_filings_manifest: str | None = None
     workbook_structure: str | None = None
-    custom_run_mapping: str | None = None
+    custom_run_data: str | None = None
+    company_financial_model: str | None = None
+    analysis_engine_result: str | None = None
 
 
 class PipelineStatus(BaseModel):

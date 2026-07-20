@@ -7,7 +7,7 @@ import type { NewAnalysisFormData } from "@/lib/types";
 type NewAnalysisModalProps = {
   isOpen: boolean;
   onClose: () => void;
-  onSubmit: (data: NewAnalysisFormData) => void;
+  onSubmit: (data: NewAnalysisFormData) => void | Promise<void>;
 };
 
 const ANALYSIS_TYPES: {
@@ -37,11 +37,13 @@ export default function NewAnalysisModal({
 }: NewAnalysisModalProps) {
   const [form, setForm] = useState<NewAnalysisFormData>(initialForm);
   const [errors, setErrors] = useState<Partial<Record<keyof NewAnalysisFormData, string>>>({});
+  const [submitError, setSubmitError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const resetForm = useCallback(() => {
     setForm(initialForm);
     setErrors({});
+    setSubmitError(null);
     setIsSubmitting(false);
   }, []);
 
@@ -74,6 +76,9 @@ export default function NewAnalysisModal({
     } else if (!/^[A-Za-z]{1,5}$/.test(form.ticker.trim())) {
       next.ticker = "Enter a valid ticker (1–5 letters)";
     }
+    if (!form.prefilledWorkbook) {
+      next.prefilledWorkbook = "Prefilled workbook is required";
+    }
     setErrors(next);
     return Object.keys(next).length === 0;
   };
@@ -83,15 +88,21 @@ export default function NewAnalysisModal({
     if (!validate()) return;
 
     setIsSubmitting(true);
-    await new Promise((r) => setTimeout(r, 600));
+    setSubmitError(null);
 
-    onSubmit({
-      ...form,
-      ticker: form.ticker.toUpperCase(),
-    });
-
-    resetForm();
-    setIsSubmitting(false);
+    try {
+      await onSubmit({
+        ...form,
+        ticker: form.ticker.toUpperCase(),
+      });
+      resetForm();
+    } catch (error) {
+      setSubmitError(
+        error instanceof Error ? error.message : "Failed to start analysis.",
+      );
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const update = <K extends keyof NewAnalysisFormData>(
@@ -259,6 +270,12 @@ export default function NewAnalysisModal({
               </div>
             </div>
           </div>
+
+          {submitError && (
+            <div className="border-t border-hap-border px-6 py-3">
+              <p className="text-sm text-red-400">{submitError}</p>
+            </div>
+          )}
 
           <div className="flex shrink-0 items-center justify-end gap-3 border-t border-hap-border px-6 py-4">
             <button

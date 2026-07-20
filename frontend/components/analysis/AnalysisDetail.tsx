@@ -8,11 +8,13 @@ import AnalystChat from "../AnalystChat";
 import AnalysisHeader from "./AnalysisHeader";
 import AnalysisTabs, { type AnalysisTab } from "./AnalysisTabs";
 import OverviewTab from "./tabs/OverviewTab";
-import WorkbookTab from "./tabs/WorkbookTab";
+import {
+  BusinessQualityTab,
+  InvestmentAttractivenessTab,
+} from "./tabs/AggregatorTabs";
+import { ExpectedReturnTab, ValuationTab } from "./tabs/ModuleTabs";
+import RecommendationTab from "./tabs/RecommendationTab";
 import VerificationTab from "./tabs/VerificationTab";
-import DecisionLogTab from "./tabs/DecisionLogTab";
-import SummaryTab from "./tabs/SummaryTab";
-import AnalysisChatTab from "./tabs/AnalysisChatTab";
 
 type AnalysisDetailProps = {
   analysis: AnalysisDetailType;
@@ -26,16 +28,18 @@ export default function AnalysisDetail({ analysis }: AnalysisDetailProps) {
     switch (activeTab) {
       case "Overview":
         return <OverviewTab analysis={analysis} />;
-      case "Workbook":
-        return <WorkbookTab analysis={analysis} />;
+      case "Business Quality":
+        return <BusinessQualityTab analysis={analysis} />;
+      case "Investment Attractiveness":
+        return <InvestmentAttractivenessTab analysis={analysis} />;
+      case "Valuation":
+        return <ValuationTab analysis={analysis} />;
+      case "Expected Return":
+        return <ExpectedReturnTab analysis={analysis} />;
+      case "Recommendation":
+        return <RecommendationTab analysis={analysis} />;
       case "Verification":
         return <VerificationTab analysis={analysis} />;
-      case "Decision Log":
-        return <DecisionLogTab analysis={analysis} />;
-      case "Summary":
-        return <SummaryTab analysis={analysis} />;
-      case "Chat":
-        return <AnalysisChatTab analysis={analysis} />;
     }
   };
 
