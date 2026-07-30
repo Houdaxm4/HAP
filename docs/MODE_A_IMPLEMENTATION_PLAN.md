@@ -56,65 +56,36 @@
 | **Definition of done** | Inventory checked into repo; enough structure known to support full-sheet classification in M1.5 |
 
 **Deliverables:** see [`docs/workbook_mapping/README.md`](workbook_mapping/README.md).  
-**Gate (next):** Your review → dashboard suite run (AAPL → MSFT → AMZN → TJX) → then M1.5.
+**Gate:** [`docs/workbook_mapping/M1_RELEASE_GATE_REPORT.md`](workbook_mapping/M1_RELEASE_GATE_REPORT.md) — **PASSED WITH MINOR ISSUES** (2026-07-27). Ready for M1.5 after your go-ahead.
 
 ---
 
-## Milestone 1.5 — Workbook Classification
+## Milestone 1.5 — Workbook Classification — **COMPLETE**
 
 | | |
 |--|--|
 | **Objective** | Fully understand the Industrial Template **before** writing any mapping specification. Classify **every sheet** and its important cells so M2 only maps into safe, intentional targets. |
-| **Files** | New: `docs/workbook_mapping/INDUSTRIAL_TEMPLATE_CLASSIFICATION.md`; new/extend: `validation_campaign/_classify_industrial_template.py` (read-only); optional machine-readable `docs/workbook_mapping/industrial_template_v27_classification.json` |
-| **Dependencies** | M1 (sheet list + period/header notes) |
-| **Testing** | Classifier runs on all four suite templates; every sheet appears in the classification report; sheet roles/write policies compared across AAPL/MSFT/AMZN/TJX; human review of writable vs read-only calls |
+| **Files** | Package `backend/workbook_mapping/` (Scanner, Classifier, ManifestBuilder, Statistics); docs `Workbook_Manifest.json`, `Workbook_Classification.md`, `Workbook_Statistics.md`, `Workbook_Architecture.md` |
+| **Dependencies** | M1 |
+| **Testing** | `python -m workbook_mapping`; `pytest tests/test_workbook_classification.py`; suite fingerprints identical across AAPL/MSFT/AMZN/TJX |
+| **Definition of done** | All 24 sheets classified; non-blank cells classified; manifest is SSoT for future Excel ops |
 
-### Per-sheet classification (required fields)
-
-For **each** sheet, record:
-
-| Dimension | Meaning |
-|-----------|---------|
-| **Sheet role** | `Data` / `Formula` / `Hybrid` / `Control` / `Meta` (e.g. Template Version) |
-| **Write policy** | `Writable` (HAP may write input values) / `Read-only` (never write — formulas or derived) / `Hybrid` (some regions writable, rest read-only) |
-| **Control cells** | Ticker, Start Year, End Year, units labels, period headers, flags |
-| **Formula dependencies** | Which other sheets this sheet references (from formula text sampling) |
-| **HAP fill priority** | e.g. `P0` annual statement inputs / `P1` LQ / `P2` leave to Excel / `Never` |
-
-### Classification heuristics (implementation guidance)
-
-- **Data sheet:** mostly stored values in the statement grid; few cross-sheet formulas in the data body.  
-- **Formula sheet:** majority of non-blank cells are formulas (`Inputs`, `All Ratios`, `Final Metrics`, etc.).  
-- **Hybrid:** statement-like labels with a mix of hardcoded inputs and local formulas (`check` rows, % sheets).  
-- **Writable:** non-formula cells in regions HAP is allowed to populate from CFM.  
-- **Read-only:** any formula cell; entire formula-driven sheets unless an explicit input cell is identified.  
-- **Control cells:** header/meta cells that define ticker and period window.  
-- **Formula dependencies:** parse `=` formulas for sheet names referenced (best-effort sample, not full calc graph).
-
-### Definition of done
-
-- All 24 sheets classified with role + write policy.  
-- Explicit **writable candidate regions** listed for annual IS / BS / CF (and noted as out-of-scope for now: LQ, Inputs, ratios, EV, etc.).  
-- Explicit **do-not-write** list (formula sheets + formula cells).  
-- Classification reviewed and approved before M2 starts.
-
-**Gate:** Suite — AAPL → MSFT → AMZN → TJX; classification reviewed and approved before M2.
+**Deliverables:** [`docs/workbook_mapping/Workbook_Manifest.json`](workbook_mapping/Workbook_Manifest.json) (+ Classification / Statistics / Architecture MD).  
+**Gate (next):** Review + suite dashboard run, then M2.
 
 ---
 
-## Milestone 2 — Workbook Mapping Specification (v0.1)
+## Milestone 2 — Workbook Mapping Specification (v0.1) — **COMPLETE**
 
 | | |
 |--|--|
-| **Objective** | Define the machine-readable contract: CFM field + period → template worksheet + cell (or cell pattern), **only** into cells/regions classified Writable in M1.5. |
-| **Files** | New: `docs/workbook_mapping/WORKBOOK_MAPPING_SPEC.md`; new: `backend/workbook_mapping/schema.py` (Pydantic models); new: `backend/workbook_mapping/mappings/industrial_template_v27.json` (or `.yaml`) — start with **annual standardized** sheets only |
-| **Dependencies** | **M1.5** (not only M1) |
-| **Testing** | Schema loads mapping file; unit test rejects invalid sheet/cell refs; mapping targets must be classified Writable; mapping covers agreed v0.1 concept set (document the list in the SPEC) |
-| **Definition of done** | Spec + schema + first mapping file committed; v0.1 concept list explicit (e.g. revenue, net_income, cash, total_assets, total_debt, equity, ocf, capex, fcf, dividends, diluted_eps); no mappings into Read-only sheets/cells |
+| **Objective** | Define the machine-readable contract: CFM field + period → template worksheet + cell, **only** into Writable Input cells from the M1.5 manifest. |
+| **Files** | `docs/workbook_mapping/CFM_Workbook_Mapping.json` (+ MD coverage/unmapped reports); `backend/workbook_mapping/explicit_mappings.py`, `mapping_builder.py`, `mapping_schema.py`, `m2_cli.py` |
+| **Dependencies** | M1.5 manifest |
+| **Testing** | `python -m workbook_mapping.m2_cli`; `pytest tests/test_workbook_mapping_spec.py`; 0 unexplained writable cells; labels validated against manifest |
+| **Definition of done** | Explicit deterministic mappings; coverage reports; no Excel writes |
 
-**v0.1 scope suggestion:** annual columns on sheets classified Writable for statement inputs (typically `Income - GAAP`, `Balance Sheet - Standardized`, `Cash Flow - Standardized`). No LQ sheets, no Inputs/ratios writes (those remain Read-only / formula-driven).
-
-**Gate:** Suite — AAPL → MSFT → AMZN → TJX; mapping spec reviewed against classification.
+**Gate (next):** Review + suite run, then M3 (write intents only).
 
 ---
 
@@ -253,8 +224,7 @@ M0 Freeze
 
 ## Suggested next action
 
-**M1 is complete — stop here.** Review `docs/workbook_mapping/`, then run the suite from the dashboard (AAPL → MSFT → AMZN → TJX). After your approval, start **M1.5 Classification**.
+**M2 is complete — stop here for review.** After approval and suite gate, start **M3 Mapping Engine** (intents only; still no Excel writes).
 
-Official suite packages:
-
-`validation_campaign/universe/{AAPL,MSFT,AMZN,TJX}/`
+Manifest SSoT: `docs/workbook_mapping/Workbook_Manifest.json`  
+Mapping SSoT: `docs/workbook_mapping/CFM_Workbook_Mapping.json`

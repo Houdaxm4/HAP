@@ -49,6 +49,46 @@ The Mode A Excel deliverable is the completed **Industrial Template**: a multi-s
 
 *Role hint is formula-ratio based (`data_heavy` / `hybrid` / `formula_heavy`) and will be refined into Data / Formula / Hybrid / Control / Meta in **M1.5**. It is not a write policy.*
 
+### M1 vs M1.5 scope (explicit)
+
+| Topic | M1 (this inventory) | M1.5 (classification — not done yet) |
+|-------|---------------------|--------------------------------------|
+| Sheet list / purpose | Documented | Confirmed |
+| Role hint (formula ratio) | Heuristic only | Formal Data / Formula / Hybrid / Control / Meta |
+| Writable vs Read-only | **Not asserted** — samples of value vs formula cells only | Full write policy per sheet/region |
+| Control cells | Located (e.g. C1:C3 on annual statements) | Classified as Control |
+| Dependencies | Formula-ref graph | Same graph + fill priority |
+
+**Do not treat `data_heavy` as “HAP may overwrite the whole sheet.”** Annual statement sheets mix hardcoded inputs and local formulas; M1.5 must mark writable bands before M2 mapping.
+
+### Column layout (annual IS / BS / CF)
+
+| Column | Typical role |
+|--------|----------------|
+| **A** | Human line labels (`+ Cost of Goods…`, `Gross Profit`, check rows) |
+| **B** | CapIQ / Bloomberg-style concept codes (often **hidden**); not the HAP write target for values |
+| **C+** | Period data grid; **C1:C3** hold Ticker / Start Year / End Year control **values** |
+
+### Canonical information flow (high level)
+
+```text
+Income - GAAP  ──┐
+Balance Sheet - Standardized ──┼──► Inputs ──► Tax / Leases / R&D / IC & NOPAT & ROIC
+Cash Flow - Standardized ──┘         │
+       ▲                             ▼
+       └── IS% / BS% / CF%     All Ratios / FCF
+       (read standardized)           │
+                                     ▼
+                              Final Metrics
+                                │         │
+                                ▼         ▼
+                     Enterprise Value   Expected Returns & Buybacks
+```
+
+LQ standardized / as-reported packs feed Inputs / EV selectively (see dependency map). `Template Version` and `DividendHelper` are support/meta.
+
+---
+
 ## Relationships between sheets
 
 See [`INDUSTRIAL_TEMPLATE_DEPENDENCY_MAP.md`](INDUSTRIAL_TEMPLATE_DEPENDENCY_MAP.md) for the formula-derived dependency graph. High-level flow (AAPL):
@@ -704,7 +744,10 @@ Per-row samples of which columns hold values vs formulas (not a final write poli
 
 ## Hidden sheets
 
-_No hidden / veryHidden sheets in AAPL inventory._
+_No hidden / veryHidden sheets in AAPL inventory._  
+**Suite confirmation:** MSFT, AMZN, and TJX also have **zero** hidden/veryHidden sheets (all 24 sheets visible on every suite workbook).
+
+Hidden **rows/columns** still exist on several sheets (e.g. Income - GAAP rows 4–5 and column B) — see the freeze/hidden summary table below. Those are not hidden worksheets.
 
 ## Freeze panes / merged cells / tables / validation / CF (summary)
 
@@ -738,7 +781,7 @@ _No hidden / veryHidden sheets in AAPL inventory._
 ## Suite consistency (AAPL vs MSFT / AMZN / TJX)
 
 - Sheet names identical (order + spelling): **True**
-- Dependency edge *types* identical across suite (75 shared pairs; no ticker-only edges).
+- Dependency edge *types* identical across suite (**46** shared pairs after known-sheet-name parsing; no ticker-only edges).
 - Named ranges: no name-set differences vs AAPL.
 
 ### What differs (expected company data, not template structure)
@@ -799,5 +842,6 @@ See also [`INDUSTRIAL_TEMPLATE_RISK_LOG.md`](INDUSTRIAL_TEMPLATE_RISK_LOG.md).
 - [x] Dependency map
 - [x] Risk log
 - [x] Regression fingerprints for future template versions
-- [x] Suite validation AAPL / MSFT / AMZN / TJX
-- [ ] **Stopped** — M1.5 / M2 not started (awaiting review)
+- [x] Suite structural inventory validated AAPL / MSFT / AMZN / TJX (template fingerprints)
+- [ ] **M1 release gate** — dashboard/pipeline regression (this review)
+- [ ] **Stopped** — M1.5 / M2 not started until gate passes
