@@ -1,0 +1,20 @@
+{
+  "name": "HAP — Houda's Analyst Platform",
+  "install": "bash .cursor/install.sh",
+  "terminals": [
+    {
+      "name": "backend",
+      "command": "cd backend && . .venv/bin/activate && exec python -m uvicorn main:app --host 127.0.0.1 --port 8000",
+      "description": "FastAPI backend (HAP API) on http://127.0.0.1:8000"
+    },
+    {
+      "name": "frontend",
+      "command": "cd frontend && exec npm run dev",
+      "description": "Next.js dev server on http://localhost:3000"
+    }
+  ],
+  "ports": [
+    { "name": "frontend", "port": 3000 },
+    { "name": "backend", "port": 8000 }
+  ]
+}
