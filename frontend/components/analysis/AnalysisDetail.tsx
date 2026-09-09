@@ -16,6 +16,7 @@ import { ExpectedReturnTab, ValuationTab } from "./tabs/ModuleTabs";
 import RecommendationTab from "./tabs/RecommendationTab";
 import VerificationTab from "./tabs/VerificationTab";
 import DeliverablesTab from "./tabs/DeliverablesTab";
+import AnalystReviewTab from "./tabs/AnalystReviewTab";
 
 type AnalysisDetailProps = {
   analysis: AnalysisDetailType;
@@ -29,6 +30,8 @@ export default function AnalysisDetail({ analysis }: AnalysisDetailProps) {
     switch (activeTab) {
       case "Overview":
         return <OverviewTab analysis={analysis} />;
+      case "Review":
+        return <AnalystReviewTab analysis={analysis} />;
       case "Business Quality":
         return <BusinessQualityTab analysis={analysis} />;
       case "Investment Attractiveness":

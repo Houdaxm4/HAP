@@ -30,6 +30,9 @@ from services.annual_update_runner import AnnualUpdateRunner, sha256_file
 from services.annual_continuity_service import AnnualContinuityService
 from services.annual_period_service import AnnualPeriodAlignmentError, align_fiscal_periods
 from services.annual_workbook_guard_service import assert_base_workbook_guard, build_lineage_report
+from services.new_company_runner import NewCompanyRunner
+from services.new_company_review_service import NewCompanyReviewService
+from models.new_company import NewCompanyWorkflowState
 
 
 class PipelineError(Exception):
@@ -76,6 +79,8 @@ class PipelineOrchestrator:
         self.quarterly_deliverables = QuarterlyDeliverablesService()
         self.annual_continuity = AnnualContinuityService()
         self.annual_runner = AnnualUpdateRunner(output_service=self.output_service)
+        self.new_company_runner = NewCompanyRunner(output_service=self.output_service)
+        self.new_company_review = NewCompanyReviewService(output_service=self.output_service)
 
     def run(self, analysis_id: str) -> Analysis:
         """Execute pipeline stages for the analysis type."""
@@ -98,6 +103,8 @@ class PipelineOrchestrator:
                 return self._run_quarterly(analysis)
             if mode == AnalysisTypeMode.ANNUAL_UPDATE:
                 return self._run_annual(analysis)
+            if mode == AnalysisTypeMode.NEW_COMPANY:
+                return self._run_new_company(analysis)
             return self._run_standard(analysis)
         except Exception as exc:  # noqa: BLE001 - never leave analyses stuck processing
             return self._fail(analysis, str(exc))
@@ -195,6 +202,291 @@ class PipelineOrchestrator:
         )
 
         return self._mark_complete(analysis)
+
+    def _run_new_company(self, analysis: Analysis) -> Analysis:
+        """New Company initiation: Mode A spine, then ten-year Industrial Template phases."""
+        analysis_id = analysis.analysis_id
+        workbook_path = self.file_service.get_prefilled_workbook_path(analysis)
+        custom_run_path = self.file_service.get_custom_run_filter_path(analysis)
+
+        structure, structure_path, log = self.parse_workbook_stage.run(analysis, workbook_path)
+        self._complete_stage(
+            analysis, PipelineStage.PARSE_WORKBOOK, 12, log, workbook_structure=structure_path
+        )
+
+        custom_run, custom_run_path_rel, log = self.parse_custom_run_stage.run(
+            analysis, custom_run_path
+        )
+        self._complete_stage(
+            analysis, PipelineStage.PARSE_CUSTOM_RUN, 22, log, custom_run_data=custom_run_path_rel
+        )
+        try:
+            mapping = {
+                "ticker": custom_run.ticker,
+                "inputs_annual_pe10": (custom_run.metadata or {}).get("inputs_annual_pe10"),
+                "inputs_annual_e10": (custom_run.metadata or {}).get("inputs_annual_e10"),
+                "scalars": custom_run.scalars,
+            }
+            self.output_service.write_json(analysis_id, "custom_run_mapping.json", mapping)
+        except Exception:  # noqa: BLE001
+            pass
+
+        cache_dir = self.output_service.analysis_output_dir(analysis_id) / "sec_cache"
+        manifest, company_facts, manifest_path, _, log = self.fetch_sec_stage.run(
+            analysis, cache_dir=cache_dir
+        )
+        analysis.cik = manifest.get("cik")
+        self._complete_stage(
+            analysis, PipelineStage.FETCH_SEC_FILINGS, 35, log, sec_filings_manifest=manifest_path
+        )
+
+        _intent_report, intents_path, log = self.generate_write_intents_stage.run(
+            analysis, custom_run, company_facts
+        )
+        analysis.pipeline.outputs.write_intents = intents_path
+        analysis.decision_log.append(log)
+        analysis.pipeline.progress_pct = 42
+        analysis.updated_at = utc_now_iso()
+        self.analysis_service.save(analysis)
+
+        provenance_report, completion_report, workbook_path_rel, provenance_path, cell_diff_path, completion_path, log = (
+            self.fill_workbook_stage.run(
+                analysis,
+                workbook_path,
+                custom_run,
+                structure,
+                company_facts,
+                manifest,
+                write_intents_path=intents_path,
+            )
+        )
+        self._complete_stage(
+            analysis,
+            PipelineStage.FILL_WORKBOOK,
+            55,
+            log,
+            completed_workbook=workbook_path_rel,
+            provenance_report=provenance_path,
+            cell_diff_report=cell_diff_path,
+            completion_report=completion_path,
+        )
+
+        completed_workbook_path = self.output_service.artifact_path(
+            analysis_id, "completed_workbook.xlsx"
+        )
+        discrepancy_report, validation_path, discrepancy_path, log = (
+            self.validate_workbook_stage.run(
+                analysis,
+                custom_run,
+                provenance_report,
+                completed_workbook_path,
+                completion_report=completion_report,
+                company_facts=company_facts,
+            )
+        )
+        self._complete_stage(
+            analysis,
+            PipelineStage.VALIDATE_WORKBOOK,
+            65,
+            log,
+            validation_report=validation_path,
+            discrepancy_report=discrepancy_path,
+        )
+
+        from services.new_company_period_service import NewCompanyPeriodService
+
+        period_probe = NewCompanyPeriodService().detect(
+            analysis_id=analysis_id, ticker=analysis.ticker, workbook_path=completed_workbook_path
+        )
+        industrial = (
+            period_probe.template_family == "industrial_template"
+            and len(period_probe.fiscal_years) >= 8
+        )
+        if not industrial:
+            # Generic/non-template workbooks keep the Mode A analysis-engine spine.
+            _, _, model_path, result_path, hap_workbook_path, log = self.run_analysis_stage.run(
+                analysis, provenance_report, discrepancy_report, custom_run, company_facts
+            )
+            self._complete_stage(
+                analysis,
+                PipelineStage.RUN_ANALYSIS,
+                98,
+                log,
+                company_financial_model=model_path,
+                analysis_engine_result=result_path,
+                hap_workbook=hap_workbook_path,
+            )
+            return self._mark_complete(analysis)
+
+        result = self.new_company_runner.run(
+            analysis_id=analysis_id,
+            ticker=analysis.ticker,
+            company=analysis.company,
+            template_path=completed_workbook_path,
+            working_path=completed_workbook_path,
+            custom_run_path=custom_run_path,
+            company_facts=company_facts,
+            sec_manifest=manifest,
+            prepare_working=False,
+            wacc=custom_run.assumptions.get("wacc") if custom_run.assumptions else None,
+        )
+        workflow = result["workflow_state"]
+        analysis.decision_log.append(
+            DecisionLogEntry(
+                agent="New Company",
+                action="new_company_phases",
+                detail=result["state"].summary,
+                confidence=0.8,
+            )
+        )
+        return self._apply_new_company_workflow(
+            analysis,
+            workflow,
+            provenance_report=provenance_report,
+            discrepancy_report=discrepancy_report,
+            custom_run=custom_run,
+            company_facts=company_facts,
+        )
+
+    def finalize_new_company_review(
+        self,
+        analysis: Analysis,
+        *,
+        action: str,
+        rate: float | None = None,
+        reason: str | None = None,
+        rd_life: int | None = None,
+    ) -> Analysis:
+        """Resume after lease-rate review or R&D override."""
+        analysis_id = analysis.analysis_id
+        workbook_path = self.output_service.artifact_path(analysis_id, "completed_workbook.xlsx")
+        custom_run_path = self.file_service.get_custom_run_filter_path(analysis)
+        company_facts = {}
+        manifest = {}
+        try:
+            company_facts = self.output_service.read_json(analysis_id, "company_facts.json")
+        except Exception:  # noqa: BLE001
+            company_facts = {}
+        try:
+            manifest = self.output_service.read_json(analysis_id, "sec_filings_manifest.json")
+        except Exception:  # noqa: BLE001
+            manifest = {}
+        analysis.status = "recalculating"
+        analysis.pipeline.state = "processing"
+        self.analysis_service.save(analysis)
+        if rd_life is not None:
+            result = self.new_company_review.override_rd_useful_life(
+                analysis_id=analysis_id,
+                ticker=analysis.ticker,
+                company=analysis.company,
+                workbook_path=workbook_path,
+                custom_run_path=custom_run_path,
+                life=rd_life,
+                reason=reason,
+                company_facts=company_facts,
+                sec_manifest=manifest,
+            )
+        else:
+            result = self.new_company_review.resolve_lease_rate(
+                analysis_id=analysis_id,
+                ticker=analysis.ticker,
+                company=analysis.company,
+                workbook_path=workbook_path,
+                custom_run_path=custom_run_path,
+                action=action,
+                rate=rate,
+                reason=reason,
+                company_facts=company_facts,
+                sec_manifest=manifest,
+            )
+        workflow = result.get("workflow_state") or result["state"].workflow_state
+        analysis.decision_log.append(
+            DecisionLogEntry(
+                agent="New Company Analyst Review",
+                action=f"review_{action if rd_life is None else 'rd_override'}",
+                detail=str(result.get("state").summary if result.get("state") else workflow),
+                confidence=0.9,
+            )
+        )
+        custom_run = None
+        try:
+            from models.custom_run import CustomRunData
+
+            raw = self.output_service.read_json(analysis_id, "custom_run_data.json")
+            custom_run = CustomRunData.model_validate(raw)
+        except Exception:  # noqa: BLE001
+            custom_run = None
+        from models.provenance import ProvenanceReport
+        from models.validation import DiscrepancyReport
+
+        provenance_report = ProvenanceReport(analysis_id=analysis_id, ticker=analysis.ticker)
+        discrepancy_report = DiscrepancyReport(analysis_id=analysis_id, ticker=analysis.ticker)
+        try:
+            provenance_report = ProvenanceReport.model_validate(
+                self.output_service.read_json(analysis_id, "provenance_report.json")
+            )
+        except Exception:  # noqa: BLE001
+            pass
+        try:
+            discrepancy_report = DiscrepancyReport.model_validate(
+                self.output_service.read_json(analysis_id, "discrepancy_report.json")
+            )
+        except Exception:  # noqa: BLE001
+            pass
+        return self._apply_new_company_workflow(
+            analysis,
+            workflow,
+            provenance_report=provenance_report,
+            discrepancy_report=discrepancy_report,
+            custom_run=custom_run,
+            company_facts=company_facts,
+        )
+
+    def _apply_new_company_workflow(
+        self,
+        analysis: Analysis,
+        workflow: NewCompanyWorkflowState,
+        *,
+        provenance_report,
+        discrepancy_report,
+        custom_run,
+        company_facts,
+    ) -> Analysis:
+        if workflow == NewCompanyWorkflowState.AWAITING_ANALYST_REVIEW:
+            analysis.status = "awaiting_analyst_review"
+            analysis.pipeline.state = "processing"
+            analysis.pipeline.progress_pct = 85
+            analysis.updated_at = utc_now_iso()
+            self.analysis_service.save(analysis)
+            return analysis
+        if workflow == NewCompanyWorkflowState.COMPLETE:
+            if custom_run is not None:
+                _, _, model_path, result_path, hap_workbook_path, log = self.run_analysis_stage.run(
+                    analysis, provenance_report, discrepancy_report, custom_run, company_facts
+                )
+                self._complete_stage(
+                    analysis,
+                    PipelineStage.RUN_ANALYSIS,
+                    98,
+                    log,
+                    company_financial_model=model_path,
+                    analysis_engine_result=result_path,
+                    hap_workbook=hap_workbook_path,
+                )
+            return self._mark_complete(analysis)
+        analysis.status = "needs_review" if workflow == NewCompanyWorkflowState.NEEDS_REVIEW else "failed"
+        if workflow == NewCompanyWorkflowState.FAILED:
+            analysis.pipeline.state = "failed"
+            analysis.pipeline.current_stage = PipelineStage.FAILED
+        else:
+            # Stages finished, but the report is not authorized (e.g. Excel COM missing).
+            analysis.pipeline.state = "complete"
+            analysis.pipeline.current_stage = PipelineStage.COMPLETE
+            analysis.pipeline.progress_pct = 95
+            analysis.pipeline.completed_at = utc_now_iso()
+        analysis.updated_at = utc_now_iso()
+        self.analysis_service.save(analysis)
+        return analysis
 
     def _run_annual(self, analysis: Analysis) -> Analysis:
         """Annual Update: preserve historical analyst work; refresh new FY + current data + Word."""
