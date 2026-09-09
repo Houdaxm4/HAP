@@ -200,6 +200,37 @@ export async function listAnalysisOutputs(
   return payload.artifacts;
 }
 
+export async function reviewLeaseRate(
+  analysisId: string,
+  payload: { action: "approve" | "correct" | "request_more_evidence"; rate?: number; reason?: string },
+): Promise<Record<string, unknown>> {
+  return requestJson(`/analysis/${analysisId}/analyst-review/lease-rate`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function overrideRdUsefulLife(
+  analysisId: string,
+  payload: { useful_life: number; reason?: string },
+): Promise<Record<string, unknown>> {
+  return requestJson(`/analysis/${analysisId}/analyst-review/rd-useful-life`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function getAnalystReview(analysisId: string): Promise<{
+  analysis_id: string;
+  lease_rate_review: Record<string, unknown> | null;
+  rd_useful_life_decision: Record<string, unknown> | null;
+  run_state: Record<string, unknown> | null;
+}> {
+  return requestJson(`/analysis/${analysisId}/analyst-review`);
+}
+
 export function getOutputDownloadUrl(
   analysisId: string,
   artifactName: string,
@@ -214,8 +245,10 @@ export function isAnalysisTerminal(detail: {
 }): boolean {
   return (
     detail.is_complete ||
-    detail.pipeline_state === "complete" ||
-    detail.pipeline_state === "failed" ||
-    detail.status === "failed"
+    detail.status === "failed" ||
+    detail.status === "awaiting_analyst_review" ||
+    detail.status === "needs_review" ||
+    (detail.pipeline_state === "complete" && detail.status === "complete") ||
+    detail.pipeline_state === "failed"
   );
 }

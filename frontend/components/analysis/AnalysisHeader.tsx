@@ -47,6 +47,12 @@ export default function AnalysisHeader({
               Stage: {formatStageLabel(analysis.currentStage)}
             </p>
           )}
+          {analysis.status === "Review" && (
+            <p className="mt-2 text-xs text-amber-300">
+              Analyst review required — lease discount rate must be approved or corrected before
+              the New Company report can be authorized.
+            </p>
+          )}
         </div>
 
         <div className="flex flex-wrap items-center gap-3">

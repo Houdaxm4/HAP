@@ -12,6 +12,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from hap_auth import AuthConfigError, auth_enabled, is_production, validate_auth_configuration
 from hap_auth.http import AuthGateMiddleware, auth_health_fields, register_auth_routes
 from models.analysis import CreateAnalysisRequest, CreateAnalysisResponse
+from models.new_company import LeaseRateReviewRequest, RdUsefulLifeOverrideRequest
 from models.api_responses import (
     AnalysisDetailResponse,
     AnalysisSummaryResponse,
@@ -157,6 +158,70 @@ def run_analysis_pipeline(analysis_id: str, background_tasks: BackgroundTasks) -
         "status": "processing",
         "message": "Pipeline started. Poll GET /analysis/{id} for progress.",
     }
+
+
+@app.get("/analysis/{analysis_id}/analyst-review")
+def get_analyst_review(analysis_id: str) -> dict:
+    """Return pending New Company lease-rate review and R&D useful-life decision."""
+    try:
+        analysis_service.get(analysis_id)
+    except AnalysisNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    payload: dict = {"analysis_id": analysis_id}
+    for name, key in (
+        ("lease_rate_review.json", "lease_rate_review"),
+        ("rd_useful_life_decision.json", "rd_useful_life_decision"),
+        ("new_company_run_state.json", "run_state"),
+    ):
+        try:
+            payload[key] = output_service.read_json(analysis_id, name)
+        except FileNotFoundError:
+            payload[key] = None
+    return payload
+
+
+@app.post("/analysis/{analysis_id}/analyst-review/lease-rate")
+def review_lease_rate(analysis_id: str, request: LeaseRateReviewRequest) -> dict:
+    """Approve, correct, or request more evidence for the estimated lease discount rate."""
+    try:
+        analysis = analysis_service.get(analysis_id)
+    except AnalysisNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    if request.action not in {"approve", "correct", "request_more_evidence"}:
+        raise HTTPException(status_code=400, detail="action must be approve, correct, or request_more_evidence")
+    if request.action == "correct" and request.rate is None:
+        raise HTTPException(status_code=400, detail="correct requires a rate")
+    try:
+        updated = pipeline_orchestrator.finalize_new_company_review(
+            analysis,
+            action=request.action,
+            rate=request.rate,
+            reason=request.reason,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return updated.to_dict()
+
+
+@app.post("/analysis/{analysis_id}/analyst-review/rd-useful-life")
+def override_rd_useful_life(analysis_id: str, request: RdUsefulLifeOverrideRequest) -> dict:
+    """Override the agent-selected R&D useful life and recalculate dependents."""
+    try:
+        analysis = analysis_service.get(analysis_id)
+    except AnalysisNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    if request.useful_life < 1 or request.useful_life > 10:
+        raise HTTPException(status_code=400, detail="useful_life must be in 1–10")
+    try:
+        updated = pipeline_orchestrator.finalize_new_company_review(
+            analysis,
+            action="approve",
+            reason=request.reason,
+            rd_life=request.useful_life,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return updated.to_dict()
 
 
 @app.post("/analysis/{analysis_id}/read-workbook", response_model=WorkbookSummary)

@@ -2,6 +2,7 @@
 
 const TABS = [
   "Overview",
+  "Review",
   "Business Quality",
   "Investment Attractiveness",
   "Valuation",
