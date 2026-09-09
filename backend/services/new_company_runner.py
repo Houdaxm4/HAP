@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from models.new_company import (
+    CLOUD_PENDING_WINDOWS_CERTIFICATION,
     NewCompanyCurrentDataReport,
     NewCompanyRunState,
     NewCompanyWorkflowState,
@@ -16,7 +17,7 @@ from models.new_company import (
 from services.annual_formula_guard_service import AnnualFormulaGuardService
 from services.annual_valuation_extract_service import AnnualValuationExtractService
 from services.current_data_refresh_service import CurrentDataRefreshService
-from services.excel_recalc_service import ExcelRecalcService
+from services.excel_recalc_service import ExcelRecalcService, genuine_excel_com_recalc
 from services.new_company_buyback_service import NewCompanyBuybackService
 from services.new_company_deliverables_service import NewCompanyDeliverablesService
 from services.new_company_lease_service import NewCompanyLeaseService
@@ -35,6 +36,26 @@ from services.output_service import OutputService
 def _fy_int(token: str | None) -> int:
     digits = "".join(ch for ch in str(token or "") if ch.isdigit())
     return int(digits) if digits else 0
+
+
+def _certification_status(workflow, lease_review, recalc, gate) -> str:
+    """COMPLETE only after genuine Excel COM. Cloud COM-unavailable + lease approved → pending Windows."""
+    if workflow == NewCompanyWorkflowState.COMPLETE and genuine_excel_com_recalc(recalc):
+        return NewCompanyWorkflowState.COMPLETE.value
+    if workflow == NewCompanyWorkflowState.AWAITING_ANALYST_REVIEW:
+        return NewCompanyWorkflowState.AWAITING_ANALYST_REVIEW.value
+    lease_ok = bool(lease_review and not lease_review.blocking)
+    recalc_unavailable = bool(recalc is not None and recalc.status == "UNAVAILABLE" and not recalc.com_invoked)
+    blockers = list(gate.blockers) if gate is not None else []
+    com_blocked = "WORKBOOK_RECALCULATION_INCOMPLETE" in blockers
+    other = [
+        b
+        for b in blockers
+        if b not in {"WORKBOOK_RECALCULATION_INCOMPLETE", "NEW_COMPANY_REPORT_NOT_AUTHORIZED"}
+    ]
+    if lease_ok and recalc_unavailable and com_blocked and not other:
+        return CLOUD_PENDING_WINDOWS_CERTIFICATION
+    return workflow.value if hasattr(workflow, "value") else str(workflow)
 
 
 class NewCompanyRunner:
@@ -358,7 +379,7 @@ class NewCompanyRunner:
                     statement_summary=statements.summary,
                 ),
             )
-            if authorized:
+            if authorized and genuine_excel_com_recalc(recalc):
                 workflow = NewCompanyWorkflowState.COMPLETE
             elif gate.status == "AWAITING_ANALYST_REVIEW":
                 workflow = NewCompanyWorkflowState.AWAITING_ANALYST_REVIEW
@@ -400,12 +421,14 @@ class NewCompanyRunner:
                 "formula_errors": recalc.formula_errors,
                 "error": recalc.error,
                 "summary": recalc.summary,
+                "com_invoked": recalc.com_invoked,
             }
         if deliv is not None:
             artifacts["new_company_deliverables_report.json"] = deliv
         for name, obj in artifacts.items():
             self.output_service.write_json(analysis_id, name, obj)
 
+        cert = _certification_status(workflow, lease_review, recalc, gate)
         state = NewCompanyRunState(
             analysis_id=analysis_id,
             ticker=ticker,
@@ -417,9 +440,24 @@ class NewCompanyRunner:
             lease_rate_approved=bool(lease_review and not lease_review.blocking),
             rd_life_overridden=bool(rd_decision.analyst_override),
             phases_completed=[t["stage"] for t in timings],
-            summary=f"New Company {workflow.value} in {(time.perf_counter()-t0):.1f}s.",
+            certification_status=cert,
+            summary=f"New Company {workflow.value} cert={cert} in {(time.perf_counter()-t0):.1f}s.",
         )
         self.output_service.write_json(analysis_id, "new_company_run_state.json", state)
+        self.output_service.write_json(
+            analysis_id,
+            "new_company_certification_status.json",
+            {
+                "analysis_id": analysis_id,
+                "ticker": ticker,
+                "workflow_state": workflow.value,
+                "certification_status": cert,
+                "lease_rate_approved": bool(lease_review and not lease_review.blocking),
+                "com_invoked": bool(recalc.com_invoked) if recalc is not None else False,
+                "recalc_status": recalc.status if recalc is not None else None,
+                "recalc_method": recalc.method if recalc is not None else None,
+            },
+        )
         self.output_service.write_json(
             analysis_id,
             "new_company_timing_report.json",
@@ -446,4 +484,5 @@ class NewCompanyRunner:
             "deliverables": deliv,
             "state": state,
             "timings": timings,
+            "certification_status": cert,
         }

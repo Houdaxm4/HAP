@@ -12,10 +12,11 @@ from openpyxl import Workbook, load_workbook
 from models.custom_run import CustomRunData, CustomRunPeriods
 from models.new_company import (
     BuybackAbsenceClass,
+    CLOUD_PENDING_WINDOWS_CERTIFICATION,
     NewCompanyWorkflowState,
     ProjectionConfidence,
 )
-from services.excel_recalc_service import ExcelRecalcReport
+from services.excel_recalc_service import ExcelRecalcReport, genuine_excel_com_recalc
 from services.new_company_buyback_service import NewCompanyBuybackService
 from services.new_company_lease_service import NewCompanyLeaseService
 from services.new_company_output_gate_service import NewCompanyOutputGateService
@@ -379,6 +380,7 @@ def _ok_recalc(analysis_id="a", ticker="TEST", path="") -> ExcelRecalcReport:
         workbook_path=path,
         cells_checked=["Expected Returns & Buybacks!E14"],
         summary="ok",
+        com_invoked=True,
     )
 
 
@@ -807,14 +809,7 @@ def test_recalc_unavailable_needs_review(tmp_path: Path, out_svc: OutputService)
         }
         for fy in FY
     }
-    with patch(_CRF_PARSE, return_value=crf), patch.object(
-        runner.excel_recalc,
-        "recalculate",
-        return_value=ExcelRecalcReport(
-            analysis_id="a", ticker="MSFT", status="UNAVAILABLE", method="none", workbook_path=str(path),
-            error="pywin32 missing", summary="WORKBOOK_RECALCULATION_INCOMPLETE",
-        ),
-    ):
+    with patch(_CRF_PARSE, return_value=crf):
         result = runner.run(
             analysis_id="run1",
             ticker="MSFT",
@@ -831,9 +826,11 @@ def test_recalc_unavailable_needs_review(tmp_path: Path, out_svc: OutputService)
     assert result["workflow_state"] == NewCompanyWorkflowState.NEEDS_REVIEW
     assert "WORKBOOK_RECALCULATION_INCOMPLETE" in result["output_gate"].blockers
     assert result["deliverables"] is None or result["deliverables"].authorized is False
+    assert result["certification_status"] == CLOUD_PENDING_WINDOWS_CERTIFICATION
+    assert result["workflow_state"] != NewCompanyWorkflowState.COMPLETE
 
 
-def test_runner_pauses_for_lease_review_then_completes_after_approve(tmp_path: Path, out_svc: OutputService):
+def test_runner_pauses_for_lease_review_then_blocks_without_com(tmp_path: Path, out_svc: OutputService):
     path = industrial_workbook(tmp_path / "wb.xlsx")
     runner = NewCompanyRunner(output_service=out_svc)
     crf_path = tmp_path / "crf.xlsx"
@@ -854,9 +851,7 @@ def test_runner_pauses_for_lease_review_then_completes_after_approve(tmp_path: P
         }
         for fy in FY
     }
-    with patch(_CRF_PARSE, return_value=crf), patch.object(
-        runner.excel_recalc, "recalculate", return_value=_ok_recalc(path=str(path))
-    ):
+    with patch(_CRF_PARSE, return_value=crf):
         paused = runner.run(
             analysis_id="run2",
             ticker="AMZN",
@@ -889,12 +884,12 @@ def test_runner_pauses_for_lease_review_then_completes_after_approve(tmp_path: P
         assert done["lease_review"].blocking is False
         gate = done["output_gate"]
         assert gate is not None
-        # Recalc mocked ok; other gates may still warn, but lease pending must be gone.
         assert "LEASE_RATE_REVIEW_PENDING" not in gate.blockers
-        if gate.report_authorized:
-            assert done["workflow_state"] == NewCompanyWorkflowState.COMPLETE
-            assert done["deliverables"].word_filename.endswith("New Company.docx")
-            assert Path(done["deliverables"].word_path).exists()
+        assert "WORKBOOK_RECALCULATION_INCOMPLETE" in gate.blockers
+        assert done["workflow_state"] == NewCompanyWorkflowState.NEEDS_REVIEW
+        assert done["workflow_state"] != NewCompanyWorkflowState.COMPLETE
+        assert done["certification_status"] == CLOUD_PENDING_WINDOWS_CERTIFICATION
+        assert done["deliverables"] is None or done["deliverables"].authorized is False
 
 
 def test_rd_override_preserves_original_selection(tmp_path: Path):
@@ -965,9 +960,7 @@ def test_cross_company_runner_suite(tmp_path: Path, out_svc: OutputService):
         for fy in FY
     }
     results = []
-    with patch(_CRF_PARSE, return_value=crf), patch.object(
-        runner.excel_recalc, "recalculate", return_value=_ok_recalc()
-    ):
+    with patch(_CRF_PARSE, return_value=crf):
         for ticker, name, sic, seasonal, q in profiles:
             wb = industrial_workbook(
                 tmp_path / f"{ticker}.xlsx",
@@ -1012,7 +1005,73 @@ def test_cross_company_runner_suite(tmp_path: Path, out_svc: OutputService):
             assert "TEN_YEAR_SEC_COVERAGE_INCOMPLETE" not in (
                 done["output_gate"].blockers if done["output_gate"] else []
             )
-    # New Company remains uncertified on this Linux host even if mocked recalc is ok,
-    # because production Excel COM was not used. Record outcomes.
+            assert done["workflow_state"] != NewCompanyWorkflowState.COMPLETE
+            assert done["certification_status"] == CLOUD_PENDING_WINDOWS_CERTIFICATION
+            assert "WORKBOOK_RECALCULATION_INCOMPLETE" in done["output_gate"].blockers
     assert len(results) == 6
     assert all(r[0] for r in results)
+
+
+def test_gate_j_rejects_forged_ok_without_genuine_com(tmp_path: Path):
+    from models.annual_update import AnnualValuationOutputs
+    from services.excel_recalc_service import ExcelRecalcReport
+
+    path = industrial_workbook(tmp_path / "wb.xlsx")
+    periods = NewCompanyPeriodService().detect(analysis_id="a", ticker="MSFT", workbook_path=path)
+    coverage = NewCompanySecCoverageService().build(
+        analysis_id="a",
+        ticker="MSFT",
+        fiscal_years=FY,
+        sec_manifest=_filings_manifest(),
+        company_facts=company_facts_for(),
+    )
+    forged = ExcelRecalcReport(
+        analysis_id="a",
+        ticker="MSFT",
+        status="ok",
+        method="none",
+        workbook_path=str(path),
+        com_invoked=False,
+        summary="forged",
+    )
+    gate = NewCompanyOutputGateService().evaluate(
+        analysis_id="a",
+        ticker="MSFT",
+        periods=periods,
+        coverage=coverage,
+        statements=MagicMock(unresolved_material=[], summary="ok"),
+        pe10=MagicMock(
+            fiscal_year_pe10=[MagicMock(missing=False) for _ in FY],
+            fiscal_year_e10=[MagicMock(missing=False) for _ in FY],
+            current_pe10=MagicMock(value=20.0),
+            current_e10=MagicMock(value=5.0),
+            warnings=[],
+        ),
+        tax=MagicMock(complete=True, years=[]),
+        rd_decision=MagicMock(selected_useful_life=3, blocking=False, blocking_reasons=[]),
+        rd=MagicMock(lookback_complete=True, capitalization_ok=True),
+        leases=MagicMock(complete=True, review=None),
+        lease_review=MagicMock(proposed_rate=0.04, blocking=False, status="approved", analyst_action="approve"),
+        buybacks=MagicMock(
+            years=[MagicMock(dollars=1.0, shares=1.0, absence_class=None) for _ in FY],
+            complete=True,
+        ),
+        current=MagicMock(as_of_mismatch=False, warnings=[]),
+        projection=MagicMock(
+            seasonality_adjusted_roic=0.1,
+            seasonality_adjusted_roce=0.1,
+            confidence=ProjectionConfidence.HIGH,
+        ),
+        recalc=forged,
+        valuation=AnnualValuationOutputs(
+            expected_annual_return=0.1,
+            expected_return_with_dividends=0.12,
+            current_graham_intrinsic_value=100.0,
+            nopat=80.0,
+            invested_capital=500.0,
+            roic=0.16,
+        ),
+    )
+    assert "WORKBOOK_RECALCULATION_INCOMPLETE" in gate.blockers
+    assert not gate.report_authorized
+    assert not genuine_excel_com_recalc(forged)

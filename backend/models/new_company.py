@@ -8,6 +8,11 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 
+CLOUD_PENDING_WINDOWS_CERTIFICATION = (
+    "CLOUD_IMPLEMENTATION_COMPLETE_PENDING_WINDOWS_CERTIFICATION"
+)
+
+
 class NewCompanyWorkflowState(str, Enum):
     PROCESSING = "PROCESSING"
     AWAITING_ANALYST_REVIEW = "AWAITING_ANALYST_REVIEW"
@@ -476,4 +481,5 @@ class NewCompanyRunState(BaseModel):
     rd_life_overridden: bool = False
     phases_completed: list[str] = Field(default_factory=list)
     artifacts: dict[str, str] = Field(default_factory=dict)
+    certification_status: str = ""
     summary: str = ""

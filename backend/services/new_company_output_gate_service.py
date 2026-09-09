@@ -22,7 +22,7 @@ from models.new_company import (
     TenYearSourceCoverageReport,
 )
 from models.annual_update import AnnualValuationOutputs
-from services.excel_recalc_service import ExcelRecalcReport
+from services.excel_recalc_service import ExcelRecalcReport, genuine_excel_com_recalc
 
 
 class NewCompanyOutputGateService:
@@ -221,8 +221,8 @@ class NewCompanyOutputGateService:
         else:
             gates["I_projection"] = "n/a"
 
-        # Gate J — recalculation
-        if recalc is None or recalc.status != "ok":
+        # Gate J — recalculation (genuine Excel COM only; do not bypass)
+        if not genuine_excel_com_recalc(recalc):
             blockers.append("WORKBOOK_RECALCULATION_INCOMPLETE")
             gates["J_recalc"] = "fail"
         else:

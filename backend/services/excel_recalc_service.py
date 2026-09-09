@@ -7,11 +7,21 @@ with constants.
 
 from __future__ import annotations
 
-import os
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
+
+
+EXCEL_COM_METHOD = "excel_com_calculate_full_rebuild"
+
+
+class ExcelComUnavailable(Exception):
+    """Raised when pywin32/win32com cannot be imported."""
+
+
+class ExcelComFailed(Exception):
+    """Raised when Excel COM starts but CalculateFullRebuild fails."""
 
 
 @dataclass
@@ -27,6 +37,27 @@ class ExcelRecalcReport:
     formula_errors: list[str] = field(default_factory=list)
     error: str | None = None
     summary: str = ""
+    com_invoked: bool = False
+
+
+def genuine_excel_com_recalc(report: ExcelRecalcReport | None) -> bool:
+    """True only after Excel COM CalculateFullRebuild ran and caches verified."""
+    return bool(
+        report is not None
+        and report.status == "ok"
+        and report.method == EXCEL_COM_METHOD
+        and report.com_invoked
+    )
+
+
+def load_excel_com():
+    """Import Windows Excel COM libraries. Isolated so tests mock only this boundary."""
+    try:
+        import pythoncom  # type: ignore
+        import win32com.client as win32com_client  # type: ignore
+    except ImportError as exc:
+        raise ExcelComUnavailable("pywin32/win32com not installed") from exc
+    return win32com_client, pythoncom
 
 
 # Fixed required post-recalc outputs for Annual Update report authorization.
@@ -115,80 +146,86 @@ class ExcelRecalcService:
                 seen.add(item)
                 required.append(item)
         t0 = time.perf_counter()
+        formula_snapshot = self._snapshot_formulas(path, tuple(required))
 
         try:
-            import win32com.client  # type: ignore
-            import pythoncom  # type: ignore
-        except ImportError:
+            self._invoke_calculate_full_rebuild(path)
+        except ExcelComUnavailable as exc:
             return ExcelRecalcReport(
                 analysis_id=analysis_id,
                 ticker=ticker,
                 status="UNAVAILABLE",
                 method="none",
                 workbook_path=str(path),
-                error="pywin32/win32com not installed",
+                error=str(exc),
                 summary="WORKBOOK_RECALCULATION_INCOMPLETE: Excel COM unavailable.",
                 missing_cached_values=[f"{s}!{c}" for s, c in required],
+                com_invoked=False,
             )
-
-        excel = None
-        wb = None
-        try:
-            formula_snapshot = self._snapshot_formulas(path, tuple(required))
-            pythoncom.CoInitialize()
-            excel = win32com.client.DispatchEx("Excel.Application")
-            excel.Visible = False
-            excel.DisplayAlerts = False
-            excel.AskToUpdateLinks = False
-            excel.EnableEvents = False
-            # Full calculation
-            try:
-                excel.Calculation = -4105  # xlCalculationAutomatic
-            except Exception:  # noqa: BLE001
-                pass
-
-            wb = excel.Workbooks.Open(str(path), UpdateLinks=0, ReadOnly=False)
-            # Force full rebuild of calculation chain
-            excel.CalculateFullRebuild()
-            wb.Save()
-            wb.Close(SaveChanges=True)
-            wb = None
-            elapsed = (time.perf_counter() - t0) * 1000.0
-
-            # Prove formulas were preserved (not overwritten with constants).
-            formula_overwrites = self._verify_formulas_preserved(path, formula_snapshot)
-            checked, missing, errors = self._verify_cached_values(path, tuple(required))
-            errors = list(errors) + formula_overwrites
-            status = "ok" if not missing and not errors else "FAILED"
-            return ExcelRecalcReport(
-                analysis_id=analysis_id,
-                ticker=ticker,
-                status=status,
-                method="excel_com_calculate_full_rebuild",
-                workbook_path=str(path),
-                elapsed_ms=round(elapsed, 1),
-                cells_checked=checked,
-                missing_cached_values=missing,
-                formula_errors=errors,
-                summary=(
-                    f"Excel recalc {status}: method=excel_com_calculate_full_rebuild; "
-                    f"checked={len(checked)}; missing={len(missing)}; errors={len(errors)}; "
-                    f"{elapsed/1000:.1f}s."
-                ),
-            )
-        except Exception as exc:  # noqa: BLE001
+        except ExcelComFailed as exc:
             elapsed = (time.perf_counter() - t0) * 1000.0
             return ExcelRecalcReport(
                 analysis_id=analysis_id,
                 ticker=ticker,
                 status="FAILED",
-                method="excel_com_calculate_full_rebuild",
+                method=EXCEL_COM_METHOD,
                 workbook_path=str(path),
                 elapsed_ms=round(elapsed, 1),
                 error=str(exc),
                 missing_cached_values=[f"{s}!{c}" for s, c in required],
                 summary=f"WORKBOOK_RECALCULATION_INCOMPLETE: Excel COM failed: {exc}",
+                com_invoked=True,
             )
+
+        elapsed = (time.perf_counter() - t0) * 1000.0
+        formula_overwrites = self._verify_formulas_preserved(path, formula_snapshot)
+        checked, missing, errors = self._verify_cached_values(path, tuple(required))
+        errors = list(errors) + formula_overwrites
+        status = "ok" if not missing and not errors else "FAILED"
+        return ExcelRecalcReport(
+            analysis_id=analysis_id,
+            ticker=ticker,
+            status=status,
+            method=EXCEL_COM_METHOD,
+            workbook_path=str(path),
+            elapsed_ms=round(elapsed, 1),
+            cells_checked=checked,
+            missing_cached_values=missing,
+            formula_errors=errors,
+            com_invoked=True,
+            summary=(
+                f"Excel recalc {status}: method={EXCEL_COM_METHOD}; "
+                f"checked={len(checked)}; missing={len(missing)}; errors={len(errors)}; "
+                f"{elapsed/1000:.1f}s."
+            ),
+        )
+
+    @staticmethod
+    def _invoke_calculate_full_rebuild(path: Path) -> None:
+        """Windows Excel COM boundary: open, CalculateFullRebuild, save. Do not compute values in Python."""
+        win32com_client, pythoncom = load_excel_com()
+        excel = None
+        wb = None
+        try:
+            pythoncom.CoInitialize()
+            excel = win32com_client.DispatchEx("Excel.Application")
+            excel.Visible = False
+            excel.DisplayAlerts = False
+            excel.AskToUpdateLinks = False
+            excel.EnableEvents = False
+            try:
+                excel.Calculation = -4105  # xlCalculationAutomatic
+            except Exception:  # noqa: BLE001
+                pass
+            wb = excel.Workbooks.Open(str(path), UpdateLinks=0, ReadOnly=False)
+            excel.CalculateFullRebuild()
+            wb.Save()
+            wb.Close(SaveChanges=True)
+            wb = None
+        except ExcelComUnavailable:
+            raise
+        except Exception as exc:  # noqa: BLE001
+            raise ExcelComFailed(str(exc)) from exc
         finally:
             try:
                 if wb is not None:
