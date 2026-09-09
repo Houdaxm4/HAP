@@ -72,6 +72,8 @@ class NewCompanyOutputGateService:
             gates["A_sec_coverage"] = "pass" if coverage and coverage.complete else "fail"
             if coverage is None:
                 blockers.append("TEN_YEAR_SEC_COVERAGE_INCOMPLETE")
+        if coverage is not None and not coverage.lookback_complete:
+            warnings.append("RD_LOOKBACK_COVERAGE_INCOMPLETE")
 
         # Gate B — financial-statement completeness
         if statements is None or statements.unresolved_material:

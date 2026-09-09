@@ -46,7 +46,9 @@ class NewCompanySecCoverageService:
         company_facts: dict[str, Any] | None = None,
         extra_lookback_years: list[str] | None = None,
     ) -> TenYearSourceCoverageReport:
-        required = list(fiscal_years) + [y for y in (extra_lookback_years or []) if y not in fiscal_years]
+        displayed = list(fiscal_years)
+        lookback = [y for y in (extra_lookback_years or []) if y not in displayed]
+        required = displayed + lookback
         filings = list((sec_manifest or {}).get("selected_filings") or [])
         ten_k = [
             f
@@ -82,7 +84,11 @@ class NewCompanySecCoverageService:
                     FilingYearCoverage(
                         fiscal_year=fy,
                         coverage_status=CoverageStatus.MISSING,
-                        notes=["TEN_YEAR_SEC_COVERAGE_INCOMPLETE"],
+                        notes=[
+                            "TEN_YEAR_SEC_COVERAGE_INCOMPLETE"
+                            if fy in displayed
+                            else "RD_LOOKBACK_COVERAGE_INCOMPLETE"
+                        ],
                     )
                 )
                 continue
@@ -117,16 +123,22 @@ class NewCompanySecCoverageService:
             )
 
         selected = list(selected_accn.values())
-        pattern = self._pattern(selected, required)
+        pattern = self._pattern(selected, displayed)
         missing = [y.fiscal_year for y in years_out if y.coverage_status == CoverageStatus.MISSING]
+        displayed_missing = [y for y in missing if y in displayed]
+        lookback_missing = [y for y in missing if y in lookback]
         warnings: list[str] = []
-        if missing:
-            warnings.append("TEN_YEAR_SEC_COVERAGE_INCOMPLETE: missing " + ", ".join(missing))
+        if displayed_missing:
+            warnings.append("TEN_YEAR_SEC_COVERAGE_INCOMPLETE: missing " + ", ".join(displayed_missing))
+        if lookback_missing:
+            warnings.append("RD_LOOKBACK_COVERAGE_INCOMPLETE: missing " + ", ".join(lookback_missing))
 
         return TenYearSourceCoverageReport(
             analysis_id=analysis_id,
             ticker=ticker,
             required_years=required,
+            displayed_years=displayed,
+            lookback_years=lookback,
             filings_selected=[
                 {
                     "accession_number": f.get("accession_number"),
@@ -141,11 +153,14 @@ class NewCompanySecCoverageService:
             years=years_out,
             overlapping_years_deduped=sorted(set(overlapping)),
             pattern=pattern,
-            complete=not missing,
+            complete=not displayed_missing,
+            lookback_complete=not lookback_missing,
             warnings=warnings,
             summary=(
-                f"SEC coverage: {len(required) - len(missing)}/{len(required)} years from "
-                f"{len(selected)} filings ({pattern or 'irregular'}); missing={missing or 'none'}."
+                f"SEC coverage: displayed {len(displayed) - len(displayed_missing)}/{len(displayed)}; "
+                f"lookback {len(lookback) - len(lookback_missing)}/{len(lookback)} from "
+                f"{len(selected)} filings ({pattern or 'irregular'}); "
+                f"displayed_missing={displayed_missing or 'none'}."
             ),
         )
 
@@ -206,7 +221,12 @@ class NewCompanySecCoverageService:
     @staticmethod
     def _facts_cover_year(company_facts: dict[str, Any], year: int) -> bool:
         us_gaap = (company_facts.get("facts") or {}).get("us-gaap") or {}
-        for tag in ("Revenues", "RevenueFromContractWithCustomerExcludingAssessedTax", "NetIncomeLoss"):
+        for tag in (
+            "Revenues",
+            "RevenueFromContractWithCustomerExcludingAssessedTax",
+            "NetIncomeLoss",
+            "ResearchAndDevelopmentExpense",
+        ):
             units = (us_gaap.get(tag) or {}).get("units") or {}
             for entries in units.values():
                 for entry in entries:

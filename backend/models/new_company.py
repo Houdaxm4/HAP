@@ -81,11 +81,14 @@ class TenYearSourceCoverageReport(BaseModel):
     analysis_id: str
     ticker: str
     required_years: list[str] = Field(default_factory=list)
+    displayed_years: list[str] = Field(default_factory=list)
+    lookback_years: list[str] = Field(default_factory=list)
     filings_selected: list[dict[str, Any]] = Field(default_factory=list)
     years: list[FilingYearCoverage] = Field(default_factory=list)
     overlapping_years_deduped: list[str] = Field(default_factory=list)
     pattern: str | None = None
-    complete: bool = False
+    complete: bool = False  # displayed ten-year window
+    lookback_complete: bool = True
     warnings: list[str] = Field(default_factory=list)
     summary: str = ""
 

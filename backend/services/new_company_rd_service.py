@@ -464,6 +464,22 @@ class NewCompanyRdService:
         for keys, life, reason in _INDUSTRY_LIFE:
             if any(k in blob for k in keys):
                 return life, reason
+        sic_digits = "".join(ch for ch in blob if ch.isdigit())
+        if len(sic_digits) >= 2:
+            sic_map = {
+                "28": (8, "SIC 28xx pharmaceutical/chemical patent and regulatory cycle"),
+                "35": (5, "SIC 35xx industrial machinery development cycle"),
+                "36": (4, "SIC 36xx electronics/hardware product cycle"),
+                "37": (5, "SIC 37xx industrial equipment development cycle"),
+                "53": (3, "SIC 53xx general merchandise retail; limited R&D"),
+                "56": (3, "SIC 56xx apparel retail; limited R&D"),
+                "57": (3, "SIC 57xx home furnishings retail; limited R&D"),
+                "59": (3, "SIC 59xx catalog/e-commerce retail; limited R&D"),
+                "73": (3, "SIC 73xx software/services technology cycle"),
+            }
+            mapped = sic_map.get(sic_digits[:2])
+            if mapped:
+                return mapped
         return 5, None
 
     @staticmethod

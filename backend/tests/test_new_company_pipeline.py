@@ -435,6 +435,18 @@ def test_sec_coverage_prefers_latest_restated_and_3_plus_pattern():
     covered = {y.fiscal_year: y for y in report.years}
     assert covered["FY2024"].restated or covered["FY2024"].coverage_status.value.startswith("covered")
 
+    lookback = NewCompanySecCoverageService().build(
+        analysis_id="a",
+        ticker="MSFT",
+        fiscal_years=years,
+        sec_manifest=manifest,
+        company_facts=facts,
+        extra_lookback_years=["FY2012", "FY2013"],
+    )
+    assert lookback.complete
+    assert lookback.displayed_years == years
+    assert "FY2012" in lookback.lookback_years
+
 
 def test_exact_pe10_vs_e10_identities():
     assert exact_field_identity("PE10") == "pe10_fiscal_year"
@@ -996,6 +1008,10 @@ def test_cross_company_runner_suite(tmp_path: Path, out_svc: OutputService):
             assert done["rd_decision"].selected_useful_life
             assert len(done["pe10"].fiscal_year_pe10) == 10
             assert len(done["tax"].years) == 10
+            assert "LEASE_RATE_REVIEW_PENDING" not in (done["output_gate"].blockers if done["output_gate"] else [])
+            assert "TEN_YEAR_SEC_COVERAGE_INCOMPLETE" not in (
+                done["output_gate"].blockers if done["output_gate"] else []
+            )
     # New Company remains uncertified on this Linux host even if mocked recalc is ok,
     # because production Excel COM was not used. Record outcomes.
     assert len(results) == 6
