@@ -132,12 +132,30 @@ class NewCompanyRdService:
         original = prior_decision.original_agent_selection if prior_decision else selected
         if prior_decision and prior_decision.original_agent_selection:
             original = prior_decision.original_agent_selection
+        trail = list(prior_decision.audit_trail) if prior_decision else []
         if override is not None:
             if override < _PERMITTED[0] or override > _PERMITTED[1]:
                 blocking.append("RD_USEFUL_LIFE_EVIDENCE_WEAK")
             else:
                 selected = int(override)
                 company_ev.append(f"Analyst override to {override} years: {override_reason or 'no reason supplied'}.")
+                trail.append(
+                    {
+                        "event": "RD_USEFUL_LIFE_ANALYST_OVERRIDE",
+                        "original": original,
+                        "override": selected,
+                        "reason": override_reason,
+                        "timestamp": datetime.now(timezone.utc).isoformat(),
+                    }
+                )
+        else:
+            trail.append(
+                {
+                    "event": "RD_USEFUL_LIFE_AGENT_SELECTED",
+                    "life": selected,
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                }
+            )
 
         sensitivity = []
         for alt in (selected - 1, selected, selected + 1):
@@ -176,6 +194,7 @@ class NewCompanyRdService:
             original_agent_selection=original or selected,
             analyst_override=override,
             analyst_override_reason=override_reason,
+            audit_trail=trail,
             blocking=bool(blocking and "insufficient" in " ".join(blocking).lower()) or (
                 "RD_USEFUL_LIFE_EVIDENCE_WEAK" in blocking and not positive and industry_life == 5 and not industry_reason
             ),
@@ -380,6 +399,10 @@ class NewCompanyRdService:
         if "R&D" not in wb.sheetnames:
             return
         ws = wb["R&D"]
+        warning = (
+            "ANALYST WARNING: R&D useful life is an agent-selected analyst assumption "
+            "and has not been manually approved. Override it if the economic life differs."
+        )
         for addr in _LIFE_CELLS:
             cell = ws[addr]
             if isinstance(cell.value, str) and cell.value.startswith("="):
@@ -387,6 +410,13 @@ class NewCompanyRdService:
             cell.value = life
             written.append(f"R&D!{addr}")
             break
+        # Visible warning — do not overwrite formulas.
+        warn_cell = ws["A1"]
+        existing = str(warn_cell.value or "")
+        if not (isinstance(warn_cell.value, str) and warn_cell.value.startswith("=")):
+            if "ANALYST WARNING" not in existing:
+                warn_cell.value = warning
+                written.append("R&D!A1")
 
     def _write_inputs_rd(self, wb, amounts: dict[str, RdYearAmount], written: list[str]) -> None:
         if "Inputs" not in wb.sheetnames:
@@ -421,7 +451,7 @@ class NewCompanyRdService:
         for fy in fiscal_years:
             if helper._ensure_schedule_formulas(ows, wb, fy, life_years=life, written=written):
                 extended = True
-        return extended or bool(written)
+        return extended
 
     @staticmethod
     def _workbook_rd_series(path: Path, fiscal_years: list[str]) -> dict[str, float | None]:

@@ -9,7 +9,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from openpyxl import Workbook, load_workbook
 
-from models.custom_run import CustomRunData, CustomRunPeriods
+from models.custom_run import CustomRunData, CustomRunPeriods, CustomRunSeries
 from models.new_company import (
     BuybackAbsenceClass,
     CLOUD_PENDING_WINDOWS_CERTIFICATION,
@@ -29,6 +29,7 @@ from services.new_company_seasonality_service import NewCompanySeasonalityServic
 from services.new_company_sec_coverage_service import NewCompanySecCoverageService
 from services.new_company_statement_validation_service import NewCompanyStatementValidationService
 from services.new_company_tax_service import NewCompanyTaxService
+from services.new_company_tax_table_service import NewCompanyTaxTableService
 from services.output_service import OutputService
 
 
@@ -395,6 +396,14 @@ _CRF_PARSE = "services.new_company_pe10_service.CustomRunService.parse"
 
 def _refresh_ok():
     return MagicMock(entries=[], summary="ok", missing_required=[])
+
+
+def _approve_persisted_lease(out_svc: OutputService, analysis_id: str, review, workbook: Path):
+    approved = NewCompanyLeaseService().apply_review(
+        review, action="approve", reason="fixture approval", workbook_path=workbook
+    )
+    out_svc.write_json(analysis_id, "lease_rate_review.json", approved)
+    return approved
 
 
 @pytest.fixture(autouse=True)
@@ -820,8 +829,22 @@ def test_recalc_unavailable_needs_review(tmp_path: Path, out_svc: OutputService)
             company_facts=company_facts_for(),
             sec_manifest=_filings_manifest(),
             tax_year_inputs=tax_inputs,
-            lease_review_override={"action": "approve", "reason": "ok"},
+        )
+    assert result["workflow_state"] == NewCompanyWorkflowState.AWAITING_ANALYST_REVIEW
+    _approve_persisted_lease(out_svc, "run1", result["lease_review"], tmp_path / "working.xlsx")
+    with patch(_CRF_PARSE, return_value=crf):
+        result = runner.run(
+            analysis_id="run1",
+            ticker="MSFT",
+            company="Microsoft",
+            template_path=tmp_path / "working.xlsx",
+            working_path=tmp_path / "working.xlsx",
+            custom_run_path=crf_path,
+            company_facts=company_facts_for(),
+            sec_manifest=_filings_manifest(),
+            tax_year_inputs=tax_inputs,
             finalize=True,
+            prepare_working=False,
         )
     assert result["workflow_state"] == NewCompanyWorkflowState.NEEDS_REVIEW
     assert "WORKBOOK_RECALCULATION_INCOMPLETE" in result["output_gate"].blockers
@@ -867,6 +890,7 @@ def test_runner_pauses_for_lease_review_then_blocks_without_com(tmp_path: Path, 
         assert paused["lease_review"].blocking
         assert paused["output_gate"] is None
         assert paused["deliverables"] is None or paused["deliverables"].authorized is False
+        _approve_persisted_lease(out_svc, "run2", paused["lease_review"], tmp_path / "working.xlsx")
         done = runner.run(
             analysis_id="run2",
             ticker="AMZN",
@@ -877,7 +901,6 @@ def test_runner_pauses_for_lease_review_then_blocks_without_com(tmp_path: Path, 
             company_facts=company_facts_for(),
             sec_manifest=_filings_manifest(),
             tax_year_inputs=tax_inputs,
-            lease_review_override={"action": "approve", "reason": "10-K rate"},
             finalize=True,
             prepare_working=False,
         )
@@ -982,6 +1005,7 @@ def test_cross_company_runner_suite(tmp_path: Path, out_svc: OutputService):
                 tax_year_inputs=tax_inputs,
             )
             assert paused["workflow_state"] == NewCompanyWorkflowState.AWAITING_ANALYST_REVIEW
+            _approve_persisted_lease(out_svc, f"{ticker}-nc", paused["lease_review"], tmp_path / f"{ticker}_work.xlsx")
             done = runner.run(
                 analysis_id=f"{ticker}-nc",
                 ticker=ticker,
@@ -992,7 +1016,6 @@ def test_cross_company_runner_suite(tmp_path: Path, out_svc: OutputService):
                 company_facts=company_facts_for(),
                 sec_manifest={**_filings_manifest(), "company_name": name, "sic": sic},
                 tax_year_inputs=tax_inputs,
-                lease_review_override={"action": "approve", "reason": "fixture approval"},
                 finalize=True,
                 prepare_working=False,
             )
@@ -1008,6 +1031,21 @@ def test_cross_company_runner_suite(tmp_path: Path, out_svc: OutputService):
             assert done["workflow_state"] != NewCompanyWorkflowState.COMPLETE
             assert done["certification_status"] == CLOUD_PENDING_WINDOWS_CERTIFICATION
             assert "WORKBOOK_RECALCULATION_INCOMPLETE" in done["output_gate"].blockers
+            assert done["periods"].latest_quarter == q
+            assert len(done["tax"].years) == 10
+            assert len(done["buybacks"].years) == 10
+            assert done["deliverables"] is None or done["deliverables"].authorized is False
+            if ticker == "JBSS":
+                displayed_rd = [e.amount for e in done["rd"].expenses if e.displayed]
+                assert displayed_rd
+                assert all(a == 0.0 for a in displayed_rd)
+                assert done["rd_decision"].selected_useful_life is not None
+            if q in {2, 3}:
+                assert done["seasonality"] is not None
+                assert done["seasonality"].latest_quarter == q
+                assert done["projection"] is not None
+            if q == 4:
+                assert done["seasonality"] is None or done["seasonality"].latest_quarter == 4
     assert len(results) == 6
     assert all(r[0] for r in results)
 
@@ -1075,3 +1113,314 @@ def test_gate_j_rejects_forged_ok_without_genuine_com(tmp_path: Path):
     assert "WORKBOOK_RECALCULATION_INCOMPLETE" in gate.blockers
     assert not gate.report_authorized
     assert not genuine_excel_com_recalc(forged)
+
+
+def test_helper_and_estimate_columns_are_skipped(tmp_path: Path):
+    path = industrial_workbook(tmp_path / "wb.xlsx")
+    wb = load_workbook(path)
+    ws = wb["Income - GAAP"]
+    helper_col = 3 + len(YEARS)
+    ws.cell(1, helper_col, "FY2025 check")
+    ws.cell(5, helper_col, "estimate")
+    ws.cell(11, helper_col, 999)
+    wb.save(path)
+    wb.close()
+    report = NewCompanyPeriodService().detect(analysis_id="a", ticker="MSFT", workbook_path=path)
+    assert report.fiscal_years == FY
+    assert str(helper_col) in report.skipped_helper_columns
+
+
+def test_sec_coverage_records_overlapping_comparative_years():
+    manifest = _filings_manifest()
+    manifest["selected_filings"].append(
+        {
+            "accession_number": "000-2024",
+            "filing_type": "10-K",
+            "filing_date": "2025-02-01",
+            "report_date": "2024-12-31",
+            "document_url": "https://www.sec.gov/2024",
+            "fiscal_year": 2024,
+            "primary_document": "d10k.htm",
+        }
+    )
+    report = NewCompanySecCoverageService().build(
+        analysis_id="a",
+        ticker="MSFT",
+        fiscal_years=FY,
+        sec_manifest=manifest,
+        company_facts=company_facts_for(),
+    )
+    assert report.overlapping_years_deduped
+    assert "FY2024" in report.overlapping_years_deduped or "FY2023" in report.overlapping_years_deduped
+
+
+def test_tax_table_percent_residual_parentheses_and_not_etr_only(tmp_path: Path):
+    table = [
+        {"label": "Federal statutory rate", "rate": "21%"},
+        {"label": "State taxes, net of federal benefit", "rate": "2.0"},
+        {"label": "Foreign rate differential", "rate": "(1.0)"},
+        {"label": "Research and development tax credit", "rate": "(1.2)"},
+        {"label": "Other items", "rate": "0.5"},
+        {"label": "Effective tax rate", "rate": "20.8"},
+    ]
+    extracted = NewCompanyTaxTableService().extract(
+        fiscal_year="FY2025",
+        candidate_table=table,
+        heading="Income tax rate reconciliation (%)",
+        accession_number="000-2025",
+        note_location="Note 8 — Income Taxes",
+        pretax_income=100.0,
+        income_tax_expense=20.8,
+    )
+    assert extracted["table_units"] == "percent"
+    assert extracted["mapped_rates"]["statutory_federal"] == pytest.approx(0.21)
+    assert extracted["mapped_rates"]["credits"] == pytest.approx(-0.012)
+    assert extracted["mapped_rates"]["foreign"] == pytest.approx(-0.01)
+    assert extracted["residual_other"] == pytest.approx(0.208 - 0.21 - 0.02 - (-0.01) - (-0.012))
+    assert extracted["signs_normalized"] is True
+    assert extracted["category_coverage_complete"] is True
+    assert extracted["raw_filing_lines"]
+
+    wb = industrial_workbook(tmp_path / "tax.xlsx")
+    report = NewCompanyTaxService().apply(
+        analysis_id="a",
+        ticker="MSFT",
+        workbook_path=wb,
+        fiscal_years=["FY2025"],
+        year_inputs={
+            "FY2025": {
+                "reported_effective_rate": 0.21,
+                "candidate_table": table,
+                "heading": "Income tax rate reconciliation (%)",
+                "accession_number": "000-2025",
+                "note_location": "Note 8 — Income Taxes",
+            }
+        },
+    )
+    assert report.complete
+    assert report.years[0].statutory_federal == pytest.approx(0.21)
+    assert report.years[0].note_or_table_location
+
+
+def test_tax_etr_only_is_not_complete(tmp_path: Path):
+    path = industrial_workbook(tmp_path / "wb.xlsx")
+    report = NewCompanyTaxService().apply(
+        analysis_id="a",
+        ticker="MSFT",
+        workbook_path=path,
+        fiscal_years=["FY2025"],
+        year_inputs={"FY2025": {"reported_effective_rate": 0.21}},
+    )
+    assert report.complete is False
+    assert report.years[0].statutory_federal is None
+    assert any("ETR" in w or "statutory" in w.lower() for w in report.warnings)
+
+
+def test_unsigned_lease_override_cannot_bypass_review(tmp_path: Path, out_svc: OutputService):
+    path = industrial_workbook(tmp_path / "wb.xlsx")
+    runner = NewCompanyRunner(output_service=out_svc)
+    crf_path = tmp_path / "crf.xlsx"
+    crf_path.write_bytes(b"x")
+    crf = CustomRunData(
+        source_filename="crf.xlsx",
+        ticker="MSFT",
+        ticker_sheet_name="MSFT",
+        metadata={"inputs_annual_pe10": {fy: 20.0 for fy in FY}, "inputs_annual_e10": {fy: 5.0 for fy in FY}},
+        scalars={"Current PE10": 22.0, "Current E10": 5.5},
+    )
+    tax_inputs = {
+        fy: {
+            "reported_effective_rate": 0.21,
+            "components": [{"label": "Federal statutory", "rate": 0.21, "house": "statutory_federal"}],
+            "pretax_income": 100.0,
+            "income_tax_expense": 21.0,
+        }
+        for fy in FY
+    }
+    with patch(_CRF_PARSE, return_value=crf):
+        paused = runner.run(
+            analysis_id="bypass",
+            ticker="MSFT",
+            company="Microsoft",
+            template_path=path,
+            working_path=tmp_path / "working.xlsx",
+            custom_run_path=crf_path,
+            company_facts=company_facts_for(),
+            sec_manifest=_filings_manifest(),
+            tax_year_inputs=tax_inputs,
+        )
+        sneaky = runner.run(
+            analysis_id="bypass",
+            ticker="MSFT",
+            company="Microsoft",
+            template_path=tmp_path / "working.xlsx",
+            working_path=tmp_path / "working.xlsx",
+            custom_run_path=crf_path,
+            company_facts=company_facts_for(),
+            sec_manifest=_filings_manifest(),
+            tax_year_inputs=tax_inputs,
+            lease_review_override={"action": "approve", "reason": "not an analyst"},
+            finalize=True,
+            prepare_working=False,
+        )
+    assert paused["workflow_state"] == NewCompanyWorkflowState.AWAITING_ANALYST_REVIEW
+    assert sneaky["workflow_state"] == NewCompanyWorkflowState.AWAITING_ANALYST_REVIEW
+    assert sneaky["lease_review"].blocking is True
+    assert sneaky["output_gate"] is None
+
+
+def test_rd_override_writes_audit_trail(tmp_path: Path):
+    path = industrial_workbook(tmp_path / "wb.xlsx")
+    svc = NewCompanyRdService()
+    first = svc.select_useful_life(
+        analysis_id="a",
+        ticker="MSFT",
+        workbook_path=path,
+        fiscal_years=FY,
+        sec_manifest={"company_name": "Software Cloud", "sic": "7372"},
+    )
+    second = svc.select_useful_life(
+        analysis_id="a",
+        ticker="MSFT",
+        workbook_path=path,
+        fiscal_years=FY,
+        sec_manifest={"company_name": "Software Cloud", "sic": "7372"},
+        override=7,
+        override_reason="longer platform cycle",
+        prior_decision=first,
+    )
+    assert any(e.get("event") == "RD_USEFUL_LIFE_ANALYST_OVERRIDE" for e in second.audit_trail)
+    wb = load_workbook(path)
+    # apply writes the visible warning
+    svc.apply(analysis_id="a", ticker="MSFT", workbook_path=path, fiscal_years=FY, decision=second)
+    wb = load_workbook(path)
+    assert "ANALYST WARNING" in str(wb["R&D"]["A1"].value)
+    wb.close()
+
+
+def test_buyback_was_not_used_as_ending_shares_and_pct_fcf():
+    facts = company_facts_for(buybacks=True, sbc_offset=True)
+    from tempfile import TemporaryDirectory
+
+    with TemporaryDirectory() as td:
+        path = industrial_workbook(Path(td) / "wb.xlsx")
+        report = NewCompanyBuybackService().apply(
+            analysis_id="a", ticker="AAPL", workbook_path=path, fiscal_years=FY, company_facts=facts
+        )
+    y = report.years[-1]
+    assert y.diluted_was is not None
+    assert report.analysis.buybacks_pct_of_fcf is not None
+
+
+def test_pe10_crf_parse_failure_is_incomplete_and_writes_no_zeros(tmp_path: Path):
+    path = industrial_workbook(tmp_path / "wb.xlsx")
+    (tmp_path / "crf.xlsx").write_bytes(b"x")
+    with patch(_CRF_PARSE, side_effect=ValueError("corrupt CRF")):
+        report = NewCompanyPe10Service().apply(
+            analysis_id="a",
+            ticker="MSFT",
+            workbook_path=path,
+            custom_run_path=tmp_path / "crf.xlsx",
+            fiscal_years=FY,
+        )
+    assert report.status == "incomplete"
+    assert all(o.missing and o.value is None for o in report.fiscal_year_pe10)
+    assert all(o.missing and o.value is None for o in report.fiscal_year_e10)
+    assert any("CRF parse failed" in w for w in report.warnings)
+
+
+def test_pe10_out_of_tolerance_nearest_date_is_not_written(tmp_path: Path):
+    path = industrial_workbook(tmp_path / "wb.xlsx")
+    (tmp_path / "crf.xlsx").write_bytes(b"x")
+    crf = CustomRunData(
+        source_filename="crf.xlsx",
+        ticker="MSFT",
+        ticker_sheet_name="MSFT",
+        metadata={"inputs_annual_pe10": {}, "inputs_annual_e10": {}},
+        scalars={"Current PE10": 25.0, "Current E10": 6.0},
+        periods=CustomRunPeriods(dates=["2020-06-01"]),
+        historical_metrics={
+            "PE10": CustomRunSeries(label="PE10", values=[99.0]),
+            "E10": CustomRunSeries(label="E10", values=[9.0]),
+        },
+    )
+    with patch(_CRF_PARSE, return_value=crf):
+        report = NewCompanyPe10Service().apply(
+            analysis_id="a",
+            ticker="MSFT",
+            workbook_path=path,
+            custom_run_path=tmp_path / "crf.xlsx",
+            fiscal_years=["FY2020"],
+            fy_end_dates={"FY2020": "2020-12-31"},
+            nearest_tolerance_days=45,
+        )
+    fy = report.fiscal_year_pe10[0]
+    assert fy.missing or fy.value is None
+    assert fy.value != 99.0
+    assert any("PE10_FISCAL_DATE_MISMATCH" in w for w in report.warnings)
+    assert report.current_pe10 and report.current_pe10.value == 25.0
+
+
+def test_pe10_current_does_not_replace_historical_fiscal_values(tmp_path: Path):
+    path = industrial_workbook(tmp_path / "wb.xlsx")
+    (tmp_path / "crf.xlsx").write_bytes(b"x")
+    crf = CustomRunData(
+        source_filename="crf.xlsx",
+        ticker="MSFT",
+        ticker_sheet_name="MSFT",
+        metadata={
+            "inputs_annual_pe10": {fy: 18.0 for fy in FY},
+            "inputs_annual_e10": {fy: 4.5 for fy in FY},
+        },
+        scalars={"Current PE10": 40.0, "Current E10": 8.0},
+    )
+    with patch(_CRF_PARSE, return_value=crf):
+        report = NewCompanyPe10Service().apply(
+            analysis_id="a",
+            ticker="MSFT",
+            workbook_path=path,
+            custom_run_path=tmp_path / "crf.xlsx",
+            fiscal_years=FY,
+        )
+    assert all(o.value == 18.0 for o in report.fiscal_year_pe10 if not o.missing)
+    assert report.current_pe10 and report.current_pe10.value == 40.0
+    assert report.current_pe10.value != report.fiscal_year_pe10[-1].value
+    wb = load_workbook(path)
+    ws = wb["Inputs"]
+    hist_row = [ws.cell(10, col).value for col in range(3, 13)]
+    assert 40.0 not in hist_row
+    assert hist_row.count(18.0) == 10
+    wb.close()
+
+
+def test_word_report_withheld_until_authorized(tmp_path: Path):
+    from services.new_company_deliverables_service import NewCompanyDeliverablesService
+
+    wb = industrial_workbook(tmp_path / "wb.xlsx")
+    out = tmp_path / "out"
+    report = NewCompanyDeliverablesService().produce(
+        analysis_id="a",
+        ticker="MSFT",
+        company="Microsoft",
+        fiscal_year=2025,
+        completed_workbook_path=wb,
+        output_dir=out,
+        periods=None,
+        tax=None,
+        pe10=None,
+        rd_decision=None,
+        rd=None,
+        leases=None,
+        lease_review=None,
+        buybacks=None,
+        projection=None,
+        seasonality=None,
+        valuation=None,
+        gate=None,
+        authorized=False,
+    )
+    assert report.authorized is False
+    assert report.word_path is None
+    assert list(out.glob("*.docx")) == []
+    assert list(out.glob("*.xlsx"))
+

@@ -81,16 +81,46 @@ class NewCompanyBuybackService:
             avg, a_src = self._fact(sec, company_facts, fy, _AVG_PRICE_TAGS, scale=False)
             begin, _ = self._fact(sec, company_facts, fy, _BEGIN_SHARES, scale=True, shares=True)
             was, _ = self._fact(sec, company_facts, fy, _WAS_DILUTED, scale=True, shares=True)
+            end_shares, _ = self._fact(
+                sec,
+                company_facts,
+                fy,
+                ("CommonStockSharesOutstanding", "EntityCommonStockSharesOutstanding"),
+                scale=True,
+                shares=True,
+            )
+            issued, _ = self._fact(
+                sec, company_facts, fy, ("StockIssuedDuringPeriodSharesNewIssues", "CommonStockSharesIssued"), scale=True, shares=True
+            )
+            withholding, _ = self._fact(
+                sec,
+                company_facts,
+                fy,
+                ("PaymentsRelatedToTaxWithholdingForShareBasedCompensation",),
+                scale=True,
+            )
+            sbc_shares, _ = self._fact(
+                sec, company_facts, fy, ("ShareBasedCompensationArrangementByShareBasedPaymentAwardShares",), scale=True, shares=True
+            )
+            acquisition, _ = self._fact(
+                sec, company_facts, fy, ("StockIssuedDuringPeriodSharesAcquisitions",), scale=True, shares=True
+            )
             sbc, _ = self._fact(sec, company_facts, fy, _SBC_TAGS, scale=True)
             cfo, _ = self._fact(sec, company_facts, fy, _FCF_PROXY, scale=True)
             capex, _ = self._fact(sec, company_facts, fy, _CAPEX, scale=True)
             derived = False
             formula = None
+            year_warnings: list[str] = []
+            avg_derived = False
             if shares is None and dollars is not None and avg not in (None, 0):
                 shares = dollars / avg
                 derived = True
-                formula = "repurchase_dollars / average_repurchase_price"
+                formula = "repurchase_dollars / disclosed_average_repurchase_price"
                 s_src = f"derived:{a_src}"
+            elif avg is None and dollars and shares not in (None, 0):
+                avg = dollars / shares
+                avg_derived = True
+                year_warnings.append("BUYBACK_AVERAGE_PRICE_DERIVED")
             absence = None
             if dollars is None and shares is None:
                 absence = BuybackAbsenceClass.NOT_DISCLOSED
@@ -105,10 +135,12 @@ class NewCompanyBuybackService:
             if derived:
                 warnings.append(f"BUYBACK_SHARES_DERIVED: {fy}")
 
-            year_warnings: list[str] = []
-            if begin is not None and shares is not None and was is not None:
-                # Ending ≈ WAS as a coarse check only; do not use Δshares as buybacks.
-                pass
+            if begin is not None and shares is not None and end_shares is not None:
+                delta = end_shares - begin
+                if abs(delta) > abs(shares or 0) * 1.5 + 1e-6:
+                    year_warnings.append(
+                        "Share-count change is not used as buybacks; Δshares diverges from disclosed/derived repurchases."
+                    )
             if sbc:
                 sbc_total += sbc
             fcf = None
@@ -138,22 +170,33 @@ class NewCompanyBuybackService:
                         "change_in_shares_outstanding_not_used_as_buyback",
                     ],
                     beginning_shares=begin,
-                    ending_shares=was,
+                    issued_shares=issued,
+                    ending_shares=end_shares,
+                    diluted_was=was,
+                    sbc_dilution_shares=sbc_shares,
+                    employee_tax_withholding=withholding,
+                    acquisition_related_equity=acquisition,
+                    other_share_changes=None,
+                    average_price_derived=avg_derived,
+                    derivation_units="USD_millions / USD_per_share → million_shares" if derived else None,
                     absence_class=absence,
                     confidence=0.5 if derived else (0.85 if dollars is not None else 0.2),
                     warnings=year_warnings,
                 )
             )
 
-        first_was = next((y.ending_shares for y in years if y.ending_shares is not None), None)
-        last_was = next((y.ending_shares for y in reversed(years) if y.ending_shares is not None), None)
+        first_was = next((y.diluted_was for y in years if y.diluted_was is not None), None)
+        last_was = next((y.diluted_was for y in reversed(years) if y.diluted_was is not None), None)
         share_chg = None
         if first_was is not None and last_was is not None:
             share_chg = last_was - first_was
         cum_shares = sum(y.shares or 0.0 for y in years)
         sbc_offset = bool(sbc_total and dollars_total and sbc_total > 0.25 * dollars_total)
         funded = None
+        pct_fcf = None
         if dollars_total:
+            if fcf_total:
+                pct_fcf = dollars_total / fcf_total if fcf_total else None
             if fcf_total >= dollars_total:
                 funded = "free_cash_flow"
             elif fcf_total > 0:
@@ -171,6 +214,7 @@ class NewCompanyBuybackService:
             diluted_share_count_change=share_chg,
             sbc_offset_material=sbc_offset,
             funded_by=funded,
+            buybacks_pct_of_fcf=pct_fcf,
             value_created_or_destroyed=vs_iv,
             notes=[
                 "Large repurchase dollars are not by themselves shareholder-friendly.",

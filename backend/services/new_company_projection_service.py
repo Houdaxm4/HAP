@@ -67,6 +67,11 @@ class NewCompanyProjectionService:
         tax_adj = self._component(seasonality, "tax_expense", adjusted=True)
 
         ic_latest = self._latest_ic(workbook_path, fiscal_years)
+        if ic_latest is not None and abs(ic_latest) < 1e-6:
+            ic_latest = None
+        roce_denom = self._latest_capital_employed(workbook_path, fiscal_years) or ic_latest
+        if roce_denom is not None and abs(roce_denom) < 1e-6:
+            roce_denom = None
         nopat_adj = None
         if oi_adj is not None:
             rate = tax_rate
@@ -84,9 +89,7 @@ class NewCompanyProjectionService:
         unadj_roic = (nopat_unadj / ic_latest) if nopat_unadj is not None and ic_latest else None
         proj_roic_wacc = (proj_roic - wacc) if proj_roic is not None and wacc is not None else None
 
-        # ROCE uses the same projected earnings numerator over capital employed ≈ IC when the
-        # template does not expose a distinct capital-employed stock for the projection.
-        roce_denom = ic_latest
+        # ROCE uses capital employed (equity + interest-bearing debt) when available.
         proj_roce = (nopat_adj / roce_denom) if nopat_adj is not None and roce_denom else None
         unadj_roce = (nopat_unadj / roce_denom) if nopat_unadj is not None and roce_denom else None
 
@@ -128,6 +131,9 @@ class NewCompanyProjectionService:
             ten_year_avg_roce=annual.get("avg_roce"),
             ytd_unadjusted_annualized_roce=unadj_roce,
             seasonality_adjusted_roce=proj_roce,
+            projected_nopat=nopat_adj,
+            projected_invested_capital=ic_latest,
+            projected_capital_employed=roce_denom,
             confidence=conf,
             assumptions=[
                 "Seasonality-adjusted operating income is the primary projected numerator.",
@@ -173,9 +179,13 @@ class NewCompanyProjectionService:
                 actual_oi = _num(ws.cell(oi_row, col).value)
                 if actual_oi is None or actual_oi <= 0:
                     continue
+                naive = {2: 0.5, 3: 0.75}.get(quarter)
+                if not naive:
+                    continue
                 ytd = actual_oi * naive
-                # Reconstruct using the same-quarter historical average excluding this year.
-                others = []
+                # Leave-one-out: other years' implied same-quarter proportions.
+                # Without true quarterly history, this backtest is labeled as naive-identity.
+                others: list[float] = []
                 for other in fiscal_years[:-1]:
                     if other == fy:
                         continue
@@ -184,7 +194,7 @@ class NewCompanyProjectionService:
                         continue
                     val = _num(ws.cell(oi_row, ocol).value)
                     if val and val > 0:
-                        others.append(naive)  # identity when only annuals exist
+                        others.append(naive)
                 factor = sum(others) / len(others) if others else naive
                 projected_oi = ytd / factor if factor else None
                 actual_roic = None
@@ -290,5 +300,35 @@ class NewCompanyProjectionService:
                 if "invested capital" in lab:
                     return _num(ws.cell(row, col).value)
             return _num(ws.cell(7, col).value)
+        finally:
+            wb.close()
+
+    @staticmethod
+    def _latest_capital_employed(path: Path, fiscal_years: list[str]) -> float | None:
+        """Equity + interest-bearing debt when both are present; otherwise None."""
+        wb = load_workbook(path, data_only=False)
+        try:
+            if "Balance Sheet - Standardized" not in wb.sheetnames or not fiscal_years:
+                return None
+            ws = wb["Balance Sheet - Standardized"]
+            cols = detect_year_columns(ws, wb)
+            col = cols.get(fiscal_years[-1])
+            if not col:
+                return None
+            equity = debt = None
+            for row in range(1, min(ws.max_row or 1, 120) + 1):
+                lab = str(ws.cell(row, 1).value or "").lower()
+                val = _num(ws.cell(row, col).value)
+                if val is None:
+                    continue
+                if "shareholders" in lab and "equity" in lab:
+                    equity = val
+                elif lab.strip() in {"long-term debt", "long term debt"} or (
+                    "long-term debt" in lab
+                ):
+                    debt = val
+            if equity is None or debt is None:
+                return None
+            return equity + debt
         finally:
             wb.close()

@@ -222,6 +222,10 @@ class ExcelRecalcService:
             wb.Save()
             wb.Close(SaveChanges=True)
             wb = None
+            # Required save+reopen cycle before cache verification.
+            wb = excel.Workbooks.Open(str(path), UpdateLinks=0, ReadOnly=False)
+            wb.Close(SaveChanges=False)
+            wb = None
         except ExcelComUnavailable:
             raise
         except Exception as exc:  # noqa: BLE001

@@ -120,12 +120,24 @@ class NewCompanyPe10Service:
         duplicates: list[str] = []
         zeros: list[str] = []
         crf_data = None
+        crf_failed = False
 
         if custom_run_path and Path(custom_run_path).exists():
             try:
                 crf_data = CustomRunService().parse(Path(custom_run_path), Path(custom_run_path).name)
-            except Exception:  # noqa: BLE001
+            except Exception as exc:  # noqa: BLE001
                 crf_data = None
+                crf_failed = True
+                warnings.append(f"TEN_YEAR_PE10_COVERAGE_INCOMPLETE: CRF parse failed ({exc}).")
+        elif custom_run_path:
+            crf_failed = True
+            warnings.append("TEN_YEAR_PE10_COVERAGE_INCOMPLETE: CRF path missing.")
+
+        if fy_end_dates is None:
+            warnings.append(
+                "PE10_PERIOD_NOTE: fiscal year-end dates not supplied; nearest-date matching "
+                "assumes calendar 31 Dec unless a dated CRF series is used."
+            )
 
         if crf_data is not None:
             annual_pe = dict((crf_data.metadata or {}).get("inputs_annual_pe10") or {})
@@ -167,6 +179,13 @@ class NewCompanyPe10Service:
                         f"PE10_FISCAL_DATE_MISMATCH: {fy} nearest CRF date {pe_date} "
                         f"differs by {pe_delta} days (tolerance {nearest_tolerance_days})."
                     )
+                    pe_val = None
+                if e_delta is not None and abs(e_delta) > nearest_tolerance_days:
+                    warnings.append(
+                        f"E10_FISCAL_DATE_MISMATCH: {fy} nearest CRF date {e_date} "
+                        f"differs by {e_delta} days (tolerance {nearest_tolerance_days})."
+                    )
+                    e_val = None
                 if pe_date and pe_date in seen_obs:
                     duplicates.append(f"{fy}|{seen_obs[pe_date]}")
                 elif pe_date:
@@ -275,9 +294,33 @@ class NewCompanyPe10Service:
                 "PE10_PERIOD_NOTE: current PE10 and fiscal-year PE10 differ because they "
                 "represent different as-of dates — informational, not a mismatch."
             )
+        wb2 = load_workbook(workbook_path, data_only=False)
+        try:
+            if "Inputs" in wb2.sheetnames:
+                iws = wb2["Inputs"]
+                cols = detect_year_columns(iws, wb2)
+                pe_rows: list[int] = []
+                for row in range(1, min(iws.max_row or 1, 90) + 1):
+                    if exact_field_identity(iws.cell(row, 1).value) == "pe10_fiscal_year":
+                        pe_rows.append(row)
+                if len(pe_rows) >= 2:
+                    r_a, r_b = pe_rows[0], pe_rows[1]
+                    for fy in fiscal_years:
+                        col = cols.get(fy)
+                        if not col:
+                            continue
+                        a = _safe_float(iws.cell(r_a, col).value)
+                        b = _safe_float(iws.cell(r_b, col).value)
+                        if a is not None and b is not None and a != b:
+                            warnings.append(
+                                f"PE10_CROSS_SHEET_MISMATCH: {fy} Inputs row {r_a}={a} vs row {r_b}={b} "
+                                "(same metric and date)."
+                            )
+        finally:
+            wb2.close()
 
         status = "ok"
-        if missing_pe or missing_e:
+        if missing_pe or missing_e or crf_failed:
             status = "incomplete"
         return NewCompanyPe10Report(
             analysis_id=analysis_id,

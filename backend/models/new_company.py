@@ -52,6 +52,7 @@ class TenYearPeriodReport(BaseModel):
     ticker: str
     fiscal_years: list[str] = Field(default_factory=list)
     year_columns: dict[str, int] = Field(default_factory=dict)
+    skipped_helper_columns: list[str] = Field(default_factory=list)
     start_year: str | None = None
     end_year: str | None = None
     latest_quarter: int | None = None
@@ -157,6 +158,14 @@ class NewCompanyPe10Report(BaseModel):
     summary: str = ""
 
 
+class TaxDisclosureStatus(str, Enum):
+    REPORTED = "reported"
+    REPORTED_ZERO = "reported_zero"
+    NOT_SEPARATELY_DISCLOSED = "not_separately_disclosed"
+    INCLUDED_IN_OTHER = "included_in_other"
+    UNRESOLVED = "unresolved"
+
+
 class TaxYearResult(BaseModel):
     fiscal_year: str
     reported_effective_rate: float | None = None
@@ -167,18 +176,29 @@ class TaxYearResult(BaseModel):
     rd_credit: float | None = None
     other: float | None = None
     residual_other: float | None = None
+    reported_other: float | None = None
+    unmapped_lines: list[dict[str, Any]] = Field(default_factory=list)
+    category_mappings: list[dict[str, Any]] = Field(default_factory=list)
+    disclosure_status: dict[str, str] = Field(default_factory=dict)
+    other_calculation: str | None = None
     component_sum: float | None = None
     reconciliation_delta: float | None = None
     reconciliation_status: str = "ok"
     pretax_income: float | None = None
     income_tax_expense: float | None = None
     units: str = "rate_fraction"
-    signs_normalized: bool = True
+    table_units: str | None = None
+    signs_normalized: bool = False
     cells_written: list[str] = Field(default_factory=list)
     schedule_populated: bool = False
     raw_filing_lines: list[dict[str, Any]] = Field(default_factory=list)
+    normalized_signed_values: dict[str, float | None] = Field(default_factory=dict)
     source: str | None = None
     source_locations: list[str] = Field(default_factory=list)
+    accession_number: str | None = None
+    note_or_table_location: str | None = None
+    confidence: float = 0.0
+    category_coverage_complete: bool = False
 
 
 class NewCompanyTaxReport(BaseModel):
@@ -209,6 +229,7 @@ class RdUsefulLifeDecision(BaseModel):
     analyst_override: int | None = None
     analyst_override_reason: str | None = None
     original_agent_selection: int | None = None
+    audit_trail: list[dict[str, Any]] = Field(default_factory=list)
     warning: str = (
         "R&D useful life is an agent-selected analyst assumption and has not been "
         "manually approved. Override it if the economic life of the company's R&D "
@@ -265,6 +286,11 @@ class LeaseYearData(BaseModel):
     lease_cost: float | None = None
     remaining_term: float | None = None
     reported_discount_rate: float | None = None
+    finance_current_liability: float | None = None
+    finance_long_term_liability: float | None = None
+    finance_rou_asset: float | None = None
+    finance_cost: float | None = None
+    finance_undiscounted: float | None = None
     regime: str = "unknown"  # pre_asc_842 | post_asc_842 | mixed
     raw_labels: list[dict[str, Any]] = Field(default_factory=list)
     source: str | None = None
@@ -330,7 +356,13 @@ class BuybackYearResult(BaseModel):
     beginning_shares: float | None = None
     issued_shares: float | None = None
     ending_shares: float | None = None
+    diluted_was: float | None = None
+    sbc_dilution_shares: float | None = None
+    employee_tax_withholding: float | None = None
+    acquisition_related_equity: float | None = None
     other_share_changes: float | None = None
+    average_price_derived: bool = False
+    derivation_units: str | None = None
     absence_class: BuybackAbsenceClass | None = None
     confidence: float = 0.0
     warnings: list[str] = Field(default_factory=list)
@@ -342,6 +374,7 @@ class BuybackAnalysis(BaseModel):
     diluted_share_count_change: float | None = None
     sbc_offset_material: bool | None = None
     funded_by: str | None = None
+    buybacks_pct_of_fcf: float | None = None
     value_created_or_destroyed: str | None = None
     notes: list[str] = Field(default_factory=list)
 
@@ -427,6 +460,9 @@ class NewCompanyProjectionReport(BaseModel):
     ten_year_avg_roce: float | None = None
     ytd_unadjusted_annualized_roce: float | None = None
     seasonality_adjusted_roce: float | None = None
+    projected_nopat: float | None = None
+    projected_invested_capital: float | None = None
+    projected_capital_employed: float | None = None
     confidence: ProjectionConfidence = ProjectionConfidence.NOT_APPLICABLE
     assumptions: list[str] = Field(default_factory=list)
     backtests: list[ProjectionBacktestYear] = Field(default_factory=list)

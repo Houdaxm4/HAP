@@ -49,7 +49,7 @@ class NewCompanyReviewService:
                 "workflow_state": NewCompanyWorkflowState.AWAITING_ANALYST_REVIEW,
                 "lease_review": updated,
             }
-        # Recalculate dependent outputs after approve/correct.
+        # Recalculate dependent outputs after approve/correct using the persisted decision.
         return self.runner.run(
             analysis_id=analysis_id,
             ticker=ticker,
@@ -59,11 +59,6 @@ class NewCompanyReviewService:
             custom_run_path=custom_run_path,
             company_facts=company_facts,
             sec_manifest=sec_manifest,
-            lease_review_override={
-                "action": action,
-                "rate": updated.approved_rate,
-                "reason": reason,
-            },
             finalize=True,
             prepare_working=False,
         )
@@ -86,15 +81,7 @@ class NewCompanyReviewService:
         prior = self._load_rd_decision(analysis_id)
         review = self._load_review(analysis_id)
         override = {"life": life, "reason": reason}
-        lease_override = None
-        if review and not review.blocking:
-            lease_override = {
-                "action": review.analyst_action or lease_action,
-                "rate": review.approved_rate or lease_rate,
-                "reason": review.analyst_reason,
-            }
-        elif lease_rate is not None:
-            lease_override = {"action": lease_action, "rate": lease_rate, "reason": "carry approved rate"}
+        lease_still_blocking = review is None or review.blocking
         result = self.runner.run(
             analysis_id=analysis_id,
             ticker=ticker,
@@ -105,8 +92,7 @@ class NewCompanyReviewService:
             company_facts=company_facts,
             sec_manifest=sec_manifest,
             rd_override=override,
-            lease_review_override=lease_override,
-            finalize=bool(lease_override),
+            finalize=not lease_still_blocking,
             prepare_working=False,
         )
         # Preserve original agent selection in the rewritten decision.

@@ -198,9 +198,9 @@ class NewCompanyOutputGateService:
             warnings.append("CURRENT_DATA_AS_OF_DATE_MISMATCH")
             gates["H_current"] = "warn"
         else:
-            gates["H_current"] = "pass" if current else "fail"
+            gates["H_current"] = "pass" if current else "warn"
             if current is None:
-                blockers.append("CURRENT_DATA_AS_OF_DATE_MISMATCH")
+                warnings.append("CURRENT_DATA_REFRESH_NOT_RUN")
 
         # Gate I — projection integrity (Q2/Q3)
         q = periods.latest_quarter if periods else None

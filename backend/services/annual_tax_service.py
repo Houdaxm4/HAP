@@ -46,14 +46,26 @@ _ETR_TOLERANCE = 0.01  # 100 bps absolute on rate fraction
 def _num(v: Any) -> float | None:
     if v is None or v == "" or isinstance(v, bool):
         return None
+    from_parens = False
     if isinstance(v, (int, float)):
-        return float(v)
-    try:
-        text = str(v).replace("%", "").replace(",", "").strip()
-        n = float(text)
-    except (TypeError, ValueError):
-        return None
-    if abs(n) > 1.5:
+        n = float(v)
+    else:
+        text = str(v).strip().replace("−", "-")
+        from_parens = text.startswith("(") and ")" in text
+        cleaned = (
+            text.replace("%", "")
+            .replace(",", "")
+            .replace("(", "")
+            .replace(")", "")
+            .strip()
+        )
+        try:
+            n = float(cleaned)
+        except (TypeError, ValueError):
+            return None
+        if from_parens:
+            n = -abs(n)
+    if abs(n) > 1.0:
         n = n / 100.0
     return n
 
@@ -79,18 +91,25 @@ class AnnualTaxService:
     ) -> AnnualTaxReport:
         """Map filing recon into existing house rows; Other = ETR − sum(specifics)."""
         mapped: dict[str, TaxComponent] = {}
+        aggregated: dict[str, float] = {}
+        labels: dict[str, list[str]] = {}
         for raw in filing_components or []:
-            label = str(raw.get("label") or "").lower()
+            label = str(raw.get("label") or "").strip()
             rate = _num(raw.get("rate"))
             if rate is None:
                 continue
-            house = str(raw.get("house") or "") or self._house_category(label)
+            house = str(raw.get("house") or "") or self._house_category(label.lower())
             if house == "other":
-                continue  # never treat filing "Other" as house Other
+                continue  # never treat filing "Other" as house Other; residual owns Other
+            if house == "deferred":
+                continue  # deferred is not an Inputs tax-table row; exclude from residual
+            aggregated[house] = aggregated.get(house, 0.0) + rate
+            labels.setdefault(house, []).append(label)
+        for house, rate in aggregated.items():
             mapped[house] = TaxComponent(
                 house_category=house,
                 rate=rate,
-                source_label=str(raw.get("label")),
+                source_label="; ".join(labels.get(house) or [house]),
                 residual=False,
             )
 
@@ -99,14 +118,18 @@ class AnnualTaxService:
             etr = float(income_tax_expense) / float(pretax_income)
             source = source or "computed: income_tax_expense / pretax_income"
 
-        specific_sum = sum(c.rate or 0.0 for k, c in mapped.items() if k != "other")
+        specific_sum = sum(
+            c.rate or 0.0
+            for k, c in mapped.items()
+            if k in {"statutory_federal", "state", "foreign", "credits"}
+        )
         residual = None
         if etr is not None:
             residual = etr - specific_sum
             mapped["other"] = TaxComponent(
                 house_category="other",
                 rate=residual,
-                source_label="house residual (ETR − mapped specifics)",
+                source_label="house residual (ETR − statutory − state − foreign − R&D credit)",
                 residual=True,
             )
         elif not mapped and pretax_income is None and income_tax_expense is None:
@@ -262,13 +285,14 @@ class AnnualTaxService:
         lab = label.lower()
         if "other" in lab and "credit" not in lab:
             return "other"
-        for house in ("deferred", "credits", "state", "foreign"):
-            keys = _LABEL_MAP[house]
-            if any(k in lab for k in keys):
-                return house
-        for house, keys in _LABEL_MAP.items():
-            if house == "other":
-                continue
-            if any(k in lab for k in keys):
-                return house
+        if "deferred" in lab:
+            return "deferred"
+        if "credit" in lab or "r&d" in lab:
+            return "credits"
+        if "state" in lab:
+            return "state"
+        if "foreign" in lab or "international" in lab:
+            return "foreign"
+        if "statutory" in lab or ("federal" in lab and "net of federal" not in lab):
+            return "statutory_federal"
         return "other"

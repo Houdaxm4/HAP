@@ -261,7 +261,8 @@ class NewCompanyDeliverablesService:
             doc.add_paragraph(
                 f"Ten-year cumulative repurchase dollars {_fmt(a.cumulative_dollars)}; "
                 f"cumulative shares {_fmt(a.cumulative_shares)}; "
-                f"diluted share-count change {_fmt(a.diluted_share_count_change)}. "
+                f"diluted share-count change {_fmt(a.diluted_share_count_change)}; "
+                f"buybacks as % of FCF {_fmt(a.buybacks_pct_of_fcf, pct=True)}. "
                 f"Funding: {a.funded_by or 'unassessed'}. "
                 f"SBC offset material: {a.sbc_offset_material}. "
                 f"Per-share value: {a.value_created_or_destroyed or 'inconclusive'}."
@@ -280,8 +281,23 @@ class NewCompanyDeliverablesService:
                 f"seasonality-adjusted projected {_fmt(projection.seasonality_adjusted_roic, pct=True)}; "
                 f"WACC {_fmt(projection.wacc, pct=True)}; "
                 f"projected ROIC–WACC {_fmt(projection.projected_roic_wacc, pct=True)}; "
+                f"projected NOPAT {_fmt(projection.projected_nopat)}; "
+                f"projected invested capital {_fmt(projection.projected_invested_capital)}; "
                 f"confidence {projection.confidence.value}."
             )
+        if seasonality and seasonality.latest_quarter in {2, 3}:
+            doc.add_heading("11b. Q2/Q3 seasonality projections", level=1)
+            doc.add_paragraph(
+                f"Latest quarter Q{seasonality.latest_quarter} ({seasonality.ytd_period_length}). "
+                "Seasonality-adjusted is primary; raw annualized YTD remains visible."
+            )
+            for c in seasonality.components:
+                doc.add_paragraph(
+                    f"{c.metric}: YTD {_fmt(c.ytd_value)}; raw annualized "
+                    f"{_fmt(c.unadjusted_annualized)}; seasonality-adjusted "
+                    f"{_fmt(c.seasonality_adjusted)}; factor {_fmt(c.selected_factor)}.",
+                    style="List Bullet",
+                )
 
         doc.add_heading("12. ROCE", level=1)
         if projection:
@@ -293,24 +309,41 @@ class NewCompanyDeliverablesService:
                 f"confidence {projection.confidence.value}."
             )
 
-        doc.add_heading("13. Current valuation", level=1)
+        doc.add_heading("13. Current price and PE10", level=1)
         if v:
             doc.add_paragraph(
-                f"Price {_fmt(v.current_price)}; PE10 {_fmt(v.current_pe10)}x "
-                f"(as of {v.current_pe10_as_of or 'n/a'}); "
-                f"max buy {_fmt(v.max_buy)}; MOS {_fmt(v.enterprise_mos, pct=True)}; "
-                f"expected return {_fmt(v.expected_annual_return, pct=True)} / with dividends "
-                f"{_fmt(v.expected_return_with_dividends, pct=True)}; "
+                f"Current price {_fmt(v.current_price)}; current PE10 {_fmt(v.current_pe10)}x "
+                f"(as of {v.current_pe10_as_of or 'unavailable'})."
+            )
+        if pe10:
+            hist = ", ".join(
+                f"{o.fiscal_year}={_fmt(o.value)}"
+                for o in pe10.fiscal_year_pe10
+                if o.value is not None
+            )
+            doc.add_paragraph(f"Ten-year fiscal PE10: {hist or 'unavailable'}.")
+
+        doc.add_heading("13b. Expected Returns", level=1)
+        if v:
+            doc.add_paragraph(
+                f"Expected annual return {_fmt(v.expected_annual_return, pct=True)}; "
+                f"with dividends {_fmt(v.expected_return_with_dividends, pct=True)}. "
+                "These are not substitutes for Enterprise Value or Graham results."
+            )
+
+        doc.add_heading("13c. Enterprise Value", level=1)
+        if v:
+            doc.add_paragraph(
+                f"Enterprise MOS {_fmt(v.enterprise_mos, pct=True)}; max buy {_fmt(v.max_buy)}."
+            )
+
+        doc.add_heading("13d. Graham intrinsic value and entry prices", level=1)
+        if v:
+            doc.add_paragraph(
                 f"Graham IV {_fmt(v.current_graham_intrinsic_value)}; "
-                f"MOS entry {_fmt(v.graham_margin_of_safety_entry_price)}; "
+                f"margin-of-safety entry {_fmt(v.graham_margin_of_safety_entry_price)}; "
                 f"target-return entry {_fmt(v.graham_target_return_entry_price)}."
             )
-            if pe10 and pe10.current_pe10 and pe10.fiscal_year_pe10:
-                last = next((o.value for o in reversed(pe10.fiscal_year_pe10) if o.value is not None), None)
-                doc.add_paragraph(
-                    f"Fiscal-year PE10 { _fmt(last) } vs current PE10 {_fmt(pe10.current_pe10.value)} "
-                    "are different dates, not a data error."
-                )
 
         doc.add_heading("14. Comparison of valuation methods", level=1)
         doc.add_paragraph(

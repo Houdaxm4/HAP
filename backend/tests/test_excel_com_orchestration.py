@@ -73,6 +73,7 @@ def test_mocked_com_boundary_invokes_calculate_full_rebuild_and_still_validates(
     client.DispatchEx.assert_called_once_with("Excel.Application")
     excel.CalculateFullRebuild.assert_called_once()
     workbook.Save.assert_called()
+    assert excel.Workbooks.Open.call_count == 2
     assert report.com_invoked is True
     assert report.method == EXCEL_COM_METHOD
     # Mocked COM does not write Excel caches; validation must still fail those formula cells.

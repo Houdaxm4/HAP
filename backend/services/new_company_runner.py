@@ -9,6 +9,7 @@ from typing import Any
 
 from models.new_company import (
     CLOUD_PENDING_WINDOWS_CERTIFICATION,
+    LeaseRateReview,
     NewCompanyCurrentDataReport,
     NewCompanyRunState,
     NewCompanyWorkflowState,
@@ -214,15 +215,15 @@ class NewCompanyRunner:
             ),
         )
         lease_review = leases.review
-        if lease_review_override:
-            lease_review = self.leases.apply_review(
-                lease_review,
-                action=str(lease_review_override.get("action") or "approve"),
-                rate=lease_review_override.get("rate"),
-                reason=lease_review_override.get("reason"),
-                workbook_path=working_path,
-            )
+        persisted = self._load_persisted_lease_review(analysis_id)
+        if persisted is not None and not persisted.blocking:
+            lease_review = persisted
+            if persisted.approved_rate is not None:
+                self.leases._write_rate(working_path, persisted.approved_rate)
             leases = leases.model_copy(update={"review": lease_review})
+        elif lease_review_override:
+            # Programmatic approve is ignored unless a persisted analyst decision already exists.
+            del lease_review_override
 
         buybacks = timed(
             "buybacks_ten_year",
@@ -254,7 +255,7 @@ class NewCompanyRunner:
                 CurrentDataAsOf(
                     field=getattr(e, "target_label", None) or getattr(e, "target_cell", ""),
                     value=getattr(e, "written_value", None),
-                    as_of_date=None,
+                    as_of_date=getattr(e, "as_of_date", None) or getattr(e, "as_of", None),
                     source=getattr(e, "source_kind", None),
                     cell=getattr(e, "target_cell", None),
                 )
@@ -296,7 +297,7 @@ class NewCompanyRunner:
         awaiting = bool(lease_review and lease_review.blocking)
         workflow = (
             NewCompanyWorkflowState.AWAITING_ANALYST_REVIEW
-            if awaiting and not finalize
+            if awaiting
             else NewCompanyWorkflowState.PROCESSING
         )
 
@@ -304,8 +305,8 @@ class NewCompanyRunner:
         valuation = None
         gate = None
         deliv = None
-        if not awaiting or finalize:
-            if awaiting and finalize:
+        if not awaiting:
+            if finalize:
                 workflow = NewCompanyWorkflowState.RECALCULATING
             recalc = timed(
                 "excel_recalculation",
@@ -486,3 +487,13 @@ class NewCompanyRunner:
             "timings": timings,
             "certification_status": cert,
         }
+
+    def _load_persisted_lease_review(self, analysis_id: str) -> LeaseRateReview | None:
+        try:
+            raw = self.output_service.read_json(analysis_id, "lease_rate_review.json")
+        except FileNotFoundError:
+            return None
+        try:
+            return LeaseRateReview.model_validate(raw)
+        except Exception:  # noqa: BLE001
+            return None

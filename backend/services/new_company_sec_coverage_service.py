@@ -64,10 +64,11 @@ class NewCompanySecCoverageService:
         overlapping: list[str] = []
         for fy in required:
             year = _fy_int(fy)
-            chosen = self._choose_filing(ten_k, year, company_facts)
+            candidates = self._candidate_filings(ten_k, year)
+            if len(candidates) > 1:
+                overlapping.append(fy)
+            chosen = candidates[0] if candidates else self._facts_fallback(company_facts, year)
             if chosen:
-                if fy in year_to_filing:
-                    overlapping.append(fy)
                 year_to_filing[fy] = chosen
 
         selected_accn: dict[str, dict[str, Any]] = {}
@@ -171,6 +172,12 @@ class NewCompanySecCoverageService:
         company_facts: dict[str, Any] | None,
     ) -> dict[str, Any] | None:
         """Prefer the latest 10-K whose filing FY or comparative window covers ``year``."""
+        pool = self._candidate_filings(ten_k, year)
+        if pool:
+            return pool[0]
+        return self._facts_fallback(company_facts, year)
+
+    def _candidate_filings(self, ten_k: list[dict[str, Any]], year: int) -> list[dict[str, Any]]:
         exact: list[dict[str, Any]] = []
         comparative: list[dict[str, Any]] = []
         for filing in ten_k:
@@ -183,21 +190,25 @@ class NewCompanySecCoverageService:
             elif "KT" in form and fy is not None and abs(fy - year) <= 1:
                 comparative.append(filing)
         pool = exact or comparative
-        if not pool:
-            # Fall back: companyfacts prove the year exists even if manifest truncated.
-            if company_facts and self._facts_cover_year(company_facts, year):
-                return {
-                    "filing_type": "10-K",
-                    "accession_number": self._latest_accn(company_facts, year),
-                    "fiscal_year": year,
-                    "report_date": f"{year}-12-31",
-                    "document_url": None,
-                    "from_companyfacts": True,
-                }
-            return None
-        # Most recently filed wins (restatements / amendments).
-        pool.sort(key=lambda f: (str(f.get("filing_date") or ""), str(f.get("accession_number") or "")), reverse=True)
-        return pool[0]
+        pool.sort(
+            key=lambda f: (str(f.get("filing_date") or ""), str(f.get("accession_number") or "")),
+            reverse=True,
+        )
+        return pool
+
+    def _facts_fallback(
+        self, company_facts: dict[str, Any] | None, year: int
+    ) -> dict[str, Any] | None:
+        if company_facts and self._facts_cover_year(company_facts, year):
+            return {
+                "filing_type": "10-K",
+                "accession_number": self._latest_accn(company_facts, year),
+                "fiscal_year": year,
+                "report_date": f"{year}-12-31",
+                "document_url": None,
+                "from_companyfacts": True,
+            }
+        return None
 
     @staticmethod
     def _is_comparative(filing: dict[str, Any], fy_token: str) -> bool:

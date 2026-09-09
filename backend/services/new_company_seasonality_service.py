@@ -27,6 +27,8 @@ _METRICS = (
     ("rd_expense", "Income - GAAP", ("research and development", "research & development"), "Last Quarter IS Standardized", ("research",)),
     ("capex", "Cash Flow - Standardized", ("capital expenditure", "acq of fixed"), "Last Quarter CF Standardized", ("capex", "fixed asset")),
     ("cfo", "Cash Flow - Standardized", ("cash from operating",), "Last Quarter CF Standardized", ("cash from operating", "operating activities")),
+    ("working_capital", "Balance Sheet - Standardized", ("working capital", "total current assets"), "Last Quarter BS Standardized", ("total current assets", "cash")),
+    ("lease_expense", "Income - GAAP", ("lease expense", "operating lease cost"), "Last Quarter IS Standardized", ("lease",)),
 )
 
 
@@ -218,10 +220,9 @@ class NewCompanySeasonalityService:
         quarter: int,
         hist_fy: dict[str, float],
     ) -> dict[str, float]:
-        """Use prior-year YTD on the LQ sheet when present; else scale FY by naive quarter share as history seed.
+        """Use prior-year YTD on the LQ sheet when present.
 
-        The seed is only used to compute proportions when true quarterly history is absent; callers
-        still require a stable positive proportion and will exclude abnormal years.
+        Do not seed naive quarter shares into the primary seasonality factor.
         """
         out: dict[str, float] = {}
         prior_ytd = None
@@ -232,9 +233,4 @@ class NewCompanySeasonalityService:
                 prior_ytd = _num(ws.cell(row, 8).value)  # H = prior YTD on Industrial Template
         if prior_ytd is not None and years:
             out[years[-1]] = prior_ytd
-        naive = {1: 0.25, 2: 0.5, 3: 0.75}.get(quarter)
-        if naive:
-            for fy, val in hist_fy.items():
-                if fy not in out and val > 0:
-                    out[fy] = val * naive
         return out

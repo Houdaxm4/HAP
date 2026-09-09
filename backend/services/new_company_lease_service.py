@@ -60,6 +60,17 @@ _COMMITMENT_TAGS = {
     ),
 }
 
+_FINANCE_TAGS = {
+    "finance_current_liability": ("FinanceLeaseLiabilityCurrent",),
+    "finance_long_term_liability": ("FinanceLeaseLiabilityNoncurrent",),
+    "finance_rou_asset": ("FinanceLeaseRightOfUseAsset",),
+    "finance_cost": ("FinanceLeaseInterestExpense", "FinanceLeaseCost"),
+    "finance_undiscounted": (
+        "LesseeFinanceLeaseLiabilityPaymentsDue",
+        "FutureMinimumLeasePaymentsFinanceLeases",
+    ),
+}
+
 _IBR_TAGS = (
     "LesseeOperatingLeaseIncrementalBorrowingRate",
     "IncrementalBorrowingRate",
@@ -161,7 +172,13 @@ class NewCompanyLeaseService:
                 "Analyst approval is required before COMPLETE."
             ),
         )
-        complete = sum(1 for y in years if y.year_1 is not None or y.rou_asset is not None) >= max(1, len(years) // 2)
+        complete = all(
+            y.year_1 is not None
+            or y.rou_asset is not None
+            or y.total_undiscounted is not None
+            or y.finance_rou_asset is not None
+            for y in years
+        ) and bool(years)
         return NewCompanyLeaseReport(
             analysis_id=analysis_id,
             ticker=ticker,
@@ -234,12 +251,12 @@ class NewCompanyLeaseService:
         blended = rf + spread
         attempts.append({"rank": 5, "method": "risk_free_plus_credit_spread", "rate": blended, "rf": rf, "spread": spread})
         evidence.append(f"Benchmark yield {rf:.4f} plus company credit spread {spread:.4f}.")
-        # 6. Comparables last resort only if 5 is somehow unusable
-        if comparable_rates and treasury_yield is None and credit_spread is None and after_tax_cost_of_debt is None:
+        if comparable_rates:
             med = sorted(comparable_rates)[len(comparable_rates) // 2]
             attempts.append({"rank": 6, "method": "comparable_or_sector", "rate": med})
-            evidence.append(f"Last-resort sector/comparable median {med:.4f}.")
-            return self._proposal(med, "comparable_or_sector", 6, duration, treasury_yield, credit_spread, evidence, attempts, market_date)
+            evidence.append(f"Comparable/sector median {med:.4f} recorded as last-resort evidence.")
+            if treasury_yield is None and credit_spread is None and after_tax_cost_of_debt is None:
+                return self._proposal(med, "comparable_or_sector", 6, duration, treasury_yield, credit_spread, evidence, attempts, market_date)
         return self._proposal(blended, "risk_free_plus_credit_spread", 5, duration, rf, spread, evidence, attempts, market_date)
 
     def apply_review(
@@ -329,6 +346,24 @@ class NewCompanyLeaseService:
                 if "FutureMinimum" in tag:
                     pre = True
                 break
+        for field, tags in _FINANCE_TAGS.items():
+            for tag in tags:
+                fact = sec.find_fact(company_facts, field, fy, xbrl_tag_hint=tag)
+                if fact is None or fact.value is None:
+                    continue
+                val = float(fact.value)
+                data[field] = _scale(val) if "term" not in field else val
+                raw.append(
+                    {
+                        "field": field,
+                        "label": tag,
+                        "value": data[field],
+                        "form": fact.form,
+                        "accn": fact.accession_number,
+                    }
+                )
+                post = True
+                break
         for tag in _IBR_TAGS:
             fact = sec.find_fact(company_facts, "ibr", fy, xbrl_tag_hint=tag)
             if fact is not None and fact.value is not None:
@@ -406,6 +441,23 @@ class NewCompanyLeaseService:
                 "thereafter": 15,
                 "total_undiscounted": 16,
             }
+            label_fields = {
+                "rou asset": "rou_asset",
+                "right-of-use": "rou_asset",
+                "current liability": "current_liability",
+                "long-term liability": "long_term_liability",
+                "long term liability": "long_term_liability",
+                "lease cost": "lease_cost",
+                "lease expense": "lease_cost",
+                "remaining term": "remaining_term",
+                "finance rou": "finance_rou_asset",
+                "finance lease liability current": "finance_current_liability",
+            }
+            for row in range(1, min(ws.max_row or 1, 40) + 1):
+                lab = str(ws.cell(row, 1).value or "").strip().lower()
+                for needle, field in label_fields.items():
+                    if needle in lab:
+                        field_rows[field] = row
             for y in years:
                 col = cols.get(y.fiscal_year)
                 if not col:
