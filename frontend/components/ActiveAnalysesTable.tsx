@@ -17,14 +17,21 @@ function formatDate(value: string): string {
   });
 }
 
-export default function ActiveAnalysesTable() {
+type ActiveAnalysesTableProps = {
+  inFlightOnly?: boolean;
+};
+
+export default function ActiveAnalysesTable({ inFlightOnly = false }: ActiveAnalysesTableProps) {
   const { analyses, isLoadingList, listError } = useAnalysisStore();
+  const rows = inFlightOnly
+    ? analyses.filter((row) => row.status === "Running" || row.status === "Queued")
+    : analyses;
 
   return (
     <div id="active-analyses" className="overflow-hidden rounded border border-hap-border bg-hap-panel">
       <div className="border-b border-hap-border px-4 py-3">
         <h3 className="text-xs font-semibold uppercase tracking-widest text-hap-muted">
-          Active Analyses
+          {inFlightOnly ? "In flight" : "Active Analyses"}
         </h3>
       </div>
 
@@ -33,9 +40,11 @@ export default function ActiveAnalysesTable() {
           <p className="px-4 py-6 text-sm text-red-400">{listError}</p>
         ) : isLoadingList ? (
           <p className="px-4 py-6 text-sm text-hap-muted">Loading analyses…</p>
-        ) : analyses.length === 0 ? (
+        ) : rows.length === 0 ? (
           <p className="px-4 py-6 text-sm text-hap-muted">
-            No analyses yet. Start a new analysis to see results here.
+            {inFlightOnly
+              ? "Nothing running right now. Start a new analysis, or open History for past work."
+              : "No analyses yet. Start a new analysis to see results here."}
           </p>
         ) : (
           <table className="w-full text-sm">
@@ -52,7 +61,7 @@ export default function ActiveAnalysesTable() {
               </tr>
             </thead>
             <tbody>
-              {analyses.map((row) => (
+              {rows.map((row) => (
                 <tr
                   key={row.id}
                   className="border-b border-hap-border/50 transition-colors hover:bg-hap-panel-elevated/50"

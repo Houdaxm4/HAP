@@ -7,8 +7,9 @@ import uuid
 from pathlib import Path
 
 from models.analysis import Analysis, CreateAnalysisRequest
+from settings import analyses_dir as default_analyses_dir
 
-STORAGE_DIR = Path(__file__).resolve().parent.parent / "storage" / "analyses"
+STORAGE_DIR = default_analyses_dir()
 
 
 class AnalysisNotFoundError(Exception):
@@ -19,7 +20,7 @@ class AnalysisService:
     """Create, read, and update analysis metadata stored as JSON files."""
 
     def __init__(self, storage_dir: Path | None = None) -> None:
-        self.storage_dir = storage_dir or STORAGE_DIR
+        self.storage_dir = storage_dir or default_analyses_dir()
         self.storage_dir.mkdir(parents=True, exist_ok=True)
 
     def _path_for(self, analysis_id: str) -> Path:

@@ -1,0 +1,49 @@
+# Blueprint only. Do not apply until you explicitly choose to deploy.
+# Persistent disk: mount at /var/data and set HAP_STORAGE_DIR=/var/data
+
+services:
+  - type: web
+    name: hap-api
+    runtime: python
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT --workers 1 --proxy-headers
+    healthCheckPath: /health
+    disk:
+      name: hap-storage
+      mountPath: /var/data
+      sizeGB: 10
+    envVars:
+      - key: HAP_STORAGE_DIR
+        value: /var/data
+      - key: HAP_CORS_ORIGINS
+        sync: false
+      - key: HAP_AUTH_USERNAME
+        sync: false
+      - key: HAP_AUTH_PASSWORD_HASH
+        sync: false
+      - key: HAP_SESSION_SECRET
+        sync: false
+      - key: HAP_SESSION_TTL_SECONDS
+        value: "43200"
+      - key: HAP_COOKIE_SECURE
+        value: "true"
+      - key: HAP_COOKIE_SAMESITE
+        value: none
+      - key: HAP_ENV
+        value: production
+      - key: PYTHONUNBUFFERED
+        value: "1"
+
+  - type: web
+    name: hap-web
+    runtime: node
+    rootDir: frontend
+    buildCommand: npm ci && npm run build
+    startCommand: npm start
+    healthCheckPath: /health
+    envVars:
+      - key: NEXT_PUBLIC_API_URL
+        sync: false
+      - key: NODE_ENV
+        value: production

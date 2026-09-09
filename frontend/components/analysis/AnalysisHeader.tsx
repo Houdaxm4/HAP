@@ -23,6 +23,10 @@ export default function AnalysisHeader({
               Command Center
             </Link>
             <span className="mx-2">/</span>
+            <Link href="/history" className="hover:text-hap-orange">
+              History
+            </Link>
+            <span className="mx-2">/</span>
             <span>{analysis.ticker}</span>
           </p>
           <div className="mt-2 flex items-center gap-3">

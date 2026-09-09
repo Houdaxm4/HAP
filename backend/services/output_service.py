@@ -8,14 +8,16 @@ from typing import Any
 
 from pydantic import BaseModel
 
-OUTPUTS_DIR = Path(__file__).resolve().parent.parent / "storage" / "outputs"
+from settings import outputs_dir as default_outputs_dir
+
+OUTPUTS_DIR = default_outputs_dir()
 
 
 class OutputService:
     """Read and write JSON artifacts under per-analysis output directories."""
 
     def __init__(self, outputs_dir: Path | None = None) -> None:
-        self.outputs_dir = outputs_dir or OUTPUTS_DIR
+        self.outputs_dir = outputs_dir or default_outputs_dir()
         self.outputs_dir.mkdir(parents=True, exist_ok=True)
 
     def analysis_output_dir(self, analysis_id: str) -> Path:

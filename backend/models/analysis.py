@@ -73,13 +73,21 @@ class Analysis(BaseModel):
 
     @property
     def is_pipeline_complete(self) -> bool:
-        """True only when required pipeline and analysis-engine outputs exist."""
+        """True only when required pipeline outputs exist for the analysis type."""
         outputs = self.pipeline.outputs
+        if self.pipeline.state != "complete" or outputs.completed_workbook is None:
+            return False
+        if outputs.provenance_report is None or outputs.validation_report is None:
+            return False
+        # Quarterly lean path intentionally skips analysis-engine artifacts.
+        from services.completion_scope import AnalysisTypeMode, normalize_analysis_type
+
+        if normalize_analysis_type(self.analysis_type) in {
+            AnalysisTypeMode.QUARTERLY_UPDATE,
+            AnalysisTypeMode.ANNUAL_UPDATE,
+        }:
+            return True
         return (
-            self.pipeline.state == "complete"
-            and outputs.completed_workbook is not None
-            and outputs.provenance_report is not None
-            and outputs.validation_report is not None
-            and outputs.company_financial_model is not None
+            outputs.company_financial_model is not None
             and outputs.analysis_engine_result is not None
         )

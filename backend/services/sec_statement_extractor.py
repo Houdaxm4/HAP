@@ -46,6 +46,7 @@ _EXTRA_TAGS: dict[str, list[str]] = {
     "cost of revenue": ["CostOfRevenue", "CostOfGoodsAndServicesSold"],
     "current assets": ["AssetsCurrent"],
     "current liabilities": ["LiabilitiesCurrent"],
+    "total liabilities": ["Liabilities", "LiabilitiesAndStockholdersEquity"],
     "total debt": [
         "LongTermDebt",
         "LongTermDebtNoncurrent",

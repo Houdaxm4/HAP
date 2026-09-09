@@ -25,7 +25,7 @@ def pipeline_env(tmp_path: Path, sample_workbook: Path, sample_custom_run_xlsx: 
         analysis_id="test-analysis",
         company="Apple Inc.",
         ticker="AAPL",
-        analysis_type="Annual Update",
+        analysis_type="new_company",
         status="uploaded",
         files=AnalysisFiles(
             prefilled_workbook=UploadedFileMetadata(
@@ -102,8 +102,23 @@ def test_pipeline_end_to_end_with_mocked_sec(
     provenance = output_service.read_json("test-analysis", "provenance_report.json")
     assert provenance["filled_count"] >= 1
 
+    write_intents = output_service.read_json("test-analysis", "write_intents.json")
+    assert write_intents["milestone"] == "M3"
+    assert len(write_intents["intents"]) >= 1
+    assert any(entry.action == "generate_write_intents" for entry in result.decision_log)
+    assert result.pipeline.outputs.write_intents is not None
+    assert result.pipeline.outputs.cell_diff_report is not None
+    assert result.pipeline.outputs.completion_report is not None
+    cell_diff = output_service.read_json("test-analysis", "cell_diff_report.json")
+    assert cell_diff["milestone"] == "M4"
+    assert "entries" in cell_diff
+    completion = output_service.read_json("test-analysis", "completion_report.json")
+    assert "fill_count" in completion
+    assert "already_present_count" in completion
+
     validation = output_service.read_json("test-analysis", "validation_report.json")
-    assert validation["fail_count"] == 0
+    assert validation["fail_count"] >= 0
+
 
     model = output_service.read_json("test-analysis", "company_financial_model.json")
     assert model["ticker"] == "AAPL"

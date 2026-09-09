@@ -79,6 +79,21 @@ export default function NewAnalysisModal({
     if (!form.prefilledWorkbook) {
       next.prefilledWorkbook = "Prefilled workbook is required";
     }
+    if (
+      (form.analysisType === "quarterly_update" || form.analysisType === "annual_update") &&
+      !form.previousWorkbook
+    ) {
+      next.previousWorkbook =
+        form.analysisType === "annual_update"
+          ? "Previous completed workbook is required for an annual update"
+          : "Previous completed workbook is required for a quarterly update";
+    }
+    if (
+      (form.analysisType === "quarterly_update" || form.analysisType === "annual_update") &&
+      !form.customRunFilter
+    ) {
+      next.customRunFilter = "Current Custom_Run_Filter is required for this analysis type";
+    }
     setErrors(next);
     return Object.keys(next).length === 0;
   };
@@ -242,22 +257,39 @@ export default function NewAnalysisModal({
                     onFileChange={(f) => update("prefilledWorkbook", f)}
                   />
                   <FileUploadBox
-                    label="Previous Workbook"
+                    label={
+                      form.analysisType === "quarterly_update" ||
+                      form.analysisType === "annual_update"
+                        ? "Previous Workbook (required)"
+                        : "Previous Workbook"
+                    }
                     description=".xlsx, .xls"
                     file={form.previousWorkbook}
                     onFileChange={(f) => update("previousWorkbook", f)}
                   />
                   <FileUploadBox
-                    label="custom_run_filter"
+                    label={
+                      form.analysisType === "quarterly_update" ||
+                      form.analysisType === "annual_update"
+                        ? "custom_run_filter (required)"
+                        : "custom_run_filter"
+                    }
                     description=".xlsx (Bloomberg CRF)"
                     file={form.customRunFilter}
                     onFileChange={(f) => update("customRunFilter", f)}
                   />
                 </div>
+                {(errors.previousWorkbook || errors.customRunFilter) && (
+                  <p className="mt-2 text-xs text-red-400">
+                    {errors.previousWorkbook || errors.customRunFilter}
+                  </p>
+                )}
                 <p className="mt-2 text-[11px] text-hap-muted">
-                  Prefilled Industrial Template is required. Custom Run Filter is
-                  strongly recommended for market/valuation overlays. Previous
-                  workbook is stored but not yet used by the update workflow.
+                  {form.analysisType === "annual_update"
+                    ? "Annual update requires the current Industrial Template, the current Custom_Run_Filter, and the previous completed workbook. Historical years are preserved; only the new fiscal year and current data are refreshed."
+                    : form.analysisType === "quarterly_update"
+                    ? "Quarterly update requires the current Industrial Template, the current Custom_Run_Filter, and the previous completed workbook. HAP carries forward analyst work and refreshes only the new quarter."
+                    : "Prefilled Industrial Template is required. Custom Run Filter is strongly recommended for market/valuation overlays."}
                 </p>
               </div>
 

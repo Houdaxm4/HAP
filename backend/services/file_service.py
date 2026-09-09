@@ -9,8 +9,9 @@ from fastapi import UploadFile
 
 from models.analysis import Analysis, AnalysisFiles, UploadedFileMetadata
 from models.common import utc_now_iso
+from settings import uploads_dir as default_uploads_dir
 
-UPLOADS_DIR = Path(__file__).resolve().parent.parent / "storage" / "uploads"
+UPLOADS_DIR = default_uploads_dir()
 
 # Form field names accepted by the upload endpoint.
 PREFILLED_WORKBOOK_FIELD = "prefilled_workbook"
@@ -26,7 +27,7 @@ class FileService:
     """Save uploaded workbooks under per-analysis directories."""
 
     def __init__(self, uploads_dir: Path | None = None) -> None:
-        self.uploads_dir = uploads_dir or UPLOADS_DIR
+        self.uploads_dir = uploads_dir or default_uploads_dir()
         self.uploads_dir.mkdir(parents=True, exist_ok=True)
 
     def analysis_upload_dir(self, analysis_id: str) -> Path:
@@ -143,5 +144,17 @@ class FileService:
         )
         if not path.exists():
             raise FileUploadError("Prefilled workbook file is missing on disk.")
+        return path
+
+    def get_previous_workbook_path(self, analysis: Analysis) -> Path | None:
+        """Resolve previous completed workbook path, or None if not uploaded."""
+        if analysis.files.previous_workbook is None:
+            return None
+        path = (
+            self.analysis_upload_dir(analysis.analysis_id)
+            / analysis.files.previous_workbook.stored_filename
+        )
+        if not path.exists():
+            return None
         return path
 

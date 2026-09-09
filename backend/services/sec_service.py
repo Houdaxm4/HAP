@@ -148,6 +148,12 @@ class SecService:
         """
         Find the best matching XBRL fact for a concept and reporting period.
 
+        Distinguishes filing fiscal metadata (``fy``/``fp``/``form``) from the
+        economic period of the fact (``frame``, ``end``, ``start``). Annual
+        queries require the economic period to match the requested FY when that
+        evidence is present, so prior-year comparatives inside a later 10-K
+        cannot win.
+
         Never fabricates values — returns None when no defensible match exists.
         """
         candidate_tags = self._candidate_tags(concept, xbrl_tag_hint)
@@ -158,6 +164,7 @@ class SecService:
         facts = company_facts.get("facts", {})
         best_match: XbrlFact | None = None
         best_score = -1
+        best_tie: tuple = ()
 
         for taxonomy in ("us-gaap", "dei", "ifrs-full"):
             taxonomy_facts = facts.get(taxonomy, {})
@@ -170,8 +177,10 @@ class SecService:
                         score = self._score_fact(entry, target_year, target_period)
                         if score <= 0:
                             continue
-                        if score > best_score:
+                        tie = self._tie_break_key(entry, target_year, target_period)
+                        if score > best_score or (score == best_score and tie > best_tie):
                             best_score = score
+                            best_tie = tie
                             best_match = XbrlFact(
                                 tag=tag,
                                 taxonomy=taxonomy,
@@ -188,16 +197,52 @@ class SecService:
         return best_match
 
     @staticmethod
-    def _score_fact(entry: dict[str, Any], target_year: int | None, target_period: str | None) -> int:
+    def _economic_year(entry: dict[str, Any]) -> int | None:
+        """
+        Year of the economic period represented by the fact (not filing year).
+
+        Prefer annual ``frame`` (``CY2018``). Otherwise use the calendar year of
+        ``end`` (works for Sept year-ends like AAPL; framed facts remain preferred
+        for Jan year-ends where end year can differ from FY label).
+        """
+        frame = entry.get("frame")
+        if isinstance(frame, str):
+            annual = re.fullmatch(r"CY(\d{4})", frame.strip())
+            if annual:
+                return int(annual.group(1))
+        end = entry.get("end")
+        if isinstance(end, str) and re.match(r"^(19|20)\d{2}", end):
+            return int(end[:4])
+        return None
+
+    @classmethod
+    def _score_fact(
+        cls,
+        entry: dict[str, Any],
+        target_year: int | None,
+        target_period: str | None,
+    ) -> int:
+        if entry.get("val") is None:
+            return 0
+
         score = 0
         fiscal_year = entry.get("fy")
         fiscal_period = entry.get("fp")
         form = entry.get("form", "")
+        economic_year = cls._economic_year(entry)
+
+        # Annual: economic period must match when evidence exists.
+        if target_period == "FY" and target_year is not None and economic_year is not None:
+            if economic_year != target_year:
+                return 0
+            score += 20
 
         if target_year is not None and fiscal_year == target_year:
             score += 5
         elif target_year is not None and fiscal_year == target_year - 1 and target_period == "FY":
-            score += 2
+            # Only allow filing-year lag when economic period is unknown or already matched.
+            if economic_year is None or economic_year == target_year:
+                score += 2
 
         if target_period:
             if fiscal_period == target_period:
@@ -210,9 +255,32 @@ class SecService:
         if form in {"10-K", "10-Q"}:
             score += 1
 
-        if entry.get("val") is None:
-            return 0
         return score
+
+    @classmethod
+    def _tie_break_key(
+        cls,
+        entry: dict[str, Any],
+        target_year: int | None,
+        target_period: str | None,
+    ) -> tuple:
+        """
+        Deterministic tie-break when scores are equal.
+
+        Prefer: exact CY{year} frame → end date matching target year → later end
+        → later filed → accession (stable).
+        """
+        frame = entry.get("frame") or ""
+        end = entry.get("end") or ""
+        filed = entry.get("filed") or ""
+        accn = entry.get("accn") or ""
+        exact_frame = 0
+        if target_period == "FY" and target_year is not None and frame == f"CY{target_year}":
+            exact_frame = 1
+        end_matches_year = 0
+        if target_year is not None and isinstance(end, str) and end.startswith(str(target_year)):
+            end_matches_year = 1
+        return (exact_frame, end_matches_year, end, filed, accn)
 
     @staticmethod
     def _parse_period(period: str) -> tuple[int | None, str | None]:

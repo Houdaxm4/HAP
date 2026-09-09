@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field
 
 from canonical_model.statements import BalanceSheet, CashFlowStatement, IncomeStatement
 from canonical_model.workbook_metrics import WorkbookMetricCatalog
+from canonical_model.inputs_bridge import InputsBridge
 
 
 class MarketData(BaseModel):
@@ -61,6 +62,7 @@ class CompanyFinancialModel(BaseModel):
     market_data: MarketData = Field(default_factory=MarketData)
     valuation_inputs: ValuationInputs = Field(default_factory=ValuationInputs)
     workbook_metrics: WorkbookMetricCatalog = Field(default_factory=WorkbookMetricCatalog)
+    inputs: InputsBridge = Field(default_factory=InputsBridge)
     metadata: dict[str, Any] = Field(default_factory=dict)
 
     def refresh_periods(self) -> None:

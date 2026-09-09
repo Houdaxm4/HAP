@@ -66,6 +66,14 @@ yarn-error.log*
 backend/storage/analyses/*.json
 backend/storage/uploads/*/
 backend/storage/outputs/*/
+backend/storage/parse_cache/
+backend/storage/parse_cache_bench/
+
+# Ad-hoc local debug / acceptance scratch (not product)
+backend/_*.py
+backend/_*.json
+backend/_*.txt
+backend/pytest_out.txt
 
 # ----- Validation campaign: runtime / generated / private -----
 # Run outputs and harness results (regenerable)

@@ -34,7 +34,10 @@ def test_sheet_policies_cover_known_names():
 
 def test_is_percent_sheet_read_only():
     assert policy_for("IS%")["write_policy"] == WritePolicy.READ_ONLY.value
-    assert policy_for("Inputs")["fill_priority"] == "Never"
+    assert policy_for("IS%")["fill_priority"] == "Never"
+    # Inputs has writable tax/PE10/current sinks — Hybrid/P0 for Mode A completion.
+    assert policy_for("Inputs")["write_policy"] == WritePolicy.HYBRID.value
+    assert policy_for("Inputs")["fill_priority"] == "P0"
 
 
 @pytest.mark.skipif(_template() is None, reason="Industrial Template not present locally")

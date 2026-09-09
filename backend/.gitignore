@@ -2,6 +2,13 @@
 storage/analyses/*.json
 storage/uploads/*/
 storage/outputs/*/
+storage/parse_cache/
+storage/parse_cache_bench/
+
+/_*.py
+/_*.json
+/_*.txt
+/pytest_out.txt
 
 !storage/analyses/.gitkeep
 !storage/uploads/.gitkeep

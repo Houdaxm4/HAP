@@ -202,6 +202,8 @@ class CompanyFinancialModelBuilder:
             applied = self._apply_custom_run(model, custom_run, default_currency=reporting_currency)
             mapped_count += applied
 
+        self._populate_inputs_bridge(model, company_facts=company_facts, custom_run=custom_run)
+
         model.refresh_periods()
         model.metadata["mapped_cell_count"] = mapped_count
         model.metadata["workbook_metric_count"] = workbook_metric_count
@@ -290,12 +292,133 @@ class CompanyFinancialModelBuilder:
             )
             applied += 1
 
-        model.metadata["custom_run_proprietary"] = {
+            model.metadata["custom_run_proprietary"] = {
             "valuation": dict(getattr(custom_run, "valuation_metrics", {}) or {}),
             "quality": dict(getattr(custom_run, "quality_metrics", {}) or {}),
             "market": dict(getattr(custom_run, "market_data", {}) or {}),
         }
         return applied
+
+    def _populate_inputs_bridge(
+        self,
+        model: CompanyFinancialModel,
+        *,
+        company_facts: dict[str, Any] | None,
+        custom_run: Any | None,
+    ) -> None:
+        """Populate Inputs-tab tax (SEC), PE10 (CRF), and current data."""
+        from canonical_model.primitives import FinancialPoint, FinancialSeries, LineItemProvenance
+        from services.market_price_service import MarketPriceService
+        from services.sec_tax_inputs import populate_inputs_tax_from_sec
+
+        bridge = model.inputs
+        if company_facts:
+            populate_inputs_tax_from_sec(bridge, company_facts, years=10)
+
+        if custom_run is not None:
+            meta = getattr(custom_run, "metadata", {}) or {}
+            pe_map = meta.get("inputs_annual_pe10") or {}
+            e_map = meta.get("inputs_annual_e10") or {}
+            if not pe_map:
+                from services.custom_run_service import CustomRunService
+
+                pe_map = CustomRunService.annual_metric_by_fy(
+                    custom_run.historical_metrics,
+                    custom_run.periods,
+                    "PE10",
+                )
+            if not e_map:
+                from services.custom_run_service import CustomRunService
+
+                e_map = CustomRunService.annual_metric_by_fy(
+                    custom_run.historical_metrics,
+                    custom_run.periods,
+                    "E10",
+                )
+            src = str(getattr(custom_run, "source_filename", None) or "custom_run_filter")
+            if pe_map:
+                bridge.pe10 = FinancialSeries(
+                    name="PE10",
+                    currency="USD",
+                    points=[
+                        FinancialPoint(
+                            period=fy,
+                            value=float(val),
+                            source="bloomberg_custom_run",
+                            confidence=0.95,
+                            provenance=LineItemProvenance(
+                                concept="PE10",
+                                source_document=src,
+                            ),
+                        )
+                        for fy, val in sorted(pe_map.items())
+                        if val is not None
+                    ],
+                )
+            if e_map:
+                bridge.e10 = FinancialSeries(
+                    name="E10",
+                    currency="USD",
+                    points=[
+                        FinancialPoint(
+                            period=fy,
+                            value=float(val),
+                            source="bloomberg_custom_run",
+                            confidence=0.95,
+                            provenance=LineItemProvenance(
+                                concept="E10",
+                                source_document=src,
+                            ),
+                        )
+                        for fy, val in sorted(e_map.items())
+                        if val is not None
+                    ],
+                )
+
+            def _crf_float(*keys: str) -> float | None:
+                val = custom_run.scalar(*keys)
+                return float(val) if isinstance(val, (int, float)) else None
+
+            bridge.current_e10 = _crf_float("Current E10")
+            bridge.current_pe10 = _crf_float("Current PE10")
+            bridge.current_max_pe10 = _crf_float(
+                "Current Max PE10 to Enter (Lowest PE10 or 7PE10)"
+            )
+            bridge.max_price_to_buy = _crf_float("Max Current Price to Buy")
+            bridge.exit_price_1 = _crf_float("1st Exit Price")
+            bridge.expected_return_current = _crf_float("Expected Return @ Current Price")
+            bridge.expected_return_div_current = _crf_float(
+                "Expected Return Price Plus Dividends - Given Current Price"
+            )
+            bridge.expected_return_div_max_entry = _crf_float(
+                "Expected Return Price Plus Dividends - Given Max Entry Price"
+            )
+            bridge.pe10_percentile = _crf_float(
+                "Current PE10 (PFFO10 for REITS) Percentile",
+                "Current PE10 Percentile",
+            )
+            bridge.current_eps_3y_10y_growth = _crf_float(
+                "Current 3 year EPS 10 years Av Growth"
+            )
+            direction = custom_run.scalar("Current 3 year EPS 10 years Av Growth Direction")
+            bridge.current_eps_growth_direction = (
+                str(direction).strip() if direction not in (None, "") else None
+            )
+            bridge.current_revenue_3y_10y_growth = _crf_float(
+                "Current 3 year Revenue 10 years Av Growth"
+            )
+
+        # Live market price for Inputs Current Price — never use stale CRF as live.
+        live_price, live_src = MarketPriceService().get_price(model.ticker)
+        if live_price is not None:
+            bridge.current_price = live_price
+            bridge.current_price_source = live_src
+        else:
+            bridge.current_price = None
+            bridge.current_price_source = None
+            model.metadata["inputs_current_price_missing"] = (
+                "Live market price unavailable; CRF price not substituted for Inputs!B63"
+            )
 
     def _map_workbook_metric(
         self,

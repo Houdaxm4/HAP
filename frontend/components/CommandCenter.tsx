@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import ActiveAnalysesTable from "./ActiveAnalysesTable";
 
 type CommandCenterProps = {
@@ -36,7 +37,15 @@ export default function CommandCenter({ onNewAnalysis }: CommandCenterProps) {
           New Analysis
         </button>
 
-        <ActiveAnalysesTable />
+        <ActiveAnalysesTable inFlightOnly />
+
+        <p className="mt-6 text-sm text-hap-muted">
+          Completed runs live in{" "}
+          <Link href="/history" className="text-hap-orange hover:underline">
+            History
+          </Link>
+          , grouped by date.
+        </p>
       </div>
     </main>
   );

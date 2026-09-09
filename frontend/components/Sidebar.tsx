@@ -6,6 +6,8 @@ import {
   APP_CONFIG,
   getApplicationInitial,
 } from "@/lib/app_config";
+import { getApiBaseUrl } from "@/lib/api";
+import { useAuth } from "@/lib/auth";
 
 type SidebarProps = {
   onNewAnalysis: () => void;
@@ -14,19 +16,18 @@ type SidebarProps = {
 type NavItem =
   | { label: string; kind: "link"; href: string }
   | { label: string; kind: "action"; action: "new" }
-  | { label: string; kind: "anchor"; href: string }
   | { label: string; kind: "disabled"; reason: string };
 
 const navItems: NavItem[] = [
   { label: "Dashboard", kind: "link", href: "/" },
   { label: "New Analysis", kind: "action", action: "new" },
-  { label: "Active Analyses", kind: "anchor", href: "/#active-analyses" },
-  { label: "History", kind: "disabled", reason: "Coming soon" },
+  { label: "History", kind: "link", href: "/history" },
   { label: "Settings", kind: "disabled", reason: "Coming soon" },
 ];
 
 export default function Sidebar({ onNewAnalysis }: SidebarProps) {
   const pathname = usePathname();
+  const { logout, username, authRequired } = useAuth();
 
   return (
     <aside className="flex h-full w-full flex-col border-r border-hap-border bg-hap-panel lg:w-56 xl:w-60">
@@ -49,9 +50,8 @@ export default function Sidebar({ onNewAnalysis }: SidebarProps) {
       <nav className="flex flex-1 flex-col gap-0.5 p-3">
         {navItems.map((item) => {
           const isActive =
-            item.kind === "link" && item.label === "Dashboard"
-              ? pathname === "/"
-              : false;
+            item.kind === "link" &&
+            (item.href === "/" ? pathname === "/" : pathname === item.href);
 
           const className = `rounded px-3 py-2.5 text-left text-sm transition-colors ${
             isActive
@@ -91,9 +91,18 @@ export default function Sidebar({ onNewAnalysis }: SidebarProps) {
       </nav>
 
       <div className="border-t border-hap-border px-5 py-3">
+        {authRequired ? (
+          <button
+            type="button"
+            onClick={() => void logout()}
+            className="mb-3 w-full rounded px-2 py-1.5 text-left text-xs text-hap-muted hover:bg-hap-panel-elevated hover:text-foreground"
+          >
+            Sign out{username ? ` · ${username}` : ""}
+          </button>
+        ) : null}
         <div className="flex items-center gap-2 text-xs text-hap-muted">
           <span className="h-1.5 w-1.5 rounded-full bg-hap-success" />
-          Backend: localhost:8000
+          Backend: {getApiBaseUrl().replace(/^https?:\/\//, "")}
         </div>
       </div>
     </aside>

@@ -95,10 +95,12 @@ SHEET_POLICIES: dict[str, dict[str, str]] = {
         "purpose": "Dividend helper support sheet.",
     },
     "Inputs": {
-        "role": SheetRole.FORMULA.value,
-        "write_policy": WritePolicy.READ_ONLY.value,
-        "fill_priority": FillPriority.NEVER.value,
-        "purpose": "Central bridge — pulls statements; feeds ratios/tax/leases/metrics.",
+        "role": SheetRole.HYBRID.value,
+        "write_policy": WritePolicy.HYBRID.value,
+        "fill_priority": FillPriority.P0.value,
+        "purpose": (
+            "Central bridge — formula-driven plus writable sinks for tax / PE10 / current data."
+        ),
     },
     "IC & NOPAT & ROIC ": {
         "role": SheetRole.FORMULA.value,
@@ -178,6 +180,15 @@ AS_REPORTED_SHEETS = frozenset(
         "Last Quarter BS As Reported",
         "Last Quarter IS As Reported",
         "Last Quarter CF As Reported",
+    }
+)
+
+# Quarterly update: leave exactly as current template — never carry, fill, or validate.
+IGNORED_TEMPLATE_SHEETS = frozenset(
+    AS_REPORTED_SHEETS
+    | {
+        "DividendHelper",
+        "Dividend Helper",
     }
 )
 

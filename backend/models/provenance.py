@@ -42,6 +42,8 @@ class CellProvenance(BaseModel):
     transformations: list[CellTransformation] = Field(default_factory=list)
     reasoning: str | None = None
     failure_reason: str | None = None
+    original_value: Any | None = None
+    write_decision: str | None = None
 
 
 class ProvenanceReport(BaseModel):

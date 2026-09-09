@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import BackgroundTasks, FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 
+from hap_auth import AuthConfigError, auth_enabled, is_production, validate_auth_configuration
+from hap_auth.http import AuthGateMiddleware, auth_health_fields, register_auth_routes
 from models.analysis import CreateAnalysisRequest, CreateAnalysisResponse
 from models.api_responses import (
     AnalysisDetailResponse,
@@ -22,20 +25,37 @@ from services.analysis_service import AnalysisNotFoundError, AnalysisService
 from services.file_service import FileService, FileUploadError
 from services.output_service import OutputService
 from services.workbook_service import WorkbookService
+from settings import cors_allow_credentials, cors_allow_origins, storage_is_writable
+
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    if auth_enabled():
+        validate_auth_configuration()
+    origins = cors_allow_origins()
+    if is_production() and "*" in origins:
+        raise AuthConfigError("Wildcard CORS is not allowed in production.")
+    if auth_enabled() and not cors_allow_credentials():
+        raise AuthConfigError("Credentialed sessions require explicit CORS origins (not *).")
+    yield
+
 
 app = FastAPI(
     title="HAP Backend",
     description="Houda's Analyst Platform API",
     version="0.3.0",
+    lifespan=lifespan,
 )
 
+app.add_middleware(AuthGateMiddleware)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],
-    allow_credentials=True,
+    allow_origins=cors_allow_origins(),
+    allow_credentials=cors_allow_credentials(),
     allow_methods=["*"],
     allow_headers=["*"],
 )
+register_auth_routes(app)
 
 analysis_service = AnalysisService()
 file_service = FileService()
@@ -49,9 +69,18 @@ pipeline_orchestrator = PipelineOrchestrator(
 
 
 @app.get("/health")
-def health() -> dict[str, str]:
-    """Liveness check for the API service."""
-    return {"status": "ok", "service": "HAP backend", "version": "0.3.0"}
+@app.get("/healthz")
+def health() -> JSONResponse:
+    """Liveness/readiness for hosts (Render health check)."""
+    writable = storage_is_writable()
+    payload = {
+        "status": "ok" if writable else "degraded",
+        "service": "HAP backend",
+        "version": "0.3.0",
+        "storage_ok": writable,
+        **auth_health_fields(),
+    }
+    return JSONResponse(payload, status_code=200 if writable else 503)
 
 
 @app.post("/analysis/create", response_model=CreateAnalysisResponse)
@@ -218,6 +247,8 @@ def _media_type_for(path: Path) -> str:
         return "application/json"
     if suffix == ".xlsx":
         return "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    if suffix == ".docx":
+        return "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
     if suffix == ".csv":
         return "text/csv"
     return "application/octet-stream"

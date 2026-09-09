@@ -1,6 +1,16 @@
 import type { AnalysisDetailDto, AnalysisSummary } from "./types";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:8000";
+function resolveApiBaseUrl(): string {
+  const configured = process.env.NEXT_PUBLIC_API_URL?.trim();
+  const fallback = "http://127.0.0.1:8000";
+  const base = (configured && configured.length > 0 ? configured : fallback).replace(
+    /\/+$/,
+    "",
+  );
+  return base;
+}
+
+const API_BASE = resolveApiBaseUrl();
 
 export class ApiError extends Error {
   status: number;
@@ -53,11 +63,42 @@ async function readErrorMessage(response: Response): Promise<string> {
 }
 
 async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`${API_BASE}${path}`, init);
+  const response = await fetch(`${API_BASE}${path}`, {
+    ...init,
+    credentials: "include",
+    headers: init?.headers,
+  });
+  if (response.status === 401 && path !== "/auth/login" && path !== "/auth/me") {
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new Event("hap:unauthorized"));
+    }
+  }
   if (!response.ok) {
     throw new ApiError(await readErrorMessage(response), response.status);
   }
   return response.json() as Promise<T>;
+}
+
+export type AuthMeResponse = {
+  authenticated: boolean;
+  auth_required: boolean;
+  username: string | null;
+};
+
+export async function fetchAuthMe(): Promise<AuthMeResponse> {
+  return requestJson<AuthMeResponse>("/auth/me");
+}
+
+export async function loginWithPassword(username: string, password: string): Promise<void> {
+  await requestJson("/auth/login", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ username, password }),
+  });
+}
+
+export async function logoutSession(): Promise<void> {
+  await requestJson("/auth/logout", { method: "POST" });
 }
 
 export function getApiBaseUrl(): string {
@@ -102,7 +143,11 @@ export async function uploadAnalysisFiles(
   const response = await fetch(`${API_BASE}/analysis/${analysisId}/upload`, {
     method: "POST",
     body: formData,
+    credentials: "include",
   });
+  if (response.status === 401 && typeof window !== "undefined") {
+    window.dispatchEvent(new Event("hap:unauthorized"));
+  }
   if (!response.ok) {
     throw new ApiError(await readErrorMessage(response), response.status);
   }
@@ -125,7 +170,11 @@ export async function getAnalysisOutputJson<T>(
 ): Promise<T | null> {
   const response = await fetch(
     `${API_BASE}/analysis/${analysisId}/outputs/${encodeURIComponent(artifactName)}`,
+    { credentials: "include" },
   );
+  if (response.status === 401 && typeof window !== "undefined") {
+    window.dispatchEvent(new Event("hap:unauthorized"));
+  }
   if (response.status === 404) {
     return null;
   }

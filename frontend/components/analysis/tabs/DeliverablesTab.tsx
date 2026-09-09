@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   getOutputDownloadUrl,
   listAnalysisOutputs,
@@ -9,45 +9,58 @@ import {
 import { formatBytes } from "@/lib/map-backend-analysis";
 import type { AnalysisDetail } from "@/lib/types";
 
-const PRIORITY_ORDER = [
-  "hap_workbook.xlsx",
+const EXCEL_EXT = /\.(xlsx|xlsm|xls)$/i;
+const WORD_EXT = /\.(docx|doc)$/i;
+
+const GENERIC_WORKBOOK_NAMES = new Set([
   "completed_workbook.xlsx",
-  "analysis_engine_result.json",
-  "company_financial_model.json",
-  "validation_report.json",
-  "discrepancy_report.json",
-  "provenance_report.json",
-  "custom_run_data.json",
-  "sec_filings_manifest.json",
-  "company_facts.json",
-  "workbook_structure.json",
-];
+  "hap_workbook.xlsx",
+]);
 
-const DESCRIPTIONS: Record<string, string> = {
-  "completed_workbook.xlsx": "Industrial Template copy (preserved input workbook)",
-  "hap_workbook.xlsx": "HAP institutional workbook (17-sheet standard deliverable)",
-  "analysis_engine_result.json": "Full Analysis Engine result (modules, scores, recommendation)",
-  "company_financial_model.json": "Canonical CompanyFinancialModel",
-  "validation_report.json": "Validation checks (pass / warn / fail)",
-  "discrepancy_report.json": "Discrepancy report (same validation payload today)",
-  "provenance_report.json": "SEC + Custom Run provenance for imported values",
-  "custom_run_data.json": "Parsed Custom_Run_Filter data",
-  "sec_filings_manifest.json": "SEC filings selected for this run",
-  "company_facts.json": "Raw SEC companyfacts JSON",
-  "workbook_structure.json": "Parsed Industrial Template structure (can be very large)",
-};
+function isOfficeDeliverable(name: string): boolean {
+  return EXCEL_EXT.test(name) || WORD_EXT.test(name);
+}
 
-function sortArtifacts(artifacts: OutputArtifactDto[]): OutputArtifactDto[] {
+function isExcel(name: string): boolean {
+  return EXCEL_EXT.test(name);
+}
+
+function isWord(name: string): boolean {
+  return WORD_EXT.test(name);
+}
+
+function preferNamedWorkbooks(artifacts: OutputArtifactDto[]): OutputArtifactDto[] {
+  const office = artifacts.filter((a) => isOfficeDeliverable(a.name));
+  const hasNamedExcel = office.some(
+    (a) => isExcel(a.name) && !GENERIC_WORKBOOK_NAMES.has(a.name.toLowerCase()),
+  );
+  if (!hasNamedExcel) return office;
+  return office.filter((a) => !GENERIC_WORKBOOK_NAMES.has(a.name.toLowerCase()));
+}
+
+function sortOffice(artifacts: OutputArtifactDto[]): OutputArtifactDto[] {
   return [...artifacts].sort((a, b) => {
-    const ai = PRIORITY_ORDER.indexOf(a.name);
-    const bi = PRIORITY_ORDER.indexOf(b.name);
-    if (ai === -1 && bi === -1) {
-      return a.name.localeCompare(b.name);
-    }
-    if (ai === -1) return 1;
-    if (bi === -1) return -1;
-    return ai - bi;
+    const ae = isExcel(a.name) ? 0 : 1;
+    const be = isExcel(b.name) ? 0 : 1;
+    if (ae !== be) return ae - be;
+    return a.name.localeCompare(b.name);
   });
+}
+
+function describe(name: string): string {
+  const lower = name.toLowerCase();
+  if (isWord(name)) {
+    if (lower.includes("quarter")) return "Quarterly update memo";
+    if (lower.includes("annual")) return "Annual update memo";
+    return "Research and recommendation memo";
+  }
+  if (lower.includes("fa") || /\d{4}\s+[a-z]{1,5}\s+fa/i.test(name)) {
+    return "Finished financial model";
+  }
+  if (GENERIC_WORKBOOK_NAMES.has(lower)) {
+    return "Completed financial model";
+  }
+  return "Excel workbook";
 }
 
 export default function DeliverablesTab({ analysis }: { analysis: AnalysisDetail }) {
@@ -64,7 +77,7 @@ export default function DeliverablesTab({ analysis }: { analysis: AnalysisDetail
       try {
         const listed = await listAnalysisOutputs(analysis.id);
         if (!cancelled) {
-          setArtifacts(sortArtifacts(listed));
+          setArtifacts(listed);
         }
       } catch (err) {
         if (!cancelled) {
@@ -84,6 +97,10 @@ export default function DeliverablesTab({ analysis }: { analysis: AnalysisDetail
     };
   }, [analysis.id, analysis.status, analysis.progress]);
 
+  const files = useMemo(() => sortOffice(preferNamedWorkbooks(artifacts)), [artifacts]);
+  const excel = files.filter((f) => isExcel(f.name));
+  const word = files.filter((f) => isWord(f.name));
+
   if (isLoading) {
     return <p className="text-sm text-hap-muted">Loading deliverables…</p>;
   }
@@ -92,73 +109,69 @@ export default function DeliverablesTab({ analysis }: { analysis: AnalysisDetail
     return <p className="text-sm text-red-400">{error}</p>;
   }
 
-  if (artifacts.length === 0) {
+  if (files.length === 0) {
     return (
       <p className="text-sm text-hap-muted">
         {analysis.status === "Failed"
-          ? "No artifacts were written before the pipeline failed."
-          : "No deliverables yet. They appear as each pipeline stage completes."}
+          ? "No Excel or Word files were produced before this run failed."
+          : "Excel and Word files appear here when the run finishes."}
       </p>
     );
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
       <div>
         <h3 className="text-xs font-semibold uppercase tracking-widest text-hap-muted">
-          Downloadable artifacts
+          Files for this run
         </h3>
         <p className="mt-1 text-sm text-hap-muted">
-          Inspect every output the backend already produced for this analysis.
+          Download the completed workbook and the accompanying Word memo.
         </p>
       </div>
 
-      <div className="overflow-hidden rounded border border-hap-border bg-hap-panel">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-hap-border text-left text-xs uppercase tracking-wider text-hap-muted">
-              <th className="px-4 py-3 font-medium">Artifact</th>
-              <th className="px-4 py-3 font-medium">Size</th>
-              <th className="px-4 py-3 font-medium">Description</th>
-              <th className="px-4 py-3 font-medium">Action</th>
-            </tr>
-          </thead>
-          <tbody>
-            {artifacts.map((artifact) => {
-              const large = artifact.size_bytes > 50 * 1024 * 1024;
-              return (
-                <tr
-                  key={artifact.name}
-                  className="border-b border-hap-border/50 align-top"
-                >
-                  <td className="px-4 py-3 font-mono text-xs text-hap-orange">
-                    {artifact.name}
-                  </td>
-                  <td className="px-4 py-3 font-mono text-xs text-hap-muted">
-                    {formatBytes(artifact.size_bytes)}
-                    {large ? (
-                      <span className="mt-1 block text-[10px] text-hap-warning">
-                        Large file
-                      </span>
-                    ) : null}
-                  </td>
-                  <td className="px-4 py-3 text-hap-muted">
-                    {DESCRIPTIONS[artifact.name] ?? "Pipeline output artifact"}
-                  </td>
-                  <td className="px-4 py-3">
-                    <a
-                      href={getOutputDownloadUrl(analysis.id, artifact.name)}
-                      download={artifact.name}
-                      className="inline-flex rounded border border-hap-orange/40 bg-hap-orange/10 px-3 py-1.5 text-xs font-semibold text-hap-orange transition-colors hover:border-hap-orange hover:bg-hap-orange/20"
-                    >
-                      Download
-                    </a>
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
+      {excel.length > 0 ? (
+        <FileGroup title="Excel" files={excel} analysisId={analysis.id} />
+      ) : null}
+      {word.length > 0 ? (
+        <FileGroup title="Word" files={word} analysisId={analysis.id} />
+      ) : null}
+    </div>
+  );
+}
+
+function FileGroup({
+  title,
+  files,
+  analysisId,
+}: {
+  title: string;
+  files: OutputArtifactDto[];
+  analysisId: string;
+}) {
+  return (
+    <div>
+      <h4 className="mb-3 text-sm font-medium">{title}</h4>
+      <div className="grid gap-3 sm:grid-cols-2">
+        {files.map((file) => (
+          <a
+            key={file.name}
+            href={getOutputDownloadUrl(analysisId, file.name)}
+            download={file.name}
+            className="flex items-start justify-between gap-4 rounded-xl border border-hap-border bg-hap-panel p-4 transition-colors hover:border-hap-orange/40 hover:bg-hap-panel-elevated"
+          >
+            <div>
+              <p className="text-sm font-medium">{file.name}</p>
+              <p className="mt-1 text-xs text-hap-muted">{describe(file.name)}</p>
+              <p className="mt-2 font-mono text-[11px] text-hap-muted">
+                {formatBytes(file.size_bytes)}
+              </p>
+            </div>
+            <span className="shrink-0 rounded border border-hap-orange/40 bg-hap-orange/10 px-3 py-1.5 text-xs font-semibold text-hap-orange">
+              Download
+            </span>
+          </a>
+        ))}
       </div>
     </div>
   );

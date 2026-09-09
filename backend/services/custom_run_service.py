@@ -115,6 +115,10 @@ class CustomRunService:
             metadata = self._parse_meta_block(ticker_rows)
             periods = self._parse_periods(ticker_rows)
             historical = self._parse_series_block(ticker_rows, periods)
+            annual_pe = self._augment_annual_pe10_e10(ticker_rows, periods, historical)
+            if annual_pe:
+                metadata["inputs_annual_pe10"] = annual_pe.get("PE10") or {}
+                metadata["inputs_annual_e10"] = annual_pe.get("E10") or {}
             scalars = self._parse_scalar_block(ticker_rows)
             summary = self._parse_summary(summary_rows)
 
@@ -317,22 +321,79 @@ class CustomRunService:
         return summary
 
     def _row_values(self, rows: list[list[Any]], row_idx: int) -> list[Any]:
-        """Return values from column B onward until trailing empties dominate."""
+        """Return values from column B onward (allow leading blanks; trim trailing)."""
         values: list[Any] = []
-        empty_streak = 0
-        col = 2
-        while col <= 120 and empty_streak < 5:
-            value = self._cell(rows, row_idx, col)
-            if value is None or (isinstance(value, str) and value.strip() == ""):
-                empty_streak += 1
-                values.append(None)
-            else:
-                empty_streak = 0
-                values.append(value)
-            col += 1
+        # Production CRFs span ~100 quarterly columns; PE10/E10 start far right of B.
+        for col in range(2, 221):
+            values.append(self._cell(rows, row_idx, col))
         while values and values[-1] is None:
             values.pop()
         return values
+
+    def _augment_annual_pe10_e10(
+        self,
+        rows: list[list[Any]],
+        periods: CustomRunPeriods,
+        historical: dict[str, CustomRunSeries],
+    ) -> dict[str, dict[str, float]]:
+        """Collapse quarterly PE10/E10 to fiscal-year-end annual points (not lag trailer)."""
+        years = periods.fiscal_years
+        result: dict[str, dict[str, float]] = {}
+        if not years:
+            return result
+        for label, row_idx in (("E10", 132), ("PE10", 133)):
+            raw = self._row_values(rows, row_idx)
+            if not raw:
+                existing = historical.get(label)
+                raw = list(existing.values) if existing else []
+            if not raw:
+                continue
+            annual = _collapse_to_fy_end(years, raw)
+            if not annual:
+                continue
+            result[label] = annual
+            ordered_fys = sorted(annual.keys())
+            historical[f"{label} Annual"] = CustomRunSeries(
+                label=f"{label} Annual",
+                values=[annual[fy] for fy in ordered_fys],
+                kind="annual_aligned",
+            )
+            if label not in historical:
+                n = min(len(raw), len(years))
+                historical[label] = CustomRunSeries(
+                    label=label,
+                    values=[_as_float(v) for v in raw[:n]],
+                    kind="quarterly",
+                )
+        return result
+
+    @staticmethod
+    def annual_metric_by_fy(
+        historical: dict[str, CustomRunSeries],
+        periods: CustomRunPeriods,
+        label: str,
+    ) -> dict[str, float]:
+        """Return {FY2016: value, ...} for a quarterly series collapsed to FY-end."""
+        annual_key = f"{label} Annual"
+        if annual_key in historical and historical[annual_key].kind == "annual_aligned":
+            years: list[str] = []
+            seen: set[str] = set()
+            for y in periods.fiscal_years:
+                token = _fy_token(y)
+                if token and token not in seen:
+                    seen.add(token)
+                    years.append(token)
+            series = historical[annual_key]
+            out: dict[str, float] = {}
+            for fy, val in zip(years, series.values):
+                if val is not None:
+                    out[fy] = float(val)
+            if out:
+                return out
+        series = historical.get(label)
+        if series is None:
+            return {}
+        return _collapse_to_fy_end(periods.fiscal_years, list(series.values))
 
     @staticmethod
     def _section_from_pools(
@@ -404,3 +465,34 @@ def _optional_str(value: Any) -> str | None:
         return None
     text = str(value).strip()
     return text or None
+
+
+def _fy_token(value: Any) -> str | None:
+    if value is None:
+        return None
+    text = str(value).strip().replace(" ", "").upper()
+    if not text:
+        return None
+    digits = "".join(ch for ch in text if ch.isdigit())
+    if len(digits) >= 4:
+        return f"FY{digits[-4:]}"
+    return None
+
+
+def _collapse_to_fy_end(
+    fiscal_years: list[str],
+    values: list[Any],
+) -> dict[str, float]:
+    """Take the last non-null value in each fiscal year (FY-end / Q4 column)."""
+    last_by_fy: dict[str, float] = {}
+    for idx, year_raw in enumerate(fiscal_years):
+        token = _fy_token(year_raw)
+        if not token:
+            continue
+        if idx >= len(values):
+            break
+        num = _as_float(values[idx])
+        if num is None:
+            continue
+        last_by_fy[token] = num
+    return last_by_fy

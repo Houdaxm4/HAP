@@ -60,6 +60,9 @@ class PipelineOutputs(BaseModel):
     company_financial_model: str | None = None
     analysis_engine_result: str | None = None
     hap_workbook: str | None = None
+    write_intents: str | None = None
+    cell_diff_report: str | None = None
+    completion_report: str | None = None
 
 
 class PipelineStatus(BaseModel):
