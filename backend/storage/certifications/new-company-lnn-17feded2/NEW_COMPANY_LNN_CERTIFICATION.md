@@ -8,7 +8,7 @@ Generated at: 2026-09-22T19:17:21Z
 New analysis ID: `17feded2-1785-4807-8560-1716c7cfa34c`
 Ticker: LNN (Lindsay Corporation)
 Parent revision: `f1b8b1a189bc9b0c7390b384fff625f0daac9d9a`
-Certified code revision: this commit (Gate G narrative/CFS zeros, duration-safe dollar facts, lease-note vs row-18 formula distinction, R&D life-driven capitalization formulas, FY token range/formula guard)
+Certified code revision: `2a8cc3cbe6b09947bd4ad85c8522b1bb471ec386` (Gate G narrative/CFS zeros, duration-safe dollar facts, lease-note vs row-18 formula distinction, R&D life-driven capitalization formulas, FY token range/formula guard)
 Workbook source: `storage/uploads/e49429d4-2828-41ac-8eec-f78ded145015/prefilled_workbook.xlsx`
 CRF: `storage/uploads/e49429d4-2828-41ac-8eec-f78ded145015/Custom_Run_Filter_2026-08-27-_20-57_-LNN.xlsx`
 Run artifacts: `storage/outputs/17feded2-1785-4807-8560-1716c7cfa34c`
