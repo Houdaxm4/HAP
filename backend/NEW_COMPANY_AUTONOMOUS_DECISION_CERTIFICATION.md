@@ -7,7 +7,7 @@ This report certifies the **autonomous lease-rate and R&D useful-life workflow**
 Generated at: 2026-09-22T18:19:22.413719+00:00
 LNN run id: `07e53d34-7768-4d58-b84a-07af579fae14`
 Ticker: LNN (Lindsay Corporation)
-Source revision at run time: uncommitted autonomous-decision working tree on top of `da1765badfd339dfdc3deb2ffc92968ff0012268`
+Code revision: `9dd3bc7` (autonomous-decision workflow on top of certified baseline `da1765badfd339dfdc3deb2ffc92968ff0012268`)
 Workbook: `storage/uploads/e49429d4-2828-41ac-8eec-f78ded145015/prefilled_workbook.xlsx`
 CRF: `storage/uploads/e49429d4-2828-41ac-8eec-f78ded145015/Custom_Run_Filter_2026-08-27-_20-57_-LNN.xlsx`
 
