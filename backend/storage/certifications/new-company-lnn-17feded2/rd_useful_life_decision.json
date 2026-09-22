@@ -1,0 +1,72 @@
+{
+  "analysis_id": "17feded2-1785-4807-8560-1716c7cfa34c",
+  "ticker": "LNN",
+  "selected_useful_life": 5,
+  "permitted_range": [
+    1,
+    10
+  ],
+  "company_evidence": [
+    "R&D expense is separately disclosed in 10 displayed years. Useful life is based on the economic duration of R&D benefits, not on the dollar amount spent."
+  ],
+  "industry_evidence": [
+    "Industry/activity evidence (LINDSAY CORP 3523 Farm Machinery & Equipment Farm Machinery & Equipment): industrial product development cycle."
+  ],
+  "comparable_evidence": [],
+  "alternatives_considered": [
+    {
+      "life": 5,
+      "reason": "industry norm"
+    },
+    {
+      "life": 3,
+      "reason": "short software-like cycle"
+    },
+    {
+      "life": 5,
+      "reason": "general industrial mid-point"
+    },
+    {
+      "life": 8,
+      "reason": "long patent/regulatory cycle"
+    }
+  ],
+  "rationale": "Selected 5-year straight-line R&D capitalization life. industrial product development cycle This is an AUTONOMOUS_AGENT_DECISION, not a measured accounting fact. An analyst may override it with a documented reason.",
+  "confidence": 0.7,
+  "sensitivity": [
+    {
+      "useful_life": 4,
+      "role": "minus_one"
+    },
+    {
+      "useful_life": 5,
+      "role": "selected"
+    },
+    {
+      "useful_life": 6,
+      "role": "plus_one"
+    }
+  ],
+  "filing_citations": [
+    "SEC 10-K business description / SIC (companyfacts DEI + submissions)",
+    "https://www.sec.gov/Archives/edgar/data/836157/000119312525248751/lnn-20250831.htm"
+  ],
+  "decision_timestamp": "2026-09-22T19:15:35.128640+00:00",
+  "model_version": "new_company_rd_useful_life_v1",
+  "provenance_class": "agent_selected_analyst_assumption",
+  "analyst_override": null,
+  "analyst_override_reason": null,
+  "original_agent_selection": 5,
+  "audit_trail": [
+    {
+      "event": "AUTONOMOUS_AGENT_DECISION",
+      "life": 5,
+      "timestamp": "2026-09-22T19:15:35.128620+00:00"
+    }
+  ],
+  "warning": "R&D useful life is an autonomous agent decision. Override it if the economic life of the company's R&D differs from this selection.",
+  "blocking": false,
+  "blocking_reasons": [],
+  "industry": "LINDSAY CORP 3523 Farm Machinery & Equipment Farm Machinery & Equipment",
+  "sic": "3523"
+}

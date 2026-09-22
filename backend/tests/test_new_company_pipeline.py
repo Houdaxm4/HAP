@@ -2008,6 +2008,208 @@ def test_buyback_missing_evidence_stays_missing_not_zero(tmp_path: Path):
     assert any("BUYBACK_SHARES_COVERAGE_INCOMPLETE: FY2016" in w for w in report.warnings)
 
 
+_LNN_NO_REPO_2019 = (
+    "There were no shares repurchased during the twelve months ended August 31, 2019, 2018, and 2017.\n"
+    "Repurchase of common shares — (48,335) (96,883)\n"
+)
+_LNN_NO_REPO_2021 = (
+    "There were no shares repurchased during the twelve months ended August 31, 2021, 2020, and 2019.\n"
+)
+_LNN_CFS_2018 = "Repurchase of common shares - - (48,335)\n"
+
+
+def test_buyback_lnn_style_narrative_and_cfs_zeros_not_quarterly_xbrl(tmp_path: Path):
+    from services.new_company_buyback_service import (
+        parse_cfs_repurchase_dash_zeros,
+        parse_no_shares_repurchased_narrative,
+    )
+
+    narrative = parse_no_shares_repurchased_narrative(_LNN_NO_REPO_2019)
+    assert set(narrative) >= {2017, 2018, 2019}
+    assert narrative[2017]["dollars"] == 0.0
+    cfs = parse_cfs_repurchase_dash_zeros(_LNN_CFS_2018, 2018)
+    assert cfs[2018]["dollars"] == 0.0
+    assert cfs[2017]["dollars"] == 0.0
+    assert 2016 not in cfs
+
+    facts = company_facts_for(buybacks=True)
+    dollar_rows = facts["facts"]["us-gaap"]["PaymentsForRepurchaseOfCommonStock"]["units"]["USD"]
+    facts["facts"]["us-gaap"]["PaymentsForRepurchaseOfCommonStock"]["units"]["USD"] = [
+        e for e in dollar_rows if e["fy"] not in {2017, 2018, 2019, 2021}
+    ]
+    share_rows = facts["facts"]["us-gaap"]["StockRepurchasedDuringPeriodShares"]["units"]["shares"]
+    facts["facts"]["us-gaap"]["StockRepurchasedDuringPeriodShares"]["units"]["shares"] = [
+        e for e in share_rows if e["fy"] not in {2017, 2018, 2019, 2021}
+    ]
+    facts["facts"]["us-gaap"]["TreasuryStockSharesAcquired"] = {
+        "label": "treasury shares acquired",
+        "units": {
+            "shares": [
+                {
+                    "val": 0,
+                    "fy": y,
+                    "fp": "FY",
+                    "form": "10-K",
+                    "start": f"{y - 1}-09-01",
+                    "end": f"{y}-08-31",
+                    "filed": f"{y + 1}-10-20",
+                    "accn": "0001",
+                    "frame": f"CY{y}",
+                }
+                for y in (2017, 2018, 2019, 2021)
+            ]
+        },
+    }
+    facts["facts"]["us-gaap"]["StockRepurchasedDuringPeriodValue"] = {
+        "label": "period value",
+        "units": {
+            "USD": [
+                {
+                    "val": 0,
+                    "fy": 2017,
+                    "fp": "Q4",
+                    "form": "10-Q",
+                    "start": "2017-06-01",
+                    "end": "2017-08-31",
+                    "filed": "2017-10-01",
+                    "accn": "q",
+                    "frame": "CY2017Q4",
+                }
+            ]
+        },
+    }
+    path = industrial_workbook(tmp_path / "lnn.xlsx")
+    report = NewCompanyBuybackService().apply(
+        analysis_id="a",
+        ticker="LNN",
+        workbook_path=path,
+        fiscal_years=FY,
+        company_facts=facts,
+        filings_text={
+            "FY2019": _LNN_NO_REPO_2019,
+            "FY2018": _LNN_CFS_2018,
+            "FY2021": _LNN_NO_REPO_2021,
+        },
+    )
+    for year in ("FY2017", "FY2018", "FY2019", "FY2021"):
+        rec = next(y for y in report.years if y.fiscal_year == year)
+        assert rec.dollars == 0.0
+        assert rec.shares == 0.0
+        assert rec.absence_class == BuybackAbsenceClass.REPORTED_ZERO
+        assert rec.dollars_source and "10k" in rec.dollars_source
+    y2016 = next(y for y in report.years if y.fiscal_year == "FY2016")
+    assert y2016.dollars == pytest.approx(5.0)
+    assert y2016.absence_class != BuybackAbsenceClass.REPORTED_ZERO
+    assert not any("BUYBACK_DOLLARS_COVERAGE_INCOMPLETE: FY2017" in w for w in report.warnings)
+    gates = NewCompanyOutputGateService().evaluate(
+        **_gate_base(tmp_path, buybacks=report)
+    )
+    assert gates.gates["G_buybacks"] == "pass"
+
+
+def test_buyback_omitted_cfs_line_stays_missing_not_zero(tmp_path: Path):
+    facts = company_facts_for(buybacks=True)
+    facts["facts"]["us-gaap"]["PaymentsForRepurchaseOfCommonStock"]["units"]["USD"] = [
+        e
+        for e in facts["facts"]["us-gaap"]["PaymentsForRepurchaseOfCommonStock"]["units"]["USD"]
+        if e["fy"] != 2019
+    ]
+    path = industrial_workbook(tmp_path / "wb.xlsx")
+    report = NewCompanyBuybackService().apply(
+        analysis_id="a",
+        ticker="LNN",
+        workbook_path=path,
+        fiscal_years=FY,
+        company_facts=facts,
+        filings_text={
+            "FY2019": "Cash flows from financing activities\nProceeds from issuance of common stock 5,000\n"
+        },
+    )
+    y2019 = next(y for y in report.years if y.fiscal_year == "FY2019")
+    assert y2019.dollars is None
+    assert y2019.shares is not None
+    assert y2019.absence_class != BuybackAbsenceClass.REPORTED_ZERO
+    assert any("BUYBACK_DOLLARS_COVERAGE_INCOMPLETE: FY2019" in w for w in report.warnings)
+    gates = NewCompanyOutputGateService().evaluate(**_gate_base(tmp_path, buybacks=report))
+    assert gates.gates["G_buybacks"] == "fail"
+
+
+def test_lease_disclosed_rate_does_not_overwrite_long_term_formulas(tmp_path: Path):
+    path = industrial_workbook(tmp_path / "wb.xlsx")
+    wb = load_workbook(path)
+    ls = wb["Leases"]
+    ls["A18"] = "Estimated Long-Term Rate"
+    for i in range(len(YEARS)):
+        letter = chr(ord("C") + i)
+        ls.cell(18, 3 + i, f"=Inputs!{letter}35/Inputs!{letter}27")
+        ls.cell(20, 3 + i, f"=NPV(B18,C10:G10)")
+    wb.save(path)
+    wb.close()
+    report = NewCompanyLeaseService().apply(
+        analysis_id="a", ticker="LNN", workbook_path=path, fiscal_years=FY, company_facts=company_facts_for()
+    )
+    wb = load_workbook(path)
+    try:
+        assert str(wb["Leases"]["C18"].value).startswith("=Inputs!")
+        blob = " ".join(str(c.value or "") for row in wb["Leases"].iter_rows(min_row=1, max_row=20, max_col=20) for c in row)
+        assert "ASC 842" in blob
+        assert "Interest Expense / Total Debt" in blob
+        assert report.review.selected_rate == pytest.approx(0.045)
+    finally:
+        wb.close()
+
+
+def test_rd_selected_life_rewrites_three_year_schedule_formulas(tmp_path: Path):
+    path = industrial_workbook(tmp_path / "rd.xlsx", rd_life_cell=3)
+    wb = load_workbook(path)
+    rd = wb["R&D"]
+    rd["B1"] = '="FY "&RIGHT(C1,4)-1'
+    rd["C1"] = '="FY "&RIGHT(D1,4)-1'
+    rd["D1"] = '="FY "&RIGHT(E1,4)-1'
+    rd["E1"] = "=Inputs!C1"
+    rd["B2"] = "=Inputs!E104"
+    rd["C2"] = "=Inputs!F104"
+    rd["D2"] = "=Inputs!G104"
+    rd["E2"] = '=IF(Inputs!C103="",0,Inputs!C103)'
+    rd["E3"] = "=E2+D2*2/3+1/3*C2"
+    rd["E4"] = "=(E2+D2+C2)/3"
+    wb.save(path)
+    wb.close()
+    svc = NewCompanyRdService()
+    decision = svc.select_useful_life(
+        analysis_id="a",
+        ticker="LNN",
+        workbook_path=path,
+        fiscal_years=FY,
+        sec_manifest={"company_name": "Lindsay Corporation", "sic": "3523", "sic_description": "Farm machinery"},
+        company_facts=company_facts_for(),
+    )
+    report = svc.apply(
+        analysis_id="a",
+        ticker="LNN",
+        workbook_path=path,
+        fiscal_years=FY,
+        decision=decision,
+        company_facts=company_facts_for(),
+    )
+    assert decision.selected_useful_life == 5
+    wb = load_workbook(path)
+    try:
+        assert wb["R&D"]["B8"].value == 5
+        e3 = str(wb["R&D"]["E3"].value or "")
+        e4 = str(wb["R&D"]["E4"].value or "")
+        assert "/5" in e3.replace(" ", "") or "*1/5" in e3.replace(" ", "")
+        assert "/3" not in e3.replace(" ", "")
+        assert e4.replace(" ", "").endswith("/5,0)") or "/5)" in e4.replace(" ", "")
+        assert isinstance(wb["R&D"]["B2"].value, (int, float))
+        assert wb["R&D"]["B20"].value is not None
+        blob = " ".join(str(c.value or "") for row in wb["R&D"].iter_rows(min_row=1, max_row=20, max_col=22) for c in row)
+        assert "R&D!B8" in blob
+    finally:
+        wb.close()
+    assert report.useful_life == 5
+
+
 def test_q2_seasonality_sufficient_sec_ytd_and_insufficient_standalone(tmp_path: Path):
     path = industrial_workbook(tmp_path / "idcc.xlsx", quarter=2)
     wb = load_workbook(path)

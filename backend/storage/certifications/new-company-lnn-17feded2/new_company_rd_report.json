@@ -1,0 +1,218 @@
+{
+  "analysis_id": "17feded2-1785-4807-8560-1716c7cfa34c",
+  "ticker": "LNN",
+  "useful_life": 5,
+  "first_displayed_year": "FY2016",
+  "earliest_required_year": "FY2012",
+  "lookback_years": [
+    "FY2012",
+    "FY2013",
+    "FY2014",
+    "FY2015",
+    "FY2016",
+    "FY2017",
+    "FY2018",
+    "FY2019",
+    "FY2020",
+    "FY2021",
+    "FY2022",
+    "FY2023",
+    "FY2024",
+    "FY2025"
+  ],
+  "expenses": [
+    {
+      "fiscal_year": "FY2012",
+      "amount": 9.481,
+      "units": "USD_millions",
+      "source": "sec_xbrl:ResearchAndDevelopmentExpense",
+      "zero_vs_unavailable": null,
+      "lookback": true,
+      "displayed": false
+    },
+    {
+      "fiscal_year": "FY2013",
+      "amount": 11.395,
+      "units": "USD_millions",
+      "source": "sec_xbrl:ResearchAndDevelopmentExpense",
+      "zero_vs_unavailable": null,
+      "lookback": true,
+      "displayed": false
+    },
+    {
+      "fiscal_year": "FY2014",
+      "amount": 11.125,
+      "units": "USD_millions",
+      "source": "sec_xbrl:ResearchAndDevelopmentExpense",
+      "zero_vs_unavailable": null,
+      "lookback": true,
+      "displayed": false
+    },
+    {
+      "fiscal_year": "FY2015",
+      "amount": 12.849,
+      "units": "USD_millions",
+      "source": "sec_xbrl:ResearchAndDevelopmentExpense",
+      "zero_vs_unavailable": null,
+      "lookback": true,
+      "displayed": false
+    },
+    {
+      "fiscal_year": "FY2016",
+      "amount": 15.846,
+      "units": "USD_millions",
+      "source": "income_statement",
+      "zero_vs_unavailable": null,
+      "lookback": false,
+      "displayed": true
+    },
+    {
+      "fiscal_year": "FY2017",
+      "amount": 17.147,
+      "units": "USD_millions",
+      "source": "income_statement",
+      "zero_vs_unavailable": null,
+      "lookback": false,
+      "displayed": true
+    },
+    {
+      "fiscal_year": "FY2018",
+      "amount": 16.052,
+      "units": "USD_millions",
+      "source": "income_statement",
+      "zero_vs_unavailable": null,
+      "lookback": false,
+      "displayed": true
+    },
+    {
+      "fiscal_year": "FY2019",
+      "amount": 13.936,
+      "units": "USD_millions",
+      "source": "income_statement",
+      "zero_vs_unavailable": null,
+      "lookback": false,
+      "displayed": true
+    },
+    {
+      "fiscal_year": "FY2020",
+      "amount": 13.95,
+      "units": "USD_millions",
+      "source": "income_statement",
+      "zero_vs_unavailable": null,
+      "lookback": false,
+      "displayed": true
+    },
+    {
+      "fiscal_year": "FY2021",
+      "amount": 13.359,
+      "units": "USD_millions",
+      "source": "income_statement",
+      "zero_vs_unavailable": null,
+      "lookback": false,
+      "displayed": true
+    },
+    {
+      "fiscal_year": "FY2022",
+      "amount": 15.145,
+      "units": "USD_millions",
+      "source": "income_statement",
+      "zero_vs_unavailable": null,
+      "lookback": false,
+      "displayed": true
+    },
+    {
+      "fiscal_year": "FY2023",
+      "amount": 18.218,
+      "units": "USD_millions",
+      "source": "income_statement",
+      "zero_vs_unavailable": null,
+      "lookback": false,
+      "displayed": true
+    },
+    {
+      "fiscal_year": "FY2024",
+      "amount": 17.123,
+      "units": "USD_millions",
+      "source": "income_statement",
+      "zero_vs_unavailable": null,
+      "lookback": false,
+      "displayed": true
+    },
+    {
+      "fiscal_year": "FY2025",
+      "amount": 17.93,
+      "units": "USD_millions",
+      "source": "income_statement",
+      "zero_vs_unavailable": null,
+      "lookback": false,
+      "displayed": true
+    }
+  ],
+  "lookback_complete": true,
+  "capitalization_ok": true,
+  "schedule_extended": true,
+  "cells_written": [
+    "R&D!B8",
+    "R&D!A1",
+    "R&D!D2",
+    "R&D!C2",
+    "R&D!B2",
+    "R&D!A20",
+    "R&D!B20",
+    "R&D!E3",
+    "R&D!E4",
+    "R&D!F3",
+    "R&D!F4",
+    "R&D!G3",
+    "R&D!G4",
+    "R&D!H3",
+    "R&D!H4",
+    "R&D!I3",
+    "R&D!I4",
+    "R&D!J3",
+    "R&D!J4",
+    "R&D!K3",
+    "R&D!K4",
+    "R&D!L3",
+    "R&D!L4",
+    "R&D!M3",
+    "R&D!M4",
+    "R&D!N3",
+    "R&D!N4",
+    "R&D!P1",
+    "R&D!Q2",
+    "R&D!Q3",
+    "R&D!Q4",
+    "R&D!Q5",
+    "R&D!Q6",
+    "R&D!Q7",
+    "R&D!Q8",
+    "R&D!Q9",
+    "R&D!Q10"
+  ],
+  "sensitivity": [
+    {
+      "useful_life": 4,
+      "role": "minus_one",
+      "latest_year_capitalized_rd_asset": 43.6675,
+      "note": "Sensitivity uses straight-line remaining-life weights; workbook formulas govern reported values."
+    },
+    {
+      "useful_life": 5,
+      "role": "selected",
+      "latest_year_capitalized_rd_asset": 51.289,
+      "note": "Sensitivity uses straight-line remaining-life weights; workbook formulas govern reported values."
+    },
+    {
+      "useful_life": 6,
+      "role": "plus_one",
+      "latest_year_capitalized_rd_asset": 58.695,
+      "note": "Sensitivity uses straight-line remaining-life weights; workbook formulas govern reported values."
+    }
+  ],
+  "latest_asset": null,
+  "latest_amortization": null,
+  "formulas_preserved": true,
+  "warning_visible": true,
+  "summary": "R&D: life=5y (agent_selected_analyst_assumption); lookback FY2012\u2013FY2025; complete=True; missing=none."
+}

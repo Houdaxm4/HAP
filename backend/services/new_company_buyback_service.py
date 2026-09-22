@@ -51,6 +51,16 @@ _TABLE_WINDOW = re.compile(
 _YEAR_ROW = re.compile(
     r"(?P<year>20\d{2})\s+(?P<shares>[\d,]+)\s+\$?\s*(?P<value>[\d,]+)"
 )
+_NO_SHARES_RE = re.compile(
+    r"there were no shares repurchased during the (?:twelve|12) months ended[^\n.]{0,160}",
+    re.IGNORECASE,
+)
+_CFS_REPO_LINE = re.compile(
+    r"repurchase of common (?:shares|stock)(?P<rest>[^\n]{0,240})",
+    re.IGNORECASE,
+)
+_CFS_TOKEN = re.compile(r"—|--|–|-|\([^)]+\)|\$?[\d,]+(?:\.\d+)?")
+_CFS_ZERO_TOKEN = re.compile(r"^(?:—|--|–|-|\$?0(?:\.0+)?)$")
 
 
 def _scale(val: float, *, shares: bool = False) -> float:
@@ -111,6 +121,50 @@ def parse_share_repurchase_program_table(text: str) -> dict[int, dict[str, Any]]
             "dollars": value_thousands / 1_000.0,
             "units": "table_in_thousands → millions",
         }
+    return out
+
+
+def parse_no_shares_repurchased_narrative(text: str) -> dict[int, dict[str, Any]]:
+    """Parse explicit 10-K statements that no shares were repurchased.
+
+    Returns fiscal year → {shares: 0, dollars: 0}. Does not infer zeros from
+    omitted tables, share-count changes, or treasury-stock balances.
+    """
+    out: dict[int, dict[str, Any]] = {}
+    for match in _NO_SHARES_RE.finditer(text):
+        for year in (int(y) for y in re.findall(r"20\d{2}", match.group(0))):
+            out[year] = {
+                "shares": 0.0,
+                "dollars": 0.0,
+                "units": "explicit_zero",
+                "source_kind": "10k_no_shares_repurchased_narrative",
+            }
+    return out
+
+
+def parse_cfs_repurchase_dash_zeros(text: str, filing_year: int) -> dict[int, dict[str, Any]]:
+    """Record CFS repurchase-line dashes as explicit zeros for the filing year.
+
+    Non-dash amounts are ignored: cash-flow statement units (thousands vs
+    millions) are not assumed. Only an em-dash, hyphen, or literal zero in the
+    current/comparative columns is treated as a disclosed $0 outflow.
+    """
+    if not filing_year:
+        return {}
+    out: dict[int, dict[str, Any]] = {}
+    for match in _CFS_REPO_LINE.finditer(text):
+        tokens = _CFS_TOKEN.findall(match.group("rest") or "")
+        for i, tok in enumerate(tokens[:3]):
+            cleaned = tok.strip()
+            if not _CFS_ZERO_TOKEN.match(cleaned):
+                continue
+            year = int(filing_year) - i
+            out[year] = {
+                "shares": 0.0,
+                "dollars": 0.0,
+                "units": "cfs_dash_or_zero",
+                "source_kind": "10k_cfs_repurchase_dash_zero",
+            }
     return out
 
 
@@ -198,7 +252,7 @@ class NewCompanyBuybackService:
 
         for fy in fiscal_years:
             year_n = _fy_int(fy)
-            dollars, d_src = self._fact(sec, company_facts, fy, _DOLLAR_TAGS, scale=True)
+            dollars, d_src = self._annual_dollar_fact(company_facts, fy)
             shares, s_src = self._annual_share_fact(company_facts, fy)
             avg, a_src = self._fact(sec, company_facts, fy, _AVG_PRICE_TAGS, scale=False)
             begin, _ = self._fact(sec, company_facts, fy, _BEGIN_SHARES, scale=True, shares=True)
@@ -245,15 +299,19 @@ class NewCompanyBuybackService:
                 shares, s_src = None, None
 
             disclosed = narrative.get(year_n)
-            if disclosed and disclosed.get("shares") is not None:
-                shares = float(disclosed["shares"])
-                s_src = disclosed.get("source") or "sec_10k:share_repurchase_program_table"
+            if disclosed:
+                kind = disclosed.get("source_kind") or ""
+                src = disclosed.get("source") or "sec_10k:share_repurchase_disclosure"
+                if disclosed.get("shares") is not None:
+                    shares = float(disclosed["shares"])
+                    s_src = src
                 if dollars is None and disclosed.get("dollars") is not None:
                     dollars = float(disclosed["dollars"])
-                    d_src = s_src
+                    d_src = src
                 elif (
                     dollars is not None
                     and disclosed.get("dollars") is not None
+                    and kind == "share_repurchase_program_table"
                     and abs(dollars - float(disclosed["dollars"])) > max(0.05 * abs(dollars), 0.05)
                 ):
                     year_warnings.append("BUYBACK_10K_TABLE_DOLLARS_DIVERGE_FROM_CASH_FLOW")
@@ -438,6 +496,25 @@ class NewCompanyBuybackService:
                 return val, f"sec_xbrl:{tag}"
         return None, None
 
+    @staticmethod
+    def _annual_dollar_fact(
+        company_facts: dict[str, Any] | None, fy: str
+    ) -> tuple[float | None, str | None]:
+        if not company_facts:
+            return None, None
+        year_n = _fy_int(fy)
+        for tag in _DOLLAR_TAGS:
+            for entry in _iter_tag_entries(company_facts, tag):
+                if entry.get("val") is None:
+                    continue
+                if _economic_year(entry) != year_n:
+                    continue
+                if not _is_annual_duration(entry, year_n):
+                    continue
+                val = _scale(float(entry["val"]))
+                return val, f"sec_xbrl:{tag}"
+        return None, None
+
     def _narrative_disclosures(
         self,
         sec: SecService,
@@ -469,7 +546,9 @@ class NewCompanyBuybackService:
                     continue
                 texts.append((f"FY{fy}", html, url))
         for label, body, url in texts:
-            parsed = parse_share_repurchase_program_table(html_to_text(body))
+            plain = html_to_text(body)
+            filing_year = _fy_int(label)
+            parsed = parse_share_repurchase_program_table(plain)
             source = f"sec_10k:share_repurchase_program_table:{label}"
             if url:
                 source = f"{source}:{url}"
@@ -478,6 +557,27 @@ class NewCompanyBuybackService:
                     continue
                 row = dict(payload)
                 row["source"] = source
+                row["source_kind"] = "share_repurchase_program_table"
+                out[year] = row
+            narrative_zeros = parse_no_shares_repurchased_narrative(plain)
+            n_src = f"sec_10k:no_shares_repurchased_narrative:{label}"
+            if url:
+                n_src = f"{n_src}:{url}"
+            for year, payload in narrative_zeros.items():
+                if year in out:
+                    continue
+                row = dict(payload)
+                row["source"] = n_src
+                out[year] = row
+            cfs_zeros = parse_cfs_repurchase_dash_zeros(plain, filing_year)
+            c_src = f"sec_10k:cfs_repurchase_dash_zero:{label}"
+            if url:
+                c_src = f"{c_src}:{url}"
+            for year, payload in cfs_zeros.items():
+                if year in out:
+                    continue
+                row = dict(payload)
+                row["source"] = c_src
                 out[year] = row
         return out
 

@@ -753,6 +753,53 @@ class NewCompanyLeaseService:
             proposal = review.proposal
             rate = review.selected_rate if review.selected_rate is not None else review.proposed_rate
             rate_txt = f"{rate * 100:.2f}%" if isinstance(rate, (int, float)) else "not selected"
+            ws = wb["Leases"]
+            rate_row = _RATE_ROW
+            for row in range(1, min(ws.max_row or 1, 40) + 1):
+                lab = str(ws.cell(row, 1).value or "").strip().lower()
+                if any(
+                    n in lab
+                    for n in ("long-term rate", "long term rate", "discount rate", "lease rate")
+                ):
+                    rate_row = row
+                    break
+            cols = detect_year_columns(ws, wb)
+            fy_cols = [c for k, c in cols.items() if str(k).startswith("FY")]
+            formula_addrs: list[str] = []
+            value_addrs: list[str] = []
+            for col in fy_cols:
+                cell = ws.cell(rate_row, col)
+                addr = f"Leases!{get_column_letter(col)}{rate_row}"
+                if isinstance(cell.value, str) and cell.value.startswith("="):
+                    formula_addrs.append(addr)
+                elif cell.value not in (None, ""):
+                    value_addrs.append(addr)
+            sample_formula = None
+            if fy_cols:
+                raw = ws.cell(rate_row, fy_cols[0]).value
+                if isinstance(raw, str) and raw.startswith("="):
+                    sample_formula = raw
+            uses_template_long_term = bool(formula_addrs)
+            if uses_template_long_term:
+                model_input = (
+                    f"Leases row {rate_row} formulas preserved"
+                    + (f" (example {formula_addrs[0]}={sample_formula})" if sample_formula else "")
+                    + ". NPV/PV of lease commitments use this Estimated Long-Term Rate "
+                    "(Interest Expense / Total Debt). The disclosed ASC 842 weighted-average "
+                    "rate is not substituted for that template methodology."
+                )
+                applied = (
+                    f"HAP ANALYSIS notes only. Disclosed {rate_txt} was not written over "
+                    f"{len(formula_addrs)} formula cell(s) on Leases row {rate_row}."
+                )
+            else:
+                model_input = (
+                    f"Leases row {rate_row} "
+                    + (", ".join(value_addrs[:3]) if value_addrs else f"(no FY formulas on row {rate_row})")
+                )
+                applied = (
+                    f"Selected {rate_txt} written to Leases row {rate_row} where cells were not formulas."
+                )
             rows = [
                 ("Lease discount rate (selected)", rate_txt),
                 ("Classification", review.classification or (proposal.classification if proposal else "—")),
@@ -771,16 +818,31 @@ class NewCompanyLeaseService:
                     (proposal.methodology if proposal else None) or "—",
                 ),
                 (
+                    "ASC 842 WtdAvg vs model long-term rate",
+                    (
+                        f"Selected {rate_txt} is the company-disclosed weighted-average operating-lease "
+                        "discount rate (ASC 842). The Industrial Template's Estimated Long-Term Rate "
+                        f"on Leases row {rate_row} is Interest Expense / Total Debt and is what NPV/PV "
+                        "capitalization uses when those cells are formulas."
+                    ),
+                ),
+                ("Workbook input cell", applied),
+                ("Dependent calculation / schedule", model_input),
+                (
                     "Why HAP selected this rate",
                     "; ".join((review.supporting_evidence or [])[:3]) or review.summary,
                 ),
                 (
-                    "Material uncertainty",
+                    "Material uncertainty / limitations",
                     (proposal.limitations if proposal else None)
-                    or "Optional analyst override is available.",
+                    or (
+                        "A disclosed remaining-lease-term weighted-average rate is not always equal "
+                        "to the model's required long-term discount rate. Original row-18 formulas "
+                        "are the model's rate. Optional analyst override is available."
+                    ),
                 ),
             ]
-            written = HapAnalysisLayoutService().write_block(wb["Leases"], rows=rows, start_col=12)
+            written = HapAnalysisLayoutService().write_block(ws, rows=rows, start_col=12)
             wb.save(path)
             return written
         finally:

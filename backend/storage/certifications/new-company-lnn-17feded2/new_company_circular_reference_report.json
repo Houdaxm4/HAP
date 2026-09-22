@@ -1,0 +1,790 @@
+{
+  "analysis_id": "17feded2-1785-4807-8560-1716c7cfa34c",
+  "ticker": "LNN",
+  "hap_introduced": [],
+  "pre_existing": [],
+  "template_native": [
+    {
+      "cells": [
+        "Tax!E15",
+        "Tax!E8"
+      ],
+      "origin": "template_native",
+      "sheet": "Tax",
+      "semantic_metric": null,
+      "destination": "Tax!E15",
+      "formula": null,
+      "reason": "Circular formula dependency: Tax!E15 -> Tax!E8"
+    },
+    {
+      "cells": [
+        "Tax!D15",
+        "Tax!D8"
+      ],
+      "origin": "template_native",
+      "sheet": "Tax",
+      "semantic_metric": null,
+      "destination": "Tax!D15",
+      "formula": null,
+      "reason": "Circular formula dependency: Tax!D15 -> Tax!D8"
+    },
+    {
+      "cells": [
+        "Tax!C15",
+        "Tax!C8"
+      ],
+      "origin": "template_native",
+      "sheet": "Tax",
+      "semantic_metric": null,
+      "destination": "Tax!C15",
+      "formula": null,
+      "reason": "Circular formula dependency: Tax!C15 -> Tax!C8"
+    },
+    {
+      "cells": [
+        "Tax!F15",
+        "Tax!F8"
+      ],
+      "origin": "template_native",
+      "sheet": "Tax",
+      "semantic_metric": null,
+      "destination": "Tax!F15",
+      "formula": null,
+      "reason": "Circular formula dependency: Tax!F15 -> Tax!F8"
+    },
+    {
+      "cells": [
+        "Tax!G15",
+        "Tax!G8"
+      ],
+      "origin": "template_native",
+      "sheet": "Tax",
+      "semantic_metric": null,
+      "destination": "Tax!G15",
+      "formula": null,
+      "reason": "Circular formula dependency: Tax!G15 -> Tax!G8"
+    },
+    {
+      "cells": [
+        "Tax!H15",
+        "Tax!H8"
+      ],
+      "origin": "template_native",
+      "sheet": "Tax",
+      "semantic_metric": null,
+      "destination": "Tax!H15",
+      "formula": null,
+      "reason": "Circular formula dependency: Tax!H15 -> Tax!H8"
+    },
+    {
+      "cells": [
+        "Tax!I15",
+        "Tax!I8"
+      ],
+      "origin": "template_native",
+      "sheet": "Tax",
+      "semantic_metric": null,
+      "destination": "Tax!I15",
+      "formula": null,
+      "reason": "Circular formula dependency: Tax!I15 -> Tax!I8"
+    },
+    {
+      "cells": [
+        "Tax!J15",
+        "Tax!J8"
+      ],
+      "origin": "template_native",
+      "sheet": "Tax",
+      "semantic_metric": null,
+      "destination": "Tax!J15",
+      "formula": null,
+      "reason": "Circular formula dependency: Tax!J15 -> Tax!J8"
+    },
+    {
+      "cells": [
+        "Tax!K15",
+        "Tax!K8"
+      ],
+      "origin": "template_native",
+      "sheet": "Tax",
+      "semantic_metric": null,
+      "destination": "Tax!K15",
+      "formula": null,
+      "reason": "Circular formula dependency: Tax!K15 -> Tax!K8"
+    },
+    {
+      "cells": [
+        "Tax!L15",
+        "Tax!L8"
+      ],
+      "origin": "template_native",
+      "sheet": "Tax",
+      "semantic_metric": null,
+      "destination": "Tax!L15",
+      "formula": null,
+      "reason": "Circular formula dependency: Tax!L15 -> Tax!L8"
+    },
+    {
+      "cells": [
+        "DividendHelper!L5"
+      ],
+      "origin": "template_native",
+      "sheet": "DividendHelper",
+      "semantic_metric": null,
+      "destination": "DividendHelper!L5",
+      "formula": null,
+      "reason": "Circular formula dependency: DividendHelper!L5"
+    },
+    {
+      "cells": [
+        "DividendHelper!L5",
+        "DividendHelper!L4",
+        "DividendHelper!K4"
+      ],
+      "origin": "template_native",
+      "sheet": "DividendHelper",
+      "semantic_metric": null,
+      "destination": "DividendHelper!L5",
+      "formula": null,
+      "reason": "Circular formula dependency: DividendHelper!L5 -> DividendHelper!L4 -> DividendHelper!K4"
+    },
+    {
+      "cells": [
+        "DividendHelper!L5",
+        "DividendHelper!L4"
+      ],
+      "origin": "template_native",
+      "sheet": "DividendHelper",
+      "semantic_metric": null,
+      "destination": "DividendHelper!L5",
+      "formula": null,
+      "reason": "Circular formula dependency: DividendHelper!L5 -> DividendHelper!L4"
+    },
+    {
+      "cells": [
+        "DividendHelper!L4"
+      ],
+      "origin": "template_native",
+      "sheet": "DividendHelper",
+      "semantic_metric": null,
+      "destination": "DividendHelper!L4",
+      "formula": null,
+      "reason": "Circular formula dependency: DividendHelper!L4"
+    },
+    {
+      "cells": [
+        "DividendHelper!L5",
+        "DividendHelper!K5"
+      ],
+      "origin": "template_native",
+      "sheet": "DividendHelper",
+      "semantic_metric": null,
+      "destination": "DividendHelper!L5",
+      "formula": null,
+      "reason": "Circular formula dependency: DividendHelper!L5 -> DividendHelper!K5"
+    },
+    {
+      "cells": [
+        "Tax!C6",
+        "Tax!C13"
+      ],
+      "origin": "template_native",
+      "sheet": "Tax",
+      "semantic_metric": null,
+      "destination": "Tax!C6",
+      "formula": null,
+      "reason": "Circular formula dependency: Tax!C6 -> Tax!C13"
+    },
+    {
+      "cells": [
+        "Tax!C12",
+        "Tax!C5"
+      ],
+      "origin": "template_native",
+      "sheet": "Tax",
+      "semantic_metric": null,
+      "destination": "Tax!C12",
+      "formula": null,
+      "reason": "Circular formula dependency: Tax!C12 -> Tax!C5"
+    },
+    {
+      "cells": [
+        "Tax!C10",
+        "Tax!C3"
+      ],
+      "origin": "template_native",
+      "sheet": "Tax",
+      "semantic_metric": null,
+      "destination": "Tax!C10",
+      "formula": null,
+      "reason": "Circular formula dependency: Tax!C10 -> Tax!C3"
+    },
+    {
+      "cells": [
+        "Tax!C11",
+        "Tax!C4"
+      ],
+      "origin": "template_native",
+      "sheet": "Tax",
+      "semantic_metric": null,
+      "destination": "Tax!C11",
+      "formula": null,
+      "reason": "Circular formula dependency: Tax!C11 -> Tax!C4"
+    },
+    {
+      "cells": [
+        "Tax!D12",
+        "Tax!D5"
+      ],
+      "origin": "template_native",
+      "sheet": "Tax",
+      "semantic_metric": null,
+      "destination": "Tax!D12",
+      "formula": null,
+      "reason": "Circular formula dependency: Tax!D12 -> Tax!D5"
+    },
+    {
+      "cells": [
+        "Tax!D11",
+        "Tax!D4"
+      ],
+      "origin": "template_native",
+      "sheet": "Tax",
+      "semantic_metric": null,
+      "destination": "Tax!D11",
+      "formula": null,
+      "reason": "Circular formula dependency: Tax!D11 -> Tax!D4"
+    },
+    {
+      "cells": [
+        "Tax!D10",
+        "Tax!D3"
+      ],
+      "origin": "template_native",
+      "sheet": "Tax",
+      "semantic_metric": null,
+      "destination": "Tax!D10",
+      "formula": null,
+      "reason": "Circular formula dependency: Tax!D10 -> Tax!D3"
+    },
+    {
+      "cells": [
+        "Tax!D6",
+        "Tax!D13"
+      ],
+      "origin": "template_native",
+      "sheet": "Tax",
+      "semantic_metric": null,
+      "destination": "Tax!D6",
+      "formula": null,
+      "reason": "Circular formula dependency: Tax!D6 -> Tax!D13"
+    },
+    {
+      "cells": [
+        "Tax!E11",
+        "Tax!E4"
+      ],
+      "origin": "template_native",
+      "sheet": "Tax",
+      "semantic_metric": null,
+      "destination": "Tax!E11",
+      "formula": null,
+      "reason": "Circular formula dependency: Tax!E11 -> Tax!E4"
+    },
+    {
+      "cells": [
+        "Tax!E10",
+        "Tax!E3"
+      ],
+      "origin": "template_native",
+      "sheet": "Tax",
+      "semantic_metric": null,
+      "destination": "Tax!E10",
+      "formula": null,
+      "reason": "Circular formula dependency: Tax!E10 -> Tax!E3"
+    },
+    {
+      "cells": [
+        "Tax!E12",
+        "Tax!E5"
+      ],
+      "origin": "template_native",
+      "sheet": "Tax",
+      "semantic_metric": null,
+      "destination": "Tax!E12",
+      "formula": null,
+      "reason": "Circular formula dependency: Tax!E12 -> Tax!E5"
+    },
+    {
+      "cells": [
+        "Tax!E6",
+        "Tax!E13"
+      ],
+      "origin": "template_native",
+      "sheet": "Tax",
+      "semantic_metric": null,
+      "destination": "Tax!E6",
+      "formula": null,
+      "reason": "Circular formula dependency: Tax!E6 -> Tax!E13"
+    },
+    {
+      "cells": [
+        "Tax!F6",
+        "Tax!F13"
+      ],
+      "origin": "template_native",
+      "sheet": "Tax",
+      "semantic_metric": null,
+      "destination": "Tax!F6",
+      "formula": null,
+      "reason": "Circular formula dependency: Tax!F6 -> Tax!F13"
+    },
+    {
+      "cells": [
+        "Tax!F11",
+        "Tax!F4"
+      ],
+      "origin": "template_native",
+      "sheet": "Tax",
+      "semantic_metric": null,
+      "destination": "Tax!F11",
+      "formula": null,
+      "reason": "Circular formula dependency: Tax!F11 -> Tax!F4"
+    },
+    {
+      "cells": [
+        "Tax!F10",
+        "Tax!F3"
+      ],
+      "origin": "template_native",
+      "sheet": "Tax",
+      "semantic_metric": null,
+      "destination": "Tax!F10",
+      "formula": null,
+      "reason": "Circular formula dependency: Tax!F10 -> Tax!F3"
+    },
+    {
+      "cells": [
+        "Tax!F12",
+        "Tax!F5"
+      ],
+      "origin": "template_native",
+      "sheet": "Tax",
+      "semantic_metric": null,
+      "destination": "Tax!F12",
+      "formula": null,
+      "reason": "Circular formula dependency: Tax!F12 -> Tax!F5"
+    },
+    {
+      "cells": [
+        "Tax!G12",
+        "Tax!G5"
+      ],
+      "origin": "template_native",
+      "sheet": "Tax",
+      "semantic_metric": null,
+      "destination": "Tax!G12",
+      "formula": null,
+      "reason": "Circular formula dependency: Tax!G12 -> Tax!G5"
+    },
+    {
+      "cells": [
+        "Tax!G11",
+        "Tax!G4"
+      ],
+      "origin": "template_native",
+      "sheet": "Tax",
+      "semantic_metric": null,
+      "destination": "Tax!G11",
+      "formula": null,
+      "reason": "Circular formula dependency: Tax!G11 -> Tax!G4"
+    },
+    {
+      "cells": [
+        "Tax!G10",
+        "Tax!G3"
+      ],
+      "origin": "template_native",
+      "sheet": "Tax",
+      "semantic_metric": null,
+      "destination": "Tax!G10",
+      "formula": null,
+      "reason": "Circular formula dependency: Tax!G10 -> Tax!G3"
+    },
+    {
+      "cells": [
+        "Tax!G6",
+        "Tax!G13"
+      ],
+      "origin": "template_native",
+      "sheet": "Tax",
+      "semantic_metric": null,
+      "destination": "Tax!G6",
+      "formula": null,
+      "reason": "Circular formula dependency: Tax!G6 -> Tax!G13"
+    },
+    {
+      "cells": [
+        "Tax!H6",
+        "Tax!H13"
+      ],
+      "origin": "template_native",
+      "sheet": "Tax",
+      "semantic_metric": null,
+      "destination": "Tax!H6",
+      "formula": null,
+      "reason": "Circular formula dependency: Tax!H6 -> Tax!H13"
+    },
+    {
+      "cells": [
+        "Tax!H10",
+        "Tax!H3"
+      ],
+      "origin": "template_native",
+      "sheet": "Tax",
+      "semantic_metric": null,
+      "destination": "Tax!H10",
+      "formula": null,
+      "reason": "Circular formula dependency: Tax!H10 -> Tax!H3"
+    },
+    {
+      "cells": [
+        "Tax!H11",
+        "Tax!H4"
+      ],
+      "origin": "template_native",
+      "sheet": "Tax",
+      "semantic_metric": null,
+      "destination": "Tax!H11",
+      "formula": null,
+      "reason": "Circular formula dependency: Tax!H11 -> Tax!H4"
+    },
+    {
+      "cells": [
+        "Tax!H12",
+        "Tax!H5"
+      ],
+      "origin": "template_native",
+      "sheet": "Tax",
+      "semantic_metric": null,
+      "destination": "Tax!H12",
+      "formula": null,
+      "reason": "Circular formula dependency: Tax!H12 -> Tax!H5"
+    },
+    {
+      "cells": [
+        "Tax!I6",
+        "Tax!I13"
+      ],
+      "origin": "template_native",
+      "sheet": "Tax",
+      "semantic_metric": null,
+      "destination": "Tax!I6",
+      "formula": null,
+      "reason": "Circular formula dependency: Tax!I6 -> Tax!I13"
+    },
+    {
+      "cells": [
+        "Tax!I11",
+        "Tax!I4"
+      ],
+      "origin": "template_native",
+      "sheet": "Tax",
+      "semantic_metric": null,
+      "destination": "Tax!I11",
+      "formula": null,
+      "reason": "Circular formula dependency: Tax!I11 -> Tax!I4"
+    },
+    {
+      "cells": [
+        "Tax!I10",
+        "Tax!I3"
+      ],
+      "origin": "template_native",
+      "sheet": "Tax",
+      "semantic_metric": null,
+      "destination": "Tax!I10",
+      "formula": null,
+      "reason": "Circular formula dependency: Tax!I10 -> Tax!I3"
+    },
+    {
+      "cells": [
+        "Tax!I12",
+        "Tax!I5"
+      ],
+      "origin": "template_native",
+      "sheet": "Tax",
+      "semantic_metric": null,
+      "destination": "Tax!I12",
+      "formula": null,
+      "reason": "Circular formula dependency: Tax!I12 -> Tax!I5"
+    },
+    {
+      "cells": [
+        "Tax!J12",
+        "Tax!J5"
+      ],
+      "origin": "template_native",
+      "sheet": "Tax",
+      "semantic_metric": null,
+      "destination": "Tax!J12",
+      "formula": null,
+      "reason": "Circular formula dependency: Tax!J12 -> Tax!J5"
+    },
+    {
+      "cells": [
+        "Tax!J10",
+        "Tax!J3"
+      ],
+      "origin": "template_native",
+      "sheet": "Tax",
+      "semantic_metric": null,
+      "destination": "Tax!J10",
+      "formula": null,
+      "reason": "Circular formula dependency: Tax!J10 -> Tax!J3"
+    },
+    {
+      "cells": [
+        "Tax!J11",
+        "Tax!J4"
+      ],
+      "origin": "template_native",
+      "sheet": "Tax",
+      "semantic_metric": null,
+      "destination": "Tax!J11",
+      "formula": null,
+      "reason": "Circular formula dependency: Tax!J11 -> Tax!J4"
+    },
+    {
+      "cells": [
+        "Tax!J6",
+        "Tax!J13"
+      ],
+      "origin": "template_native",
+      "sheet": "Tax",
+      "semantic_metric": null,
+      "destination": "Tax!J6",
+      "formula": null,
+      "reason": "Circular formula dependency: Tax!J6 -> Tax!J13"
+    },
+    {
+      "cells": [
+        "Tax!K6",
+        "Tax!K13"
+      ],
+      "origin": "template_native",
+      "sheet": "Tax",
+      "semantic_metric": null,
+      "destination": "Tax!K6",
+      "formula": null,
+      "reason": "Circular formula dependency: Tax!K6 -> Tax!K13"
+    },
+    {
+      "cells": [
+        "Tax!K12",
+        "Tax!K5"
+      ],
+      "origin": "template_native",
+      "sheet": "Tax",
+      "semantic_metric": null,
+      "destination": "Tax!K12",
+      "formula": null,
+      "reason": "Circular formula dependency: Tax!K12 -> Tax!K5"
+    },
+    {
+      "cells": [
+        "Tax!K10",
+        "Tax!K3"
+      ],
+      "origin": "template_native",
+      "sheet": "Tax",
+      "semantic_metric": null,
+      "destination": "Tax!K10",
+      "formula": null,
+      "reason": "Circular formula dependency: Tax!K10 -> Tax!K3"
+    },
+    {
+      "cells": [
+        "Tax!K11",
+        "Tax!K4"
+      ],
+      "origin": "template_native",
+      "sheet": "Tax",
+      "semantic_metric": null,
+      "destination": "Tax!K11",
+      "formula": null,
+      "reason": "Circular formula dependency: Tax!K11 -> Tax!K4"
+    },
+    {
+      "cells": [
+        "Tax!L12",
+        "Tax!L5"
+      ],
+      "origin": "template_native",
+      "sheet": "Tax",
+      "semantic_metric": null,
+      "destination": "Tax!L12",
+      "formula": null,
+      "reason": "Circular formula dependency: Tax!L12 -> Tax!L5"
+    },
+    {
+      "cells": [
+        "Tax!L11",
+        "Tax!L4"
+      ],
+      "origin": "template_native",
+      "sheet": "Tax",
+      "semantic_metric": null,
+      "destination": "Tax!L11",
+      "formula": null,
+      "reason": "Circular formula dependency: Tax!L11 -> Tax!L4"
+    },
+    {
+      "cells": [
+        "Tax!L10",
+        "Tax!L3"
+      ],
+      "origin": "template_native",
+      "sheet": "Tax",
+      "semantic_metric": null,
+      "destination": "Tax!L10",
+      "formula": null,
+      "reason": "Circular formula dependency: Tax!L10 -> Tax!L3"
+    },
+    {
+      "cells": [
+        "Tax!L6",
+        "Tax!L13"
+      ],
+      "origin": "template_native",
+      "sheet": "Tax",
+      "semantic_metric": null,
+      "destination": "Tax!L6",
+      "formula": null,
+      "reason": "Circular formula dependency: Tax!L6 -> Tax!L13"
+    },
+    {
+      "cells": [
+        "Tax!C7",
+        "Tax!C14"
+      ],
+      "origin": "template_native",
+      "sheet": "Tax",
+      "semantic_metric": null,
+      "destination": "Tax!C7",
+      "formula": null,
+      "reason": "Circular formula dependency: Tax!C7 -> Tax!C14"
+    },
+    {
+      "cells": [
+        "Tax!D7",
+        "Tax!D14"
+      ],
+      "origin": "template_native",
+      "sheet": "Tax",
+      "semantic_metric": null,
+      "destination": "Tax!D7",
+      "formula": null,
+      "reason": "Circular formula dependency: Tax!D7 -> Tax!D14"
+    },
+    {
+      "cells": [
+        "Tax!E7",
+        "Tax!E14"
+      ],
+      "origin": "template_native",
+      "sheet": "Tax",
+      "semantic_metric": null,
+      "destination": "Tax!E7",
+      "formula": null,
+      "reason": "Circular formula dependency: Tax!E7 -> Tax!E14"
+    },
+    {
+      "cells": [
+        "Tax!F7",
+        "Tax!F14"
+      ],
+      "origin": "template_native",
+      "sheet": "Tax",
+      "semantic_metric": null,
+      "destination": "Tax!F7",
+      "formula": null,
+      "reason": "Circular formula dependency: Tax!F7 -> Tax!F14"
+    },
+    {
+      "cells": [
+        "Tax!G7",
+        "Tax!G14"
+      ],
+      "origin": "template_native",
+      "sheet": "Tax",
+      "semantic_metric": null,
+      "destination": "Tax!G7",
+      "formula": null,
+      "reason": "Circular formula dependency: Tax!G7 -> Tax!G14"
+    },
+    {
+      "cells": [
+        "Tax!H7",
+        "Tax!H14"
+      ],
+      "origin": "template_native",
+      "sheet": "Tax",
+      "semantic_metric": null,
+      "destination": "Tax!H7",
+      "formula": null,
+      "reason": "Circular formula dependency: Tax!H7 -> Tax!H14"
+    },
+    {
+      "cells": [
+        "Tax!I7",
+        "Tax!I14"
+      ],
+      "origin": "template_native",
+      "sheet": "Tax",
+      "semantic_metric": null,
+      "destination": "Tax!I7",
+      "formula": null,
+      "reason": "Circular formula dependency: Tax!I7 -> Tax!I14"
+    },
+    {
+      "cells": [
+        "Tax!J7",
+        "Tax!J14"
+      ],
+      "origin": "template_native",
+      "sheet": "Tax",
+      "semantic_metric": null,
+      "destination": "Tax!J7",
+      "formula": null,
+      "reason": "Circular formula dependency: Tax!J7 -> Tax!J14"
+    },
+    {
+      "cells": [
+        "Tax!K7",
+        "Tax!K14"
+      ],
+      "origin": "template_native",
+      "sheet": "Tax",
+      "semantic_metric": null,
+      "destination": "Tax!K7",
+      "formula": null,
+      "reason": "Circular formula dependency: Tax!K7 -> Tax!K14"
+    },
+    {
+      "cells": [
+        "Tax!L7",
+        "Tax!L14"
+      ],
+      "origin": "template_native",
+      "sheet": "Tax",
+      "semantic_metric": null,
+      "destination": "Tax!L7",
+      "formula": null,
+      "reason": "Circular formula dependency: Tax!L7 -> Tax!L14"
+    }
+  ],
+  "proposed_rejected": [],
+  "status": "ok",
+  "summary": "Circular refs: hap_introduced=0 pre_existing=0 template_native=65 status=ok."
+}

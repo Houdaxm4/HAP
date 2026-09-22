@@ -21,6 +21,7 @@ from services.sec_service import SecService
 
 _PERMITTED = (1, 10)
 _LIFE_CELLS = ("B8", "C8", "B2")
+_EXTRA_LOOKBACK_ROW = 20
 
 _RD_TAGS = (
     "ResearchAndDevelopmentExpense",
@@ -239,7 +240,13 @@ class NewCompanyRdService:
                     )
                 )
             self._write_inputs_rd(wb, amounts, written)
+            extra_needed = self._write_lookback_prewindow(
+                wb, amounts, first, life, written
+            )
             extended = self._extend_schedule(wb, fiscal_years, life, written)
+            self._apply_selected_life_formulas(
+                wb, fiscal_years, life, extra_needed, written
+            )
             notes = self._write_decision_notes(wb, decision, lookback, written)
             wb.save(workbook_path)
         finally:
@@ -435,7 +442,20 @@ class NewCompanyRdService:
             ),
             (
                 "Capitalization methodology",
-                f"Straight-line capitalization over {decision.selected_useful_life} years; lookback {lookback_txt}.",
+                f"Straight-line remaining-life weights over {decision.selected_useful_life} years; "
+                f"lookback {lookback_txt}. R&D!B8 is the designated useful-life input. "
+                f"Asset (row 3) and amortization (row 4) formulas are generated from that life.",
+            ),
+            (
+                "Workbook input cell",
+                f"R&D!B8 = {decision.selected_useful_life} years "
+                "(template life cell; not derived from annual R&D spend).",
+            ),
+            (
+                "Dependent calculation / schedule",
+                "R&D rows 3–4 (capitalized asset and amortization) for each displayed FY; "
+                "Invested Capital Capitalized R&D references R&D row 3. Pre-window expense "
+                f"values and extra lookback on R&D row {_EXTRA_LOOKBACK_ROW} feed the {decision.selected_useful_life}-year window.",
             ),
             (
                 "Material uncertainty",
@@ -481,6 +501,127 @@ class NewCompanyRdService:
             if helper._ensure_schedule_formulas(ows, wb, fy, life_years=life, written=written):
                 extended = True
         return extended
+
+    def _write_lookback_prewindow(
+        self,
+        wb,
+        amounts: dict[str, RdYearAmount],
+        first_displayed: str | None,
+        life: int,
+        written: list[str],
+    ) -> int:
+        if "R&D" not in wb.sheetnames or not first_displayed:
+            return 0
+        ows = wb["R&D"]
+        pre = AnnualRdService._prewindow_expense_columns(ows)
+        first_n = _fy_int(first_displayed)
+        for i, col in enumerate(reversed(pre)):
+            rec = amounts.get(_token(first_n - 1 - i))
+            if rec is None or rec.amount is None:
+                continue
+            cell = ows.cell(2, col)
+            if (isinstance(cell.value, str) and cell.value.startswith("=")) or cell.value in (None, ""):
+                cell.value = float(rec.amount)
+                written.append(f"R&D!{get_column_letter(col)}2")
+        needed_pre = max(int(life) - 1, 0)
+        extra_needed = max(0, needed_pre - len(pre))
+        if extra_needed:
+            label = ows.cell(_EXTRA_LOOKBACK_ROW, 1)
+            if label.value in (None, "") or (
+                isinstance(label.value, str) and "HAP" in str(label.value).upper()
+            ):
+                if not (isinstance(label.value, str) and label.value.startswith("=")):
+                    label.value = "HAP R&D lookback (years before template pre-window)"
+                    written.append(f"R&D!A{_EXTRA_LOOKBACK_ROW}")
+            for i in range(extra_needed):
+                fy_n = first_n - len(pre) - extra_needed + i
+                rec = amounts.get(_token(fy_n))
+                if rec is None or rec.amount is None:
+                    continue
+                cell = ows.cell(_EXTRA_LOOKBACK_ROW, 2 + i)
+                if isinstance(cell.value, str) and cell.value.startswith("="):
+                    continue
+                cell.value = float(rec.amount)
+                written.append(f"R&D!{get_column_letter(2 + i)}{_EXTRA_LOOKBACK_ROW}")
+        return extra_needed
+
+    @staticmethod
+    def _is_life_adaptable(val: Any) -> bool:
+        if val in (None, ""):
+            return True
+        if not isinstance(val, str) or not val.startswith("="):
+            return False
+        compact = val.replace(" ", "").upper()
+        if "B8" in compact:
+            return True
+        if "/3" in compact or "2/3" in compact:
+            return True
+        return False
+
+    @staticmethod
+    def _expense_window_addrs(col: int, life: int, pre_cols: list[int], extra_needed: int) -> list[str]:
+        addrs: list[str] = []
+        min_col = min(pre_cols) if pre_cols else 2
+        c = col
+        while len(addrs) < life and c >= min_col:
+            addrs.append(f"{get_column_letter(c)}2")
+            c -= 1
+        need = life - len(addrs)
+        for i in range(need):
+            extra_index = extra_needed - 1 - i
+            if extra_index < 0:
+                break
+            addrs.append(f"{get_column_letter(2 + extra_index)}{_EXTRA_LOOKBACK_ROW}")
+        return addrs
+
+    @staticmethod
+    def _asset_formula(addrs: list[str], life: int) -> str:
+        parts: list[str] = []
+        for i, addr in enumerate(addrs):
+            remaining = life - i
+            if remaining <= 0:
+                break
+            if remaining == life:
+                parts.append(addr)
+            else:
+                parts.append(f"{addr}*{remaining}/{life}")
+        if not parts:
+            return "=0"
+        return "=IFERROR(" + "+".join(parts) + ",0)"
+
+    @staticmethod
+    def _amort_formula(addrs: list[str], life: int) -> str:
+        if not addrs:
+            return "=0"
+        return f"=IFERROR(({'+'.join(addrs)})/{life},0)"
+
+    def _apply_selected_life_formulas(
+        self,
+        wb,
+        fiscal_years: list[str],
+        life: int,
+        extra_needed: int,
+        written: list[str],
+    ) -> None:
+        if "R&D" not in wb.sheetnames or "Inputs" not in wb.sheetnames or life < 1:
+            return
+        ows = wb["R&D"]
+        inp_cols = detect_year_columns(wb["Inputs"], wb)
+        rd_cols = {fy: c + 2 for fy, c in inp_cols.items() if str(fy).startswith("FY")}
+        pre = AnnualRdService._prewindow_expense_columns(ows)
+        for fy in fiscal_years:
+            col = rd_cols.get(fy)
+            if not col:
+                continue
+            addrs = self._expense_window_addrs(col, life, pre, extra_needed)
+            asset_cell = ows.cell(3, col)
+            amort_cell = ows.cell(4, col)
+            if self._is_life_adaptable(asset_cell.value):
+                asset_cell.value = self._asset_formula(addrs, life)
+                written.append(f"R&D!{get_column_letter(col)}3")
+            if self._is_life_adaptable(amort_cell.value):
+                amort_cell.value = self._amort_formula(addrs, life)
+                written.append(f"R&D!{get_column_letter(col)}4")
 
     @staticmethod
     def _workbook_rd_series(path: Path, fiscal_years: list[str]) -> dict[str, float | None]:
