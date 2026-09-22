@@ -13,6 +13,7 @@ from models.quarterly_update import (
     QuarterlyProjectionReport,
     QuarterlyResearchReport,
     QuarterlyReviewReport,
+    QuarterlyValuationReport,
 )
 
 
@@ -65,6 +66,8 @@ class QuarterlyDeliverablesService:
         projection: QuarterlyProjectionReport | None = None,
         review: QuarterlyReviewReport | None = None,
         research: QuarterlyResearchReport | None = None,
+        valuation: QuarterlyValuationReport | None = None,
+        judgment: Any = None,
     ) -> QuarterlyDeliverablesReport:
         fy = fiscal_year or (projection.fiscal_year if projection else None) or 0
         q = fiscal_quarter or (projection.fiscal_quarter if projection else None) or 0
@@ -85,6 +88,8 @@ class QuarterlyDeliverablesService:
             projection=projection,
             review=review,
             research=research,
+            valuation=valuation,
+            judgment=judgment,
         )
         return QuarterlyDeliverablesReport(
             analysis_id=analysis_id,
@@ -130,6 +135,8 @@ class QuarterlyDeliverablesService:
         projection: QuarterlyProjectionReport | None,
         review: QuarterlyReviewReport | None,
         research: QuarterlyResearchReport | None = None,
+        valuation: QuarterlyValuationReport | None = None,
+        judgment: Any = None,
     ) -> None:
         try:
             from docx import Document
@@ -282,10 +289,49 @@ class QuarterlyDeliverablesService:
                 f"Graham entry target price: {_fmt_num(metrics.get('graham_entry'), money=True)}"
             )
 
+        doc.add_heading("HAP Valuation Analysis (Annual-parity services)", level=1)
+        doc.add_paragraph(
+            "Original analyst growth-rate cells and valuation formulas were not overwritten. "
+            "Any HAP alternative appears as HAP ANALYSIS only and is not the applied model output."
+        )
+        if valuation and valuation.period_context:
+            doc.add_paragraph(valuation.period_context)
+        if judgment is not None:
+            er = getattr(judgment, "expected_return", None) or getattr(judgment, "er_analysis", None)
+            oe = getattr(judgment, "oe_analysis", None)
+            gr = getattr(judgment, "graham_analysis", None)
+            for rec, title in ((er, "Expected Returns"), (oe, "Owner Earnings"), (gr, "Graham")):
+                if rec is None:
+                    continue
+                decision = getattr(rec, "decision", None)
+                rationale = getattr(rec, "rationale", None) or getattr(rec, "reason", None) or ""
+                existing = getattr(rec, "existing_assumption", None) or getattr(rec, "original_rate", None)
+                hap_rate = getattr(rec, "selected_prospective_rate", None) or getattr(rec, "hap_rate", None)
+                line = f"{title}: {decision or 'n/a'}"
+                if existing is not None:
+                    line += f" | original {existing}"
+                if hap_rate is not None and decision == "ADJUST":
+                    line += f" | HAP suggested {hap_rate} (not applied to original cell)"
+                doc.add_paragraph(line, style="List Bullet")
+                if rationale:
+                    doc.add_paragraph(str(rationale)[:500], style="List Bullet")
+            oe_base = getattr(judgment, "oe_base_analysis", None)
+            disclosure = getattr(oe_base, "disclosure", None) if oe_base is not None else None
+            if isinstance(oe_base, dict):
+                disclosure = (oe_base.get("disclosure") or {})
+                word_text = disclosure.get("word_text") if isinstance(disclosure, dict) else None
+            else:
+                word_text = getattr(disclosure, "word_text", None) if disclosure is not None else None
+            if word_text:
+                doc.add_paragraph("Normalized earnings-power disclosure (HAP ANALYSIS, not established fact):")
+                doc.add_paragraph(str(word_text)[:1200])
+        elif valuation:
+            doc.add_paragraph(valuation.summary)
+
         doc.add_heading("Sources", level=1)
         doc.add_paragraph(
-            "Primary: completed HAP Excel model (Bloomberg LQ statements, Yahoo basic fallback, "
-            "SEC secondary gap fill, CRF current data, Yahoo live price)."
+            "Primary: completed HAP Excel model (SEC EDGAR authoritative for reported statements, "
+            "Yahoo supplementary with source attribution, CRF current data, Yahoo live price)."
         )
         if research and research.sources:
             for src in research.sources[:10]:

@@ -61,6 +61,8 @@ class AnnualStatementValidationService:
         try:
             for statement, concept, sheet, tags in _CHECKS:
                 bb = None
+                col = row = None
+                ws = None
                 if sheet in wb.sheetnames:
                     ws = wb[sheet]
                     cols = detect_year_columns(ws)
@@ -80,6 +82,21 @@ class AnnualStatementValidationService:
                                 filing = filing / 1_000_000.0
                             break
                 status, reason = self._classify(bb, filing)
+                if status == "DISCREPANCY" and ws is not None and col and row:
+                    from services.workbook_flag_service import flag_discrepancy
+
+                    cell = ws.cell(row, col)
+                    original = cell.value
+                    if not (isinstance(original, str) and original.startswith("=")):
+                        flag_discrepancy(
+                            ws,
+                            cell.coordinate,
+                            workbook_value=bb,
+                            source_value=filing,
+                            provenance=f"SEC 10-K {fy}",
+                            issue=reason,
+                        )
+                        cell.value = original
                 items.append(
                     StatementValidationItem(
                         statement=statement,
@@ -91,6 +108,7 @@ class AnnualStatementValidationService:
                         reason=reason,
                     )
                 )
+            wb.save(workbook_path)
         finally:
             wb.close()
         disc = sum(1 for i in items if i.status == "DISCREPANCY")

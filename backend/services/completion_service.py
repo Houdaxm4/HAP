@@ -509,8 +509,8 @@ class CompletionService:
                 "new_company completion scope: tax, PE10, current_data only.",
                 "annual_update completion scope: new FY statements + tax/PE10/current for that year.",
                 "quarterly_update completion scope: current_data + quarterly statements.",
-                "Materially broken Bloomberg quarterly tabs emit YAHOO_QUARTERLY_FALLBACK_REQUIRED "
-                "(Yahoo basic template; SEC secondary).",
+                "Materially broken Bloomberg quarterly tabs emit SEC_QUARTERLY_FALLBACK_REQUIRED "
+                "(SEC 10-Q reconstruction; Yahoo supplementary).",
                 "Valid prefilled in-scope values are ALREADY_PRESENT; never silently overwritten.",
             ],
         )

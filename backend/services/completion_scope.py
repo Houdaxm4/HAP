@@ -113,9 +113,18 @@ def classify_workbook_section(
     if sheet_l == "Inputs":
         if path_l.startswith("inputs.tax") or "tax" in metric_l:
             return WorkbookSection.TAX
-        if "pe10" in blob or path_l in {"inputs.pe10", "inputs.e10"} or metric_l in {
+        if "pe10" in blob or path_l in {
+            "inputs.pe10",
+            "inputs.e10",
+            "inputs.eps_10y_growth",
+            "inputs.eps_10y_direction",
+            "inputs.revenue_10y_growth",
+        } or metric_l in {
             "pe10",
             "e10",
+            "eps 10-year growth",
+            "eps 10-year direction",
+            "revenue 10-year growth",
         }:
             return WorkbookSection.PE10
         if path_l.startswith("inputs.current") or path_l.startswith("inputs.max") or path_l.startswith(

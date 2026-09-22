@@ -31,6 +31,11 @@ from services.sec_10q_statement_service import (
     extract_sec_10q_statement,
     select_latest_10q_period,
 )
+
+_CONFLICT_TOLERANCE = 0.05
+_NOTES_COL = 10
+_HEADER_NUMBER_FORMAT = "#,##0.00;(#,##0.00)"
+_EPS_NUMBER_FORMAT = "0.00"
 from services.yahoo_quarterly_statement_service import (
     BASIC_CF_LAYOUT,
     BASIC_IS_LAYOUT,
@@ -44,8 +49,9 @@ def _is_formula(value: Any) -> bool:
 
 class QuarterlyPresentationService:
     """
-    Inspect LQ statements, decide Bloomberg vs Yahoo basic template vs SEC fallback,
-    and apply Yahoo basic layout when Bloomberg cumulative comparison is missing.
+    Inspect LQ statements at the fact level. SEC EDGAR is authoritative for reported
+    statements; Yahoo Finance is a supplementary fallback with explicit attribution.
+    Missing facts stay unresolved — never written as zero.
     """
 
     def __init__(self) -> None:
@@ -96,10 +102,11 @@ class QuarterlyPresentationService:
                 elif decision == PresentationDecision.BLOOMBERG_FILL_GAPS:
                     rows = iter_statement_rows(wb[health.sheet]) if health.present else []
                     entry.rows_preserved = [r["cell_ref"] for r in rows if r["populated"] or r["formula"]]
-                    filled = self._fill_major_gaps(
+                    needles = health.major_totals_missing or list(health.missing_fact_labels)
+                    filled, discrepancies, unresolved = self._fill_major_gaps(
                         wb,
                         health.statement,
-                        health.major_totals_missing,
+                        needles,
                         company_facts,
                         yahoo_bundle,
                         fy,
@@ -107,87 +114,29 @@ class QuarterlyPresentationService:
                         fiscal_q,
                     )
                     entry.rows_filled = filled
-                    entry.data_source_primary = "yahoo"
-                    entry.data_source_secondary = "sec"
-                    entry.reason = f"BLOOMBERG_FILL_GAPS — {health.reason}"
+                    entry.source_discrepancies = discrepancies
+                    entry.unresolved_facts = unresolved
+                    entry.data_source_primary = "sec"
+                    entry.data_source_secondary = "yahoo"
+                    entry.reason = f"BLOOMBERG_FILL_GAPS — SEC-first, Yahoo supplementary. {health.reason}"
                 elif decision == PresentationDecision.BLOCKED:
                     entry.blocked_or_ambiguous = [health.reason]
                     entry.reason = f"BLOCKED — {health.reason}"
-                elif decision == PresentationDecision.YAHOO_BASIC_TEMPLATE_REQUIRED:
-                    yahoo_periods = self.yahoo.values_for_periods(
-                        yahoo_bundle,
-                        health.statement,
-                        fiscal_quarter=fiscal_q,
-                        company_facts=company_facts,
-                        fiscal_year=fy,
-                        fiscal_period=fp,
-                    )
-                    applied = self._apply_yahoo_basic_template(
+                elif decision in (
+                    PresentationDecision.YAHOO_BASIC_TEMPLATE_REQUIRED,
+                    PresentationDecision.SEC_10Q_PRESENTATION_REQUIRED,
+                ):
+                    self._apply_authoritative_rebuild(
                         wb,
-                        health.statement,
-                        yahoo_periods,
-                        fiscal_quarter=fiscal_q,
+                        entry,
+                        health,
+                        company_facts=company_facts,
+                        yahoo_bundle=yahoo_bundle,
+                        fy=fy,
+                        fp=fp,
+                        fiscal_q=fiscal_q,
+                        ticker=ticker,
                     )
-                    entry.yahoo_rows_introduced = applied["introduced"]
-                    entry.ytd_provenance = applied.get("ytd_provenance", {})
-                    entry.rows_superseded = applied["superseded"]
-                    entry.blocked_or_ambiguous = applied["ambiguous"]
-                    entry.data_source_primary = "yahoo"
-                    # SEC secondary for any still-missing majors
-                    if company_facts and applied["ambiguous"]:
-                        sec_fill = self._fill_major_gaps_from_sec(
-                            wb,
-                            health.statement,
-                            health.major_totals_missing,
-                            company_facts,
-                            fy,
-                            fp,
-                        )
-                        entry.rows_filled = sec_fill
-                        entry.data_source_secondary = "sec"
-                    entry.reason = (
-                        f"YAHOO_BASIC_TEMPLATE — Bloomberg cumulative missing; "
-                        f"populated basic template from Yahoo ({len(applied['introduced'])} rows)"
-                    )
-                elif decision == PresentationDecision.SEC_10Q_PRESENTATION_REQUIRED:
-                    sec_items = (
-                        extract_sec_10q_statement(
-                            company_facts or {},
-                            health.statement,
-                            fiscal_year=fy,
-                            fiscal_period=fp,
-                        )
-                        if company_facts
-                        else []
-                    )
-                    entry.sec_line_items = sec_items
-                    if sec_items:
-                        entry.sec_filing_form = sec_items[0].form
-                        entry.sec_filing_period = sec_items[0].fiscal_period
-                        entry.sec_accession = sec_items[0].accession_number
-                    ytd_items = []
-                    if health.statement == QuarterlyStatementKind.INCOME and company_facts:
-                        ytd_items = extract_sec_10q_statement(
-                            company_facts,
-                            health.statement,
-                            fiscal_year=fy,
-                            fiscal_period=fp,
-                            duration_kind="ytd",
-                        )
-                    applied = self._apply_sec_layout(wb, health.statement, sec_items, ytd_items=ytd_items)
-                    entry.rows_superseded = applied["superseded"]
-                    entry.sec_rows_introduced = applied["introduced"]
-                    entry.blocked_or_ambiguous = applied["ambiguous"]
-                    entry.reason = (
-                        f"SEC_10Q_PRESENTATION_REQUIRED — abandoned Bloomberg layout; "
-                        f"reconstructed from 10-Q presentation "
-                        f"({len(sec_items)} SEC lines, form={entry.sec_filing_form}, "
-                        f"fp={entry.sec_filing_period})"
-                    )
-                    if not sec_items:
-                        entry.blocked_or_ambiguous.append(
-                            "No SEC 10-Q line items extracted; layout not rewritten"
-                        )
                 statements.append(entry)
 
             preserve = sum(
@@ -232,6 +181,190 @@ class QuarterlyPresentationService:
                 return q
         return 3
 
+    def _apply_authoritative_rebuild(
+        self,
+        workbook: Workbook,
+        entry: QuarterlyStatementPresentation,
+        health,
+        *,
+        company_facts: dict[str, Any] | None,
+        yahoo_bundle,
+        fy: int | None,
+        fp: str | None,
+        fiscal_q: int,
+        ticker: str,
+    ) -> None:
+        """SEC layout first; Yahoo basic template only when SEC has no populated facts."""
+        kind = health.statement
+        sec_items = (
+            extract_sec_10q_statement(
+                company_facts or {},
+                kind,
+                fiscal_year=fy,
+                fiscal_period=fp,
+            )
+            if company_facts
+            else []
+        )
+        populated_sec = [i for i in sec_items if i.value is not None]
+        unresolved_sec = [i for i in sec_items if i.value is None]
+        entry.sec_line_items = sec_items
+        if company_facts is not None and sec_items:
+            if populated_sec:
+                entry.sec_filing_form = populated_sec[0].form
+                entry.sec_filing_period = populated_sec[0].fiscal_period
+                entry.sec_accession = populated_sec[0].accession_number
+            ytd_items: list[SecLineItem] = []
+            if kind == QuarterlyStatementKind.INCOME:
+                ytd_items = extract_sec_10q_statement(
+                    company_facts,
+                    kind,
+                    fiscal_year=fy,
+                    fiscal_period=fp,
+                    duration_kind="ytd",
+                    include_unresolved=False,
+                )
+            applied = self._apply_sec_layout(
+                workbook,
+                kind,
+                sec_items,
+                ytd_items=ytd_items,
+                ticker=ticker,
+                fiscal_quarter=fiscal_q,
+            )
+            entry.decision = PresentationDecision.SEC_10Q_PRESENTATION_REQUIRED
+            entry.rows_superseded = applied["superseded"]
+            entry.sec_rows_introduced = applied["introduced"]
+            entry.blocked_or_ambiguous = applied["ambiguous"]
+            entry.derivation_notes = applied.get("derivation_notes") or []
+            entry.data_source_primary = "sec"
+            yahoo_fill, discrepancies = self._fill_remaining_from_yahoo(
+                workbook, kind, unresolved_sec, yahoo_bundle, fiscal_q, company_facts, fy, fp
+            )
+            entry.yahoo_rows_introduced = yahoo_fill
+            entry.source_discrepancies = discrepancies
+            if yahoo_fill:
+                entry.data_source_secondary = "yahoo"
+            entry.unresolved_facts = [
+                {
+                    "label": i.label,
+                    "reason": i.unresolved_reason or "unresolved",
+                    "statement": kind.value,
+                }
+                for i in unresolved_sec
+                if not any(i.label in row for row in yahoo_fill)
+            ]
+            entry.reason = (
+                f"SEC_10Q_PRESENTATION_REQUIRED — Bloomberg layout unusable; "
+                f"reconstructed from SEC ({len(populated_sec)} populated, "
+                f"{len(entry.unresolved_facts)} unresolved, form={entry.sec_filing_form}, "
+                f"fp={entry.sec_filing_period})"
+            )
+            return
+
+        yahoo_periods = self.yahoo.values_for_periods(
+            yahoo_bundle,
+            kind,
+            fiscal_quarter=fiscal_q,
+            company_facts=company_facts,
+            fiscal_year=fy,
+            fiscal_period=fp,
+        )
+        yahoo_values = yahoo_periods.values if yahoo_periods else {}
+        has_yahoo = any(v is not None for v in yahoo_values.values())
+        if has_yahoo:
+            applied_y = self._apply_yahoo_basic_template(
+                workbook, kind, yahoo_periods, fiscal_quarter=fiscal_q
+            )
+            entry.decision = PresentationDecision.YAHOO_BASIC_TEMPLATE_REQUIRED
+            entry.yahoo_rows_introduced = applied_y["introduced"]
+            entry.ytd_provenance = applied_y.get("ytd_provenance", {})
+            entry.rows_superseded = applied_y["superseded"]
+            entry.blocked_or_ambiguous = applied_y["ambiguous"]
+            entry.data_source_primary = "yahoo"
+            entry.data_source_secondary = "sec" if company_facts else None
+            entry.unresolved_facts = [
+                {"label": a, "reason": "missing after Yahoo fallback", "statement": kind.value}
+                for a in applied_y["ambiguous"]
+            ]
+            entry.reason = (
+                "YAHOO_BASIC_TEMPLATE — SEC facts unavailable; Yahoo supplementary fallback "
+                f"({len(applied_y['introduced'])} rows). SEC remains authoritative when present."
+            )
+            return
+
+        entry.decision = PresentationDecision.SEC_10Q_PRESENTATION_REQUIRED
+        entry.unresolved_facts = [
+            {
+                "label": i.label,
+                "reason": i.unresolved_reason or "absent from SEC and Yahoo",
+                "statement": kind.value,
+            }
+            for i in (unresolved_sec or [SecLineItem(statement=kind.value, label="(statement)")])
+        ] or [
+            {
+                "label": kind.value,
+                "reason": "No SEC or Yahoo facts; statement left blank (not zero-filled)",
+                "statement": kind.value,
+            }
+        ]
+        entry.blocked_or_ambiguous = [
+            f"{u['label']}: {u['reason']}" for u in entry.unresolved_facts
+        ]
+        entry.reason = (
+            "SEC_10Q_PRESENTATION_REQUIRED — no populated SEC or Yahoo facts; "
+            "left unresolved (not represented as zero)"
+        )
+
+    def _fill_remaining_from_yahoo(
+        self,
+        workbook: Workbook,
+        kind: QuarterlyStatementKind,
+        unresolved: list[SecLineItem],
+        yahoo_bundle,
+        fiscal_q: int,
+        company_facts: dict[str, Any] | None,
+        fy: int | None,
+        fp: str | None,
+    ) -> tuple[list[str], list[dict[str, Any]]]:
+        filled: list[str] = []
+        discrepancies: list[dict[str, Any]] = []
+        if not unresolved:
+            return filled, discrepancies
+        sheet_name = STATEMENT_SHEETS[kind]
+        if sheet_name not in workbook.sheetnames:
+            return filled, discrepancies
+        values = self.yahoo.values_for_periods(
+            yahoo_bundle,
+            kind,
+            fiscal_quarter=fiscal_q,
+            company_facts=company_facts,
+            fiscal_year=fy,
+            fiscal_period=fp,
+        )
+        items = self.yahoo.to_sec_line_items(values, kind, fiscal_quarter=fiscal_q)
+        ws = workbook[sheet_name]
+        for fact in unresolved:
+            match = resolve_workbook_gap(fact.label, kind, items)
+            if match.decision != "MATCHED" or match.value is None:
+                continue
+            target_row = None
+            for r in range(BODY_START, BODY_END + 1):
+                label = ws.cell(row=r, column=LABEL_COL).value
+                if label and str(label).strip().startswith(fact.label):
+                    target_row = r
+                    break
+            if target_row is None:
+                continue
+            cell = ws.cell(row=target_row, column=VALUE_COL)
+            if _is_formula(cell.value):
+                continue
+            cell.value = match.value
+            filled.append(
+                f"{sheet_name}!C{target_row}:{fact.label}={match.value} [yahoo supplementary]"
+            )
+        return filled, discrepancies
+
     def _fill_major_gaps(
         self,
         workbook: Workbook,
@@ -242,18 +375,82 @@ class QuarterlyPresentationService:
         fy: int | None,
         fp: str | None,
         fiscal_q: int,
-    ) -> list[str]:
-        filled = self._fill_major_gaps_from_yahoo(
-            workbook, kind, missing_majors, yahoo_bundle, fiscal_q, company_facts, fy, fp
-        )
-        still_missing = [m for m in missing_majors if not any(m in f for f in filled)]
-        if still_missing and company_facts:
+    ) -> tuple[list[str], list[dict[str, Any]], list[dict[str, Any]]]:
+        filled: list[str] = []
+        discrepancies: list[dict[str, Any]] = []
+        if still_sec := (missing_majors and company_facts):
             filled.extend(
                 self._fill_major_gaps_from_sec(
-                    workbook, kind, still_missing, company_facts, fy, fp
+                    workbook, kind, missing_majors, company_facts, fy, fp
                 )
             )
-        return filled
+        still_missing = [m for m in missing_majors if not any(m in f and "=" in f for f in filled)]
+        yahoo_filled = self._fill_major_gaps_from_yahoo(
+            workbook, kind, still_missing, yahoo_bundle, fiscal_q, company_facts, fy, fp
+        )
+        filled.extend(yahoo_filled)
+        if company_facts and yahoo_filled:
+            discrepancies.extend(
+                self._record_sec_yahoo_conflicts(
+                    kind, missing_majors, company_facts, yahoo_bundle, fy, fp, fiscal_q
+                )
+            )
+        unresolved = [
+            {
+                "label": m,
+                "reason": "absent from SEC and Yahoo; left blank (not zero)",
+                "statement": kind.value,
+            }
+            for m in missing_majors
+            if not any(
+                m in f and "=" in f and "REVIEW" not in f and "unresolved" not in f.lower()
+                for f in filled
+            )
+        ]
+        _ = still_sec
+        return filled, discrepancies, unresolved
+
+    def _record_sec_yahoo_conflicts(
+        self,
+        kind: QuarterlyStatementKind,
+        missing_majors: list[str],
+        company_facts: dict[str, Any],
+        yahoo_bundle,
+        fy: int | None,
+        fp: str | None,
+        fiscal_q: int,
+    ) -> list[dict[str, Any]]:
+        out: list[dict[str, Any]] = []
+        sec_items = extract_sec_10q_statement(
+            company_facts, kind, fiscal_year=fy, fiscal_period=fp, include_unresolved=False
+        )
+        yahoo_values = self.yahoo.values_for_periods(
+            yahoo_bundle, kind, fiscal_quarter=fiscal_q, company_facts=company_facts,
+            fiscal_year=fy, fiscal_period=fp,
+        )
+        yahoo_items = self.yahoo.to_sec_line_items(yahoo_values, kind, fiscal_quarter=fiscal_q)
+        for needle in missing_majors:
+            sec_match = resolve_workbook_gap(needle, kind, sec_items)
+            y_match = resolve_workbook_gap(needle, kind, yahoo_items)
+            if (
+                sec_match.decision == "MATCHED"
+                and y_match.decision == "MATCHED"
+                and sec_match.value is not None
+                and y_match.value is not None
+                and abs(sec_match.value) > 0
+            ):
+                rel = abs(sec_match.value - y_match.value) / max(abs(sec_match.value), 1e-9)
+                if rel > _CONFLICT_TOLERANCE:
+                    out.append(
+                        {
+                            "label": needle,
+                            "sec_value": sec_match.value,
+                            "yahoo_value": y_match.value,
+                            "authority": "sec",
+                            "relative_difference": round(rel, 4),
+                        }
+                    )
+        return out
 
     def _fill_major_gaps_from_yahoo(
         self,
@@ -443,9 +640,16 @@ class QuarterlyPresentationService:
         kind: QuarterlyStatementKind,
         sec_items: list[SecLineItem],
         ytd_items: list[SecLineItem] | None = None,
-    ) -> dict[str, list[str]]:
+        ticker: str | None = None,
+        fiscal_quarter: int | None = None,
+    ) -> dict[str, Any]:
         sheet_name = STATEMENT_SHEETS[kind]
-        result = {"superseded": [], "introduced": [], "ambiguous": []}
+        result: dict[str, Any] = {
+            "superseded": [],
+            "introduced": [],
+            "ambiguous": [],
+            "derivation_notes": [],
+        }
         if sheet_name not in workbook.sheetnames:
             result["ambiguous"].append(f"Sheet {sheet_name} missing")
             return result
@@ -453,18 +657,49 @@ class QuarterlyPresentationService:
             return result
 
         ws = workbook[sheet_name]
-        # Snapshot Bloomberg non-formula body rows to supersede.
         for r in range(BODY_START, BODY_END + 1):
             label_cell = ws.cell(row=r, column=LABEL_COL)
             value_cell = ws.cell(row=r, column=VALUE_COL)
             if _is_formula(label_cell.value) or _is_formula(value_cell.value):
-                continue  # never overwrite formulas
+                continue
             if label_cell.value is not None or value_cell.value is not None:
                 result["superseded"].append(f"{sheet_name}!A{r}/C{r}:{label_cell.value!r}")
                 label_cell.value = None
                 value_cell.value = None
+                for col in (4, YTD_COL, 8, _NOTES_COL):
+                    extra = ws.cell(row=r, column=col)
+                    if not _is_formula(extra.value):
+                        extra.value = None
 
-        # Write SEC presentation in order, skipping formula rows.
+        titles = {
+            QuarterlyStatementKind.INCOME: "Consolidated Statements of Income",
+            QuarterlyStatementKind.BALANCE_SHEET: "Consolidated Balance Sheets",
+            QuarterlyStatementKind.CASH_FLOW: "Consolidated Statements of Cash Flows",
+        }
+        populated = next((i for i in sec_items if i.value is not None), sec_items[0])
+        period_end = populated.period_end or ""
+        fp = populated.fiscal_period or (f"Q{fiscal_quarter}" if fiscal_quarter else "")
+        form = populated.form or "10-Q"
+        unit = populated.unit or "USD_millions"
+        self._write_header_if_free(ws, 7, f"SEC {form} presentation ({fp}) — not Bloomberg taxonomy")
+        self._write_header_if_free(
+            ws,
+            8,
+            f"{ticker or ''} | {fp} | period end {period_end} | {unit} | {titles.get(kind, kind.value)}",
+        )
+        self._write_header_if_free(
+            ws,
+            9,
+            f"Source: SEC EDGAR accession {populated.accession_number or 'n/a'} "
+            f"{populated.source_url or ''}".strip(),
+        )
+        hdr = ws.cell(row=10, column=LABEL_COL)
+        if hdr.value is None or not _is_formula(hdr.value):
+            ws.cell(row=10, column=LABEL_COL).value = "Line item"
+            ws.cell(row=10, column=VALUE_COL).value = "Fiscal quarter"
+            ws.cell(row=10, column=YTD_COL).value = "YTD"
+            ws.cell(row=10, column=_NOTES_COL).value = "Source / derivation / mapping id"
+
         write_row = BODY_START
         for item in sec_items:
             while write_row <= BODY_END:
@@ -477,32 +712,53 @@ class QuarterlyPresentationService:
             if write_row > BODY_END:
                 result["ambiguous"].append(f"No space for SEC line {item.label}")
                 break
-            # YTD cash-flow labels must remain explicitly YTD — never as quarter.
             label = item.label
-            if item.duration_kind == "ytd":
+            if item.duration_kind == "ytd" and item.extraction_method != "derived_ytd_subtract":
                 label = f"{item.label} (YTD)"
+            map_id = item.xbrl_concept or item.label
             ws.cell(row=write_row, column=LABEL_COL).value = label
-            ws.cell(row=write_row, column=VALUE_COL).value = item.value
-            if ytd_items:
+            value_cell = ws.cell(row=write_row, column=VALUE_COL)
+            if item.value is not None:
+                value_cell.value = item.value
+                if "share" in (item.unit or "").lower() or "eps" in item.label.lower():
+                    value_cell.number_format = _EPS_NUMBER_FORMAT
+                else:
+                    value_cell.number_format = _HEADER_NUMBER_FORMAT
+            notes = []
+            if item.extraction_method:
+                notes.append(item.extraction_method)
+            if item.derivation:
+                notes.append(item.derivation)
+                result["derivation_notes"].append(f"{item.label}: {item.derivation}")
+            if item.unresolved_reason:
+                notes.append(item.unresolved_reason)
+                result["ambiguous"].append(f"{item.label}: {item.unresolved_reason}")
+            notes.append(f"map={map_id}")
+            if item.accession_number:
+                notes.append(f"accn={item.accession_number}")
+            ws.cell(row=write_row, column=_NOTES_COL).value = "; ".join(notes)
+            ytd_val = item.ytd_value
+            if ytd_val is None and ytd_items:
                 ytd_hit = next(
                     (y for y in ytd_items if y.label == item.label and y.value is not None),
                     None,
                 )
                 if ytd_hit is not None:
-                    ytd_label = f"{ytd_hit.label} (YTD)" if ytd_hit.duration_kind == "ytd" else ytd_hit.label
-                    _ = ytd_label
-                    ws.cell(row=write_row, column=YTD_COL).value = ytd_hit.value
+                    ytd_val = ytd_hit.value
+            if ytd_val is not None and not _is_formula(ws.cell(row=write_row, column=YTD_COL).value):
+                ytd_cell = ws.cell(row=write_row, column=YTD_COL)
+                ytd_cell.value = ytd_val
+                ytd_cell.number_format = _HEADER_NUMBER_FORMAT
             result["introduced"].append(
                 f"{sheet_name}!A{write_row}:{label}={item.value} "
-                f"[{item.xbrl_concept}/{item.duration_kind}]"
+                f"[{item.xbrl_concept}/{item.duration_kind}/{item.extraction_method}]"
             )
             write_row += 1
 
-        # Annotate header banner if a free text cell exists at row 7
-        banner = ws.cell(row=7, column=LABEL_COL)
-        if banner.value is None or not _is_formula(banner.value):
-            form = sec_items[0].form or "10-Q"
-            fp = sec_items[0].fiscal_period or ""
-            banner.value = f"SEC {form} presentation authority ({fp}) — not Bloomberg taxonomy"
-
         return result
+
+    @staticmethod
+    def _write_header_if_free(ws, row: int, text: str) -> None:
+        cell = ws.cell(row=row, column=LABEL_COL)
+        if cell.value is None or not _is_formula(cell.value):
+            cell.value = text

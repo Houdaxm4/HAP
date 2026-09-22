@@ -18,13 +18,16 @@ from services.annual_leases_service import AnnualLeasesService
 from services.annual_output_gate_service import AnnualOutputGateService
 from services.annual_rd_service import AnnualRdService
 from services.annual_research_service import AnnualResearchService
+from services.annual_analytical_research_service import AnnualAnalyticalResearchService
 from services.annual_restatement_service import AnnualRestatementService
 from services.annual_statement_validation_service import AnnualStatementValidationService
 from services.annual_tax_service import AnnualTaxService
 from services.annual_analyst_intelligence_service import AnnualAnalystIntelligenceService
 from services.annual_valuation_extract_service import AnnualValuationExtractService
+from services.circular_reference_service import CircularReferenceService
 from services.excel_recalc_service import ExcelRecalcService
 from services.output_service import OutputService
+from services.workbook_flag_service import flag_structural
 
 
 def sha256_file(path: Path) -> str:
@@ -48,6 +51,7 @@ class AnnualUpdateRunner:
         self.guard = AnnualFormulaGuardService()
         self.judgment = AnnualJudgmentService()
         self.research = AnnualResearchService()
+        self.analytical_research = AnnualAnalyticalResearchService()
         self.intelligence = AnnualAnalystIntelligenceService()
         self.deliverables = AnnualDeliverablesService()
         self.valuation_extract = AnnualValuationExtractService()
@@ -241,6 +245,15 @@ class AnnualUpdateRunner:
         if new_fy:
             digits = "".join(ch for ch in str(new_fy) if ch.isdigit())
             fy_int = int(digits) if digits else None
+        timed(
+            "excel_recalculation_pre_analysis",
+            lambda: self.excel_recalc.recalculate(
+                analysis_id=analysis_id,
+                ticker=ticker,
+                workbook_path=working_path,
+                fiscal_year=new_fy,
+            ),
+        )
         research = timed(
             "annual_research",
             lambda: self.research.gather(
@@ -259,6 +272,38 @@ class AnnualUpdateRunner:
             research_evidence=research.hap_interpretations + research.reported_facts[:3],
         )
         ctx.update({k: v for k, v in intel_ctx.items() if k not in ("er_validation", "valuation_validation")})
+        analytical = None
+        from models.annual_update import NormalizedEarningsPowerAnalysis
+
+        base_raw = ctx.get("oe_base_analysis")
+        if isinstance(base_raw, dict):
+            base_obj = NormalizedEarningsPowerAnalysis.model_validate(base_raw)
+        elif hasattr(base_raw, "decision"):
+            base_obj = base_raw
+        else:
+            base_obj = None
+        if base_obj is not None:
+            cache_dir = self.output_service.analysis_output_dir(analysis_id) / "sec_cache"
+            captured = base_obj
+            analytical = timed(
+                "annual_analytical_research",
+                lambda: self.analytical_research.investigate(
+                    analysis_id=analysis_id,
+                    ticker=ticker,
+                    base=captured,
+                    sec_manifest=sec_manifest,
+                    fiscal_year=fy_int,
+                    cache_dir=cache_dir,
+                ),
+            )
+            base_obj = self.analytical_research.apply_to_diagnostic(captured, analytical)
+            from services.annual_normalized_base_disclosure_service import (
+                AnnualNormalizedBaseDisclosureService,
+            )
+
+            base_obj.disclosure = AnnualNormalizedBaseDisclosureService().build(base_obj, analytical)
+            ctx["oe_base_analysis"] = base_obj.model_dump()
+            ctx["analytical_research"] = analytical
         er_rep, judge = timed(
             "expected_return_ev_graham_judgment",
             lambda: self.judgment.apply(
@@ -268,6 +313,31 @@ class AnnualUpdateRunner:
                 context=ctx,
             ),
         )
+        circular = timed(
+            "circular_reference_scan",
+            lambda: CircularReferenceService().classify_against_source(
+                analysis_id=analysis_id,
+                ticker=ticker,
+                current_path=working_path,
+                source_path=previous_path,
+                template_path=template_path,
+            ),
+        )
+        if circular.pre_existing or circular.hap_introduced:
+            from openpyxl import load_workbook as _lw_circ
+
+            _cwb = _lw_circ(working_path)
+            try:
+                for cycle in list(circular.pre_existing) + list(circular.hap_introduced):
+                    for ref in cycle.cells:
+                        if "!" not in ref:
+                            continue
+                        sh, addr = ref.split("!", 1)
+                        if sh in _cwb.sheetnames:
+                            flag_structural(_cwb[sh], addr, cycle=cycle.cells)
+                _cwb.save(working_path)
+            finally:
+                _cwb.close()
         out_dir = self.output_service.analysis_output_dir(analysis_id)
         recalc = timed(
             "excel_recalculation",
@@ -281,6 +351,12 @@ class AnnualUpdateRunner:
         # Refresh Tax/R&D calculated outputs from cached values after recalc.
         if recalc.status == "ok":
             rd = self.rd.refresh_calculated_values(rd, working_path, new_fy or "")
+        self.judgment.refresh_parallel_expected_return(
+            workbook_path=working_path,
+            er_report=er_rep,
+            judgment=judge,
+            recalc_ok=(recalc.status == "ok"),
+        )
 
         er_val = None
         val_val = None
@@ -318,6 +394,7 @@ class AnnualUpdateRunner:
                 rd=rd,
                 valuation=valuation,
                 recalc=recalc,
+                circular=circular,
             ),
         )
         # Final investment Word only when gates authorize; otherwise diagnostic Word.
@@ -381,6 +458,7 @@ class AnnualUpdateRunner:
             "annual_deliverables_report.json": deliv,
             "annual_valuation_extract_report.json": valuation,
             "annual_output_gate_report.json": gate,
+            "annual_circular_reference_report.json": circular,
             "annual_excel_recalc_report.json": {
                 "analysis_id": recalc.analysis_id,
                 "ticker": recalc.ticker,
@@ -395,6 +473,12 @@ class AnnualUpdateRunner:
                 "summary": recalc.summary,
             },
         }
+        if getattr(judge, "oe_base_analysis", None) is not None:
+            artifacts["annual_normalized_base_report.json"] = judge.oe_base_analysis
+        elif ctx.get("oe_base_analysis"):
+            artifacts["annual_normalized_base_report.json"] = ctx["oe_base_analysis"]
+        if analytical is not None:
+            artifacts["annual_analytical_research_report.json"] = analytical
         if cont_apply is not None:
             artifacts["annual_model_continuity_apply_report.json"] = cont_apply
         for name, obj in artifacts.items():

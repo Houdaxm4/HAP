@@ -273,12 +273,12 @@ def test_isolated_gaps_fill_gaps(gap_quarterly_wb: Path):
         wb.close()
 
 
-def test_structural_broken_yahoo_basic_required(broken_quarterly_wb: Path):
+def test_structural_broken_sec_10q_required(broken_quarterly_wb: Path):
     wb = load_workbook(broken_quarterly_wb)
     try:
         health = assess_statement_health(wb, QuarterlyStatementKind.INCOME)
         assert health.structural_failure is True
-        assert decide_presentation(health) == PresentationDecision.YAHOO_BASIC_TEMPLATE_REQUIRED
+        assert decide_presentation(health) == PresentationDecision.SEC_10Q_PRESENTATION_REQUIRED
     finally:
         wb.close()
 
@@ -304,12 +304,13 @@ def test_sec_is_uses_standalone_not_ytd():
     assert rev.period_start == "2024-06-30"
 
 
-def test_sec_cf_is_ytd_labeled():
+def test_sec_cf_is_ytd_labeled_when_standalone_cannot_be_derived():
     items = extract_sec_10q_statement(
         _mock_companyfacts(),
         QuarterlyStatementKind.CASH_FLOW,
         fiscal_year=2024,
         fiscal_period="Q4",
+        include_unresolved=False,
     )
     assert items
     assert all(i.duration_kind == "ytd" for i in items)
@@ -322,13 +323,13 @@ def test_sec_bs_instant_quarter_end():
         fiscal_year=2024,
         fiscal_period="Q4",
     )
-    assets = next(i for i in items if "assets" in i.label.lower())
+    assets = next(i for i in items if i.label == "Total assets")
     assert assets.duration_kind == "instant"
     assert assets.period_end == "2024-09-28"
     assert assets.period_start is None
 
 
-def test_yahoo_basic_template_replaces_bloomberg_structure(
+def test_structural_rebuilds_from_sec_not_yahoo(
     broken_quarterly_wb: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ):
     from services.yahoo_quarterly_statement_service import YahooQuarterSnapshot, YahooQuarterlyBundle
@@ -337,7 +338,7 @@ def test_yahoo_basic_template_replaces_bloomberg_structure(
         snap = YahooQuarterSnapshot(
             end_date="2024-09-30",
             fields={
-                "totalRevenue": 94930.0,
+                "totalRevenue": 1.0,  # conflict vs SEC 94930 — must not win
                 "costOfRevenue": 51000.0,
                 "totalOperatingExpenses": 15000.0,
                 "operatingIncome": 29000.0,
@@ -364,16 +365,18 @@ def test_yahoo_basic_template_replaces_bloomberg_structure(
     )
     assert _sha(broken_quarterly_wb) == upload_hash
     is_stmt = next(s for s in report.statements if s.statement == QuarterlyStatementKind.INCOME)
-    assert is_stmt.decision == PresentationDecision.YAHOO_BASIC_TEMPLATE_REQUIRED
-    assert is_stmt.yahoo_rows_introduced
+    assert is_stmt.decision == PresentationDecision.SEC_10Q_PRESENTATION_REQUIRED
+    assert is_stmt.data_source_primary == "sec"
+    assert is_stmt.sec_rows_introduced
     assert is_stmt.rows_superseded
 
     wb = load_workbook(dest)
     try:
         ws = wb["Last Quarter IS Standardized"]
-        assert ws["A11"].value == "Total Revenues"
+        assert ws["A11"].value == "Revenue"
         assert ws["C11"].value == pytest.approx(94930.0)
-        assert "Yahoo Finance basic template" in str(ws["A7"].value)
+        assert "SEC" in str(ws["A7"].value)
+        assert ws["C11"].value != pytest.approx(1.0)
         assert not any(str(ws.cell(r, 1).value) == "Misc line" for r in range(11, 25))
     finally:
         wb.close()

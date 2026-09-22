@@ -335,7 +335,7 @@ def test_quarterly_empty_emits_sec_fallback(empty_quarterly_workbook: Path):
         intent_report=intents,
     )
     assert completion.sec_quarterly_fallback_required is True
-    assert completion.entries[0].decision == CompletionDecision.YAHOO_QUARTERLY_FALLBACK_REQUIRED
+    assert completion.entries[0].decision == CompletionDecision.SEC_QUARTERLY_FALLBACK_REQUIRED
     assert fill.write_count == 0
     assert fill.intents[0].decision == IntentDecision.SKIP
 

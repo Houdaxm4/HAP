@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 from openpyxl import load_workbook
@@ -201,15 +202,26 @@ class NewCompanyPeriodService:
             if LQ_IS in wb.sheetnames:
                 q = _detect_fiscal_quarter(wb[LQ_IS])
                 ws = wb[LQ_IS]
-                for row in range(1, 10):
-                    for col in range(1, 10):
+                parsed_fy = None
+                for col in (3, 4, 2, 1, 5, 6, 7, 8, 9):
+                    for row in range(1, 10):
                         val = ws.cell(row, col).value
                         if val is None:
                             continue
-                        text = str(val).upper()
-                        for token in years:
-                            if token.replace("FY", "") in text and "Q" in text:
-                                q_fy = token
+                        if hasattr(val, "year") and col == 3 and parsed_fy is None:
+                            parsed_fy = f"FY{val.year}"
+                            continue
+                        text = str(val)
+                        match = re.search(r"(20\d{2})\s*Q([1-4])", text, re.I)
+                        if match:
+                            parsed_fy = f"FY{match.group(1)}"
+                            if q is None:
+                                q = int(match.group(2))
+                            break
+                    if parsed_fy and col in {3, 4}:
+                        break
+                if parsed_fy:
+                    q_fy = parsed_fy
             if q is None:
                 for sheet in wb.sheetnames:
                     if "last quarter" in sheet.lower() or sheet.lower().startswith("lq"):

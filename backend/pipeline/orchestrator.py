@@ -25,6 +25,7 @@ from services.quarterly_model_continuity_service import QuarterlyModelContinuity
 from services.quarterly_projection_service import QuarterlyProjectionService
 from services.quarterly_research_service import QuarterlyResearchService
 from services.quarterly_review_service import QuarterlyReviewService
+from services.quarterly_valuation_service import QuarterlyValuationService
 from services.restatement_check_service import RestatementCheckService
 from services.annual_update_runner import AnnualUpdateRunner, sha256_file
 from services.annual_continuity_service import AnnualContinuityService
@@ -49,7 +50,8 @@ class PipelineOrchestrator:
     Quarterly update (lean):
       Upload → Parse → CRF → Require previous workbook → Carry-forward →
       SEC (light) → Current-data intents/fill + quarterly presentation →
-      Restatement check → Lean validate → Quarter review → (skip annual analysis engine)
+      Restatement check → Lean validate → Quarter review → Q2/Q3 projection →
+      Annual-parity ER/EV/Graham valuation → Word deliverables
     """
 
     def __init__(
@@ -75,6 +77,7 @@ class PipelineOrchestrator:
         self.restatement_check = RestatementCheckService()
         self.quarterly_review = QuarterlyReviewService()
         self.quarterly_projection = QuarterlyProjectionService()
+        self.quarterly_valuation = QuarterlyValuationService()
         self.quarterly_research = QuarterlyResearchService()
         self.quarterly_deliverables = QuarterlyDeliverablesService()
         self.annual_continuity = AnnualContinuityService()
@@ -669,8 +672,6 @@ class PipelineOrchestrator:
         skipped_annual = [
             "annual_m3_full_reconstruction",
             "roic_full_review",
-            "expected_return_full_review",
-            "valuation_full_review",
             "final_recommendation",
             "run_analysis_engine",
         ]
@@ -901,6 +902,69 @@ class PipelineOrchestrator:
             )
         )
 
+        val_report, er_rep, judge, circular, recalc, analytical = _time(
+            "quarterly_valuation_annual_parity",
+            lambda: self.quarterly_valuation.apply(
+                analysis_id=analysis_id,
+                ticker=analysis.ticker,
+                workbook_path=completed_workbook_path,
+                previous_workbook_path=previous_path,
+                template_path=workbook_path,
+                company_facts=company_facts,
+                sec_manifest=manifest,
+                fiscal_year=projection.fiscal_year,
+                fiscal_quarter=projection.fiscal_quarter,
+                cache_dir=cache_dir,
+            ),
+        )
+        val_path = self.output_service.write_json(
+            analysis_id, "quarterly_valuation_report.json", val_report
+        )
+        self.output_service.write_json(
+            analysis_id, "quarterly_analyst_judgment_report.json", judge
+        )
+        self.output_service.write_json(
+            analysis_id, "quarterly_expected_return_judgment_report.json", er_rep
+        )
+        self.output_service.write_json(
+            analysis_id, "quarterly_circular_reference_report.json", circular
+        )
+        self.output_service.write_json(
+            analysis_id,
+            "quarterly_excel_recalc_report.json",
+            {
+                "analysis_id": recalc.analysis_id,
+                "ticker": recalc.ticker,
+                "status": recalc.status,
+                "method": recalc.method,
+                "workbook_path": recalc.workbook_path,
+                "elapsed_ms": recalc.elapsed_ms,
+                "cells_checked": recalc.cells_checked,
+                "missing_cached_values": recalc.missing_cached_values,
+                "formula_errors": recalc.formula_errors,
+                "error": recalc.error,
+                "summary": recalc.summary,
+                "com_invoked": recalc.com_invoked,
+            },
+        )
+        if getattr(judge, "oe_base_analysis", None) is not None:
+            self.output_service.write_json(
+                analysis_id, "quarterly_normalized_base_report.json", judge.oe_base_analysis
+            )
+        if analytical is not None:
+            self.output_service.write_json(
+                analysis_id, "quarterly_analytical_research_report.json", analytical
+            )
+        analysis.decision_log.append(
+            DecisionLogEntry(
+                agent="Quarter Valuation",
+                action="annual_parity_er_ev_graham",
+                detail=val_report.summary,
+                confidence=0.85,
+                citations=[val_path],
+            )
+        )
+
         # Final: restore ignored sheets after projection, then verify deliverable
         self.model_continuity.restore_ignored_sheets(
             new_template_path=workbook_path,
@@ -964,6 +1028,8 @@ class PipelineOrchestrator:
                 projection=projection,
                 review=q_review,
                 research=research,
+                valuation=val_report,
+                judgment=judge,
             ),
         )
         deliv_path = self.output_service.write_json(

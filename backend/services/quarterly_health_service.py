@@ -144,6 +144,7 @@ def assess_statement_health(
     populated = sum(1 for r in rows if r["populated"] or r["formula"])
     missing = max(0, expected - populated)
     missing_ratio = (missing / expected) if expected else 1.0
+    missing_fact_labels = [str(r["label"]) for r in rows if not r["populated"] and not r["formula"]]
 
     majors = _MAJOR_TOTALS[kind]
     found: list[str] = []
@@ -254,6 +255,7 @@ def assess_statement_health(
         major_totals_missing=missing_majors,
         structural_failure=structural,
         isolated_gaps=isolated,
+        missing_fact_labels=missing_fact_labels[:80],
         coherence_notes=notes + ([f"labels_sample:{labels_joined[:120]}"] if rows else []),
         reason=reason,
     )
@@ -267,8 +269,9 @@ def decide_presentation(health: BloombergHealthAssessment) -> PresentationDecisi
             QuarterlyStatementKind.INCOME,
             QuarterlyStatementKind.CASH_FLOW,
         ):
-            return PresentationDecision.YAHOO_BASIC_TEMPLATE_REQUIRED
-        # BS structural gaps: fill from Yahoo/SEC without layout rewrite
+            # SEC EDGAR is authoritative; Yahoo is a supplementary fallback only.
+            return PresentationDecision.SEC_10Q_PRESENTATION_REQUIRED
+        # BS structural gaps: fill from SEC/Yahoo without manufacturing via subtraction
         return PresentationDecision.BLOOMBERG_FILL_GAPS
     if health.isolated_gaps:
         return PresentationDecision.BLOOMBERG_FILL_GAPS

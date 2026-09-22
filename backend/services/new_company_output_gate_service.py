@@ -1,4 +1,4 @@
-"""New Company output-readiness gates A–K."""
+"""New Company output-readiness gates A–L."""
 
 from __future__ import annotations
 
@@ -16,6 +16,7 @@ from models.new_company import (
     NewCompanyRdReport,
     NewCompanyStatementValidationReport,
     NewCompanyTaxReport,
+    NewCompanyValuationReport,
     ProjectionConfidence,
     RdUsefulLifeDecision,
     TenYearPeriodReport,
@@ -45,6 +46,7 @@ class NewCompanyOutputGateService:
         projection: NewCompanyProjectionReport | None,
         recalc: ExcelRecalcReport | None,
         valuation: AnnualValuationOutputs | None,
+        valuation_judgment: NewCompanyValuationReport | None = None,
         word_authorized_attempt: bool = False,
     ) -> NewCompanyOutputGateReport:
         blockers: list[str] = []
@@ -218,6 +220,8 @@ class NewCompanyOutputGateService:
                 gates["I_projection"] = "pass"
                 if projection.confidence == ProjectionConfidence.LOW:
                     warnings.append("SEASONALITY_HISTORY_INSUFFICIENT")
+            if projection is not None and projection.wacc is None and q in {2, 3}:
+                warnings.append("WACC_NOT_SUPPLIED")
         else:
             gates["I_projection"] = "n/a"
 
@@ -246,6 +250,38 @@ class NewCompanyOutputGateService:
                 gates["K_valuation"] = "fail"
             else:
                 gates["K_valuation"] = "pass"
+
+        # Gate L — certified ER/EV/OE/Graham judgment after genuine COM.
+        # INSUFFICIENT_EVIDENCE is a valid decision, not a failure.
+        if not genuine_excel_com_recalc(recalc):
+            gates["L_valuation_judgment"] = "n/a"
+        elif valuation_judgment is None:
+            blockers.append("VALUATION_JUDGMENT_INCOMPLETE")
+            gates["L_valuation_judgment"] = "fail"
+        elif not valuation_judgment.original_assumptions_preserved:
+            blockers.append("ORIGINAL_VALUATION_ASSUMPTIONS_OVERWRITTEN")
+            gates["L_valuation_judgment"] = "fail"
+        elif valuation_judgment.hap_introduced_circular_count:
+            blockers.append("HAP_INTRODUCED_CIRCULAR_REFERENCE")
+            gates["L_valuation_judgment"] = "fail"
+        elif valuation_judgment.status == "BLOCKING_STRUCTURAL_ERROR":
+            blockers.append("HAP_INTRODUCED_CIRCULAR_REFERENCE")
+            gates["L_valuation_judgment"] = "fail"
+        elif valuation_judgment.status == "BLOCKED":
+            blockers.append("VALUATION_JUDGMENT_INCOMPLETE")
+            gates["L_valuation_judgment"] = "fail"
+        else:
+            gates["L_valuation_judgment"] = "pass"
+            if valuation_judgment.status == "PRE_EXISTING_REVIEW":
+                warnings.append("PRE_EXISTING_CIRCULAR_REFERENCE")
+            for decision, label in (
+                (valuation_judgment.er_decision, "ER"),
+                (valuation_judgment.oe_decision, "OE"),
+                (valuation_judgment.graham_decision, "Graham"),
+                (valuation_judgment.normalized_base_decision, "OE-base"),
+            ):
+                if decision == "INSUFFICIENT_EVIDENCE":
+                    warnings.append(f"VALUATION_{label}_INSUFFICIENT_EVIDENCE")
 
         seen: set[str] = set()
         uniq: list[str] = []

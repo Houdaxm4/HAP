@@ -44,6 +44,18 @@ _LEASES_RATE_ROW = 18
 _LEASES_RATE_COLS = list(range(2, 12))  # B-K
 _INPUTS_REF_RE = re.compile(r"Inputs!\$?([A-Z]+)\$?(\d+)", re.I)
 
+# Last Quarter BS Standardized I27:I32 — previous-quarter snapshot of Inputs metrics.
+# Mapped by H-column Inputs!Bxx identity, not by consecutive row index.
+_LQ_BS_SHEET = "Last Quarter BS Standardized"
+_TICKER_STOP = {
+    "Q", "FY", "SEC", "YTD", "GAAP", "IS", "BS", "CF", "THE", "AND", "FOR",
+    "CASH", "TOTAL", "INCOME", "NET", "SALES", "ASSETS", "INPUTS", "LEASES",
+    "ROIC", "ROCE", "WACC", "HAP", "USD", "EPS",
+}
+_LQ_BS_DEST_ROWS = range(27, 33)
+_LQ_BS_VALUE_COL = 9  # I
+_LQ_BS_KEY_COL = 8  # H
+
 
 def _cell_type(value: Any) -> str:
     if value is None or value == "":
@@ -199,7 +211,16 @@ class QuarterlyCarryForwardService:
                                 new_cell=new_cell,
                                 source=str(prev_path),
                             )
-                        )
+                            )
+
+        entries.extend(
+            self._carry_lq_bs_prior_snapshots(
+                prev_wb=prev_wb,
+                new_wb=new_wb,
+                ticker=ticker,
+                source=str(prev_path),
+            )
+        )
 
         new_wb.save(dest)
         prev_wb.close()
@@ -459,3 +480,255 @@ class QuarterlyCarryForwardService:
                 final_cell=new_cell,
             )
         ]
+
+    def _carry_lq_bs_prior_snapshots(
+        self,
+        *,
+        prev_wb,
+        new_wb,
+        ticker: str,
+        source: str,
+    ) -> list[CarryForwardEntry]:
+        """Populate latest-quarter BS I27:I32 from the previous-quarter workbook.
+
+        Mapping is by H-column Inputs!Bxx identity (verified on IDCC Q1→Q2):
+        I27 Max Current Price to Buy (B67)
+        I28 Current 3-Year EPS 10-Year Average Growth (B73)
+        I29 Growth Direction (B74)
+        I30 Current 3-Year Revenue 10-Year Average Growth (B75)
+        I31 Expected Return Price Plus Dividends Given Current Price (B70)
+        I32 Expected Return Price Plus Dividends Given Max Entry Price (B71)
+        """
+        entries: list[CarryForwardEntry] = []
+        if _LQ_BS_SHEET not in new_wb.sheetnames:
+            return [
+                self._entry(
+                    sheet=_LQ_BS_SHEET,
+                    addr="I27",
+                    prev_v=None,
+                    prev_t="blank",
+                    new_v=None,
+                    new_t="blank",
+                    action=CarryForwardDecision.REVIEW_REQUIRED,
+                    reason="Latest-quarter BS tab missing; I27:I32 not carried.",
+                    source=source,
+                )
+            ]
+        dest_ws = new_wb[_LQ_BS_SHEET]
+        if _LQ_BS_SHEET not in prev_wb.sheetnames:
+            for row in _LQ_BS_DEST_ROWS:
+                addr = f"I{row}"
+                entries.append(
+                    self._entry(
+                        sheet=_LQ_BS_SHEET,
+                        addr=addr,
+                        prev_v=None,
+                        prev_t="blank",
+                        new_v=dest_ws[addr].value,
+                        new_t=_cell_type(dest_ws[addr].value),
+                        action=CarryForwardDecision.REVIEW_REQUIRED,
+                        reason="Previous-quarter BS tab missing or incompatible; I27:I32 not substituted.",
+                        source=source,
+                        final_cell=dest_ws[addr],
+                    )
+                )
+            return entries
+
+        prev_ticker = self._detect_workbook_ticker(prev_wb, ticker)
+        dest_ticker = self._detect_workbook_ticker(new_wb, ticker)
+        if (
+            prev_ticker
+            and dest_ticker
+            and prev_ticker.upper() != dest_ticker.upper()
+        ):
+            for row in _LQ_BS_DEST_ROWS:
+                addr = f"I{row}"
+                entries.append(
+                    self._entry(
+                        sheet=_LQ_BS_SHEET,
+                        addr=addr,
+                        prev_v=None,
+                        prev_t="blank",
+                        new_v=dest_ws[addr].value,
+                        new_t=_cell_type(dest_ws[addr].value),
+                        action=CarryForwardDecision.REVIEW_REQUIRED,
+                        reason=(
+                            f"Previous workbook ticker {prev_ticker} does not match "
+                            f"{dest_ticker}; I27:I32 not substituted."
+                        ),
+                        source=source,
+                        final_cell=dest_ws[addr],
+                    )
+                )
+            return entries
+
+        prev_ws = prev_wb[_LQ_BS_SHEET]
+        prev_by_key = self._inputs_key_index(prev_ws)
+        if not prev_by_key:
+            for row in _LQ_BS_DEST_ROWS:
+                addr = f"I{row}"
+                entries.append(
+                    self._entry(
+                        sheet=_LQ_BS_SHEET,
+                        addr=addr,
+                        prev_v=None,
+                        prev_t="blank",
+                        new_v=dest_ws[addr].value,
+                        new_t=_cell_type(dest_ws[addr].value),
+                        action=CarryForwardDecision.REVIEW_REQUIRED,
+                        reason="Previous-quarter BS layout has no Inputs!Bxx keys in column H; incompatible.",
+                        source=source,
+                        final_cell=dest_ws[addr],
+                    )
+                )
+            return entries
+
+        for row in _LQ_BS_DEST_ROWS:
+            addr = f"I{row}"
+            dest_cell = dest_ws.cell(row=row, column=_LQ_BS_VALUE_COL)
+            dest_key_cell = dest_ws.cell(row=row, column=_LQ_BS_KEY_COL)
+            dest_t = _cell_type(dest_cell.value)
+            key = self._inputs_ref_key(dest_key_cell.value)
+            if dest_t == "formula":
+                entries.append(
+                    self._entry(
+                        sheet=_LQ_BS_SHEET,
+                        addr=addr,
+                        prev_v=None,
+                        prev_t="blank",
+                        new_v=dest_cell.value,
+                        new_t="formula",
+                        action=CarryForwardDecision.KEEP_NEW_FORMULA,
+                        reason="Current-quarter I-column formula preserved; prior snapshot not applied.",
+                        source=source,
+                        final_cell=dest_cell,
+                    )
+                )
+                continue
+            if dest_t == "value":
+                entries.append(
+                    self._entry(
+                        sheet=_LQ_BS_SHEET,
+                        addr=addr,
+                        prev_v=None,
+                        prev_t="blank",
+                        new_v=dest_cell.value,
+                        new_t="value",
+                        action=CarryForwardDecision.LEAVE_AS_IS,
+                        reason="Existing I-column value treated as analyst override; not replaced.",
+                        source=source,
+                        final_cell=dest_cell,
+                    )
+                )
+                continue
+            if not key:
+                entries.append(
+                    self._entry(
+                        sheet=_LQ_BS_SHEET,
+                        addr=addr,
+                        prev_v=None,
+                        prev_t="blank",
+                        new_v=dest_cell.value,
+                        new_t=dest_t,
+                        action=CarryForwardDecision.REVIEW_REQUIRED,
+                        reason=f"{addr} H-column has no Inputs!Bxx mapping; skipped.",
+                        source=source,
+                        final_cell=dest_cell,
+                    )
+                )
+                continue
+            prev_row = prev_by_key.get(key)
+            if prev_row is None:
+                entries.append(
+                    self._entry(
+                        sheet=_LQ_BS_SHEET,
+                        addr=addr,
+                        prev_v=None,
+                        prev_t="blank",
+                        new_v=None,
+                        new_t="blank",
+                        action=CarryForwardDecision.REVIEW_REQUIRED,
+                        reason=f"No previous-quarter H formula matching Inputs!{key} for {addr}.",
+                        source=source,
+                        final_cell=dest_cell,
+                    )
+                )
+                continue
+            prev_cell = prev_ws.cell(row=prev_row, column=_LQ_BS_VALUE_COL)
+            prev_t = _cell_type(prev_cell.value)
+            if prev_t != "value":
+                entries.append(
+                    self._entry(
+                        sheet=_LQ_BS_SHEET,
+                        addr=addr,
+                        prev_v=prev_cell.value,
+                        prev_t=prev_t,
+                        new_v=None,
+                        new_t="blank",
+                        action=CarryForwardDecision.REVIEW_REQUIRED,
+                        reason=(
+                            f"Previous mapped source { _LQ_BS_SHEET }!I{prev_row} "
+                            f"(Inputs!{key}) is {prev_t}; not substituted."
+                        ),
+                        source=source,
+                        final_cell=dest_cell,
+                    )
+                )
+                continue
+            dest_cell.value = prev_cell.value
+            if prev_cell.number_format:
+                dest_cell.number_format = prev_cell.number_format
+            entries.append(
+                self._entry(
+                    sheet=_LQ_BS_SHEET,
+                    addr=addr,
+                    prev_v=prev_cell.value,
+                    prev_t="value",
+                    new_v=None,
+                    new_t="blank",
+                    action=CarryForwardDecision.CARRY_FORWARD,
+                    reason=(
+                        f"Prior-quarter snapshot for Inputs!{key} copied from "
+                        f"I{prev_row} to {addr} with number format preserved."
+                    ),
+                    source=source,
+                    final_cell=dest_cell,
+                )
+            )
+        return entries
+
+    @staticmethod
+    def _inputs_ref_key(value: Any) -> str | None:
+        m = _INPUTS_REF_RE.search(str(value or ""))
+        if not m:
+            return None
+        return f"{m.group(1).upper()}{m.group(2)}"
+
+    def _inputs_key_index(self, ws) -> dict[str, int]:
+        index: dict[str, int] = {}
+        max_row = min(ws.max_row or 1, 80)
+        for row in range(1, max_row + 1):
+            key = self._inputs_ref_key(ws.cell(row=row, column=_LQ_BS_KEY_COL).value)
+            if key and key not in index:
+                index[key] = row
+        return index
+
+    @staticmethod
+    def _detect_workbook_ticker(wb, expected: str | None = None) -> str | None:
+        """Prefer the explicit Ticker cell; fall back to a leading title token or expected."""
+        for sheet_name in ("Last Quarter IS Standardized", "Last Quarter BS Standardized"):
+            if sheet_name not in wb.sheetnames:
+                continue
+            ws = wb[sheet_name]
+            a1 = str(ws["A1"].value or "").strip()
+            c1 = ws["C1"].value
+            if a1.lower() == "ticker":
+                if isinstance(c1, str) and not c1.startswith("="):
+                    tok = c1.strip().upper()
+                    if 1 <= len(tok) <= 5 and tok.isalpha():
+                        return tok
+                return expected.upper() if expected else None
+            first = a1.split()[0].upper().replace("-", "") if a1 else ""
+            if 2 <= len(first) <= 5 and first.isalpha() and first not in _TICKER_STOP:
+                return first
+        return expected.upper() if expected else None

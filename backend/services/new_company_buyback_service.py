@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import re
+from datetime import date
 from pathlib import Path
 from typing import Any
 
@@ -14,7 +16,7 @@ from models.new_company import (
     NewCompanyBuybackReport,
 )
 from services.annual_period_service import detect_year_columns
-from services.sec_service import SecService
+from services.sec_service import SecService, SecServiceError
 
 _DOLLAR_TAGS = (
     "PaymentsForRepurchaseOfCommonStock",
@@ -27,6 +29,7 @@ _SHARE_TAGS = (
     "TreasuryStockSharesAcquired",
     "CommonStockSharesRepurchased",
 )
+_PERIOD_VALUE_TAGS = ("StockRepurchasedDuringPeriodValue",)
 _AVG_PRICE_TAGS = (
     "TreasuryStockAcquiredAverageCostPerShare",
     "StockRepurchasedDuringPeriodAverageCostPerShare",
@@ -36,6 +39,18 @@ _WAS_DILUTED = ("WeightedAverageNumberOfDilutedSharesOutstanding",)
 _SBC_TAGS = ("AllocatedShareBasedCompensationExpense", "ShareBasedCompensation")
 _FCF_PROXY = ("NetCashProvidedByUsedInOperatingActivities",)
 _CAPEX = ("PaymentsToAcquirePropertyPlantAndEquipment",)
+
+_MIN_IMPLIED_PRICE = 5.0
+_MAX_IMPLIED_PRICE = 5_000.0
+_VALUE_RECONCILE_TOL = 0.25
+
+_TABLE_WINDOW = re.compile(
+    r"total number of shares repurchased.{0,1500}?#\s*of\s*Shares.{0,240}?Value(?P<body>.{0,6000}?)(?:Total|Impact of|Comparability|Dividends Cash|Intellectual|Restructuring)",
+    re.IGNORECASE | re.DOTALL,
+)
+_YEAR_ROW = re.compile(
+    r"(?P<year>20\d{2})\s+(?P<shares>[\d,]+)\s+\$?\s*(?P<value>[\d,]+)"
+)
 
 
 def _scale(val: float, *, shares: bool = False) -> float:
@@ -48,6 +63,103 @@ def _num(v: Any) -> float | None:
     if isinstance(v, (int, float)) and not isinstance(v, bool):
         return float(v)
     return None
+
+
+def _fy_int(token: str) -> int:
+    digits = "".join(ch for ch in str(token) if ch.isdigit())
+    return int(digits) if digits else 0
+
+
+def _parse_date(raw: str | None) -> date | None:
+    if not raw:
+        return None
+    try:
+        return date.fromisoformat(str(raw)[:10])
+    except ValueError:
+        return None
+
+
+def html_to_text(html: str) -> str:
+    text = re.sub(r"(?is)<(script|style).*?>.*?</\1>", " ", html)
+    text = re.sub(r"(?is)<br\s*/?>", "\n", text)
+    text = re.sub(r"(?is)</(p|tr|div|h[1-6]|li|table)>", "\n", text)
+    text = re.sub(r"(?is)<[^>]+>", " ", text)
+    text = re.sub(r"&#8217;|&rsquo;", "'", text)
+    text = re.sub(r"&#8212;|&mdash;|&ndash;", "-", text)
+    text = re.sub(r"&#32;|&nbsp;|&#160;", " ", text)
+    text = re.sub(r"[ \t]+", " ", text)
+    text = re.sub(r"\n[ \t]+", "\n", text)
+    return text
+
+
+def parse_share_repurchase_program_table(text: str) -> dict[int, dict[str, Any]]:
+    """Parse the 10-K capital-return table (values in thousands).
+
+    Returns fiscal year → {shares_millions, dollars_millions}.
+    """
+    match = _TABLE_WINDOW.search(text)
+    if not match:
+        return {}
+    body = match.group("body")
+    out: dict[int, dict[str, Any]] = {}
+    for row in _YEAR_ROW.finditer(body):
+        year = int(row.group("year"))
+        shares_thousands = float(row.group("shares").replace(",", ""))
+        value_thousands = float(row.group("value").replace(",", ""))
+        out[year] = {
+            "shares": shares_thousands / 1_000.0,
+            "dollars": value_thousands / 1_000.0,
+            "units": "table_in_thousands → millions",
+        }
+    return out
+
+
+def _iter_tag_entries(company_facts: dict[str, Any], tag: str) -> list[dict[str, Any]]:
+    facts = company_facts.get("facts") or {}
+    for taxonomy in ("us-gaap", "dei", "ifrs-full"):
+        payload = (facts.get(taxonomy) or {}).get(tag)
+        if not payload:
+            continue
+        units = payload.get("units") or {}
+        rows: list[dict[str, Any]] = []
+        for unit, entries in units.items():
+            for entry in entries or []:
+                row = dict(entry)
+                row["_unit"] = unit
+                row["_tag"] = tag
+                rows.append(row)
+        return rows
+    return []
+
+
+def _economic_year(entry: dict[str, Any]) -> int | None:
+    frame = entry.get("frame")
+    if isinstance(frame, str):
+        annual = re.fullmatch(r"CY(\d{4})", frame.strip())
+        if annual:
+            return int(annual.group(1))
+    end = entry.get("end")
+    if isinstance(end, str) and re.match(r"^(19|20)\d{2}", end):
+        return int(end[:4])
+    fy = entry.get("fy")
+    return int(fy) if fy else None
+
+
+def _is_annual_duration(entry: dict[str, Any], target_year: int) -> bool:
+    """Reject multi-year cumulative program-to-date facts."""
+    start_d = _parse_date(entry.get("start"))
+    end_d = _parse_date(entry.get("end"))
+    if start_d and end_d:
+        days = (end_d - start_d).days
+        if days > 400 or days < 300:
+            return False
+        return True
+    frame = entry.get("frame")
+    if frame == f"CY{target_year}" and entry.get("fp") == "FY":
+        return True
+    if entry.get("fp") == "FY" and entry.get("form") in {"10-K", "10-K/A"} and start_d is None:
+        return _economic_year(entry) == target_year
+    return False
 
 
 class NewCompanyBuybackService:
@@ -67,17 +179,27 @@ class NewCompanyBuybackService:
         company_facts: dict[str, Any] | None = None,
         market_cap: float | None = None,
         intrinsic_value: float | None = None,
+        sec_manifest: dict[str, Any] | None = None,
+        cache_dir: Path | None = None,
+        filings_text: dict[str, str] | None = None,
     ) -> NewCompanyBuybackReport:
-        sec = SecService()
+        sec = SecService(cache_dir=cache_dir)
         years: list[BuybackYearResult] = []
         warnings: list[str] = []
         sbc_total = 0.0
         fcf_total = 0.0
         dollars_total = 0.0
+        narrative = self._narrative_disclosures(
+            sec,
+            sec_manifest=sec_manifest,
+            filings_text=filings_text,
+            warnings=warnings,
+        )
 
         for fy in fiscal_years:
+            year_n = _fy_int(fy)
             dollars, d_src = self._fact(sec, company_facts, fy, _DOLLAR_TAGS, scale=True)
-            shares, s_src = self._fact(sec, company_facts, fy, _SHARE_TAGS, scale=True, shares=True)
+            shares, s_src = self._annual_share_fact(company_facts, fy)
             avg, a_src = self._fact(sec, company_facts, fy, _AVG_PRICE_TAGS, scale=False)
             begin, _ = self._fact(sec, company_facts, fy, _BEGIN_SHARES, scale=True, shares=True)
             was, _ = self._fact(sec, company_facts, fy, _WAS_DILUTED, scale=True, shares=True)
@@ -112,6 +234,30 @@ class NewCompanyBuybackService:
             formula = None
             year_warnings: list[str] = []
             avg_derived = False
+
+            if shares is not None and dollars is not None and not self._implied_price_ok(dollars, shares):
+                year_warnings.append("BUYBACK_XBRL_SHARES_REJECTED_IMPLAUSIBLE_PRICE")
+                shares, s_src = None, None
+            if shares is not None and dollars is not None and not self._period_value_reconciles(
+                company_facts, fy, dollars
+            ):
+                year_warnings.append("BUYBACK_XBRL_SHARES_REJECTED_CUMULATIVE_OR_UNRECONCILED")
+                shares, s_src = None, None
+
+            disclosed = narrative.get(year_n)
+            if disclosed and disclosed.get("shares") is not None:
+                shares = float(disclosed["shares"])
+                s_src = disclosed.get("source") or "sec_10k:share_repurchase_program_table"
+                if dollars is None and disclosed.get("dollars") is not None:
+                    dollars = float(disclosed["dollars"])
+                    d_src = s_src
+                elif (
+                    dollars is not None
+                    and disclosed.get("dollars") is not None
+                    and abs(dollars - float(disclosed["dollars"])) > max(0.05 * abs(dollars), 0.05)
+                ):
+                    year_warnings.append("BUYBACK_10K_TABLE_DOLLARS_DIVERGE_FROM_CASH_FLOW")
+
             if shares is None and dollars is not None and avg not in (None, 0):
                 shares = dollars / avg
                 derived = True
@@ -168,6 +314,8 @@ class NewCompanyBuybackService:
                         "share_issuance_proceeds",
                         "acquisition_related_share_activity",
                         "change_in_shares_outstanding_not_used_as_buyback",
+                        "treasury_share_balance_delta_not_used_as_buyback",
+                        "cumulative_program_to_date_xbrl_not_used_as_annual",
                     ],
                     beginning_shares=begin,
                     issued_shares=issued,
@@ -219,6 +367,7 @@ class NewCompanyBuybackService:
             notes=[
                 "Large repurchase dollars are not by themselves shareholder-friendly.",
                 "Change in shares outstanding is not used as the buyback measure.",
+                "Treasury-share balance changes are not used as the buyback measure.",
             ]
             + (["Stock-based compensation materially offset share reduction."] if sbc_offset else []),
         )
@@ -241,6 +390,96 @@ class NewCompanyBuybackService:
                 f"sbc_offset={sbc_offset}; funded_by={funded}."
             ),
         )
+
+    @staticmethod
+    def _implied_price_ok(dollars_m: float, shares_m: float) -> bool:
+        if shares_m in (None, 0) or dollars_m is None:
+            return True
+        price = (dollars_m * 1_000_000.0) / (shares_m * 1_000_000.0)
+        return _MIN_IMPLIED_PRICE <= price <= _MAX_IMPLIED_PRICE
+
+    @staticmethod
+    def _period_value_reconciles(
+        company_facts: dict[str, Any] | None, fy: str, dollars_m: float
+    ) -> bool:
+        if not company_facts or dollars_m is None:
+            return True
+        year_n = _fy_int(fy)
+        for tag in _PERIOD_VALUE_TAGS:
+            for entry in _iter_tag_entries(company_facts, tag):
+                if _economic_year(entry) != year_n:
+                    continue
+                if not _is_annual_duration(entry, year_n):
+                    continue
+                if entry.get("val") is None:
+                    continue
+                val = _scale(float(entry["val"]))
+                denom = max(abs(dollars_m), 1e-6)
+                if abs(val - dollars_m) / denom > _VALUE_RECONCILE_TOL:
+                    return False
+        return True
+
+    @staticmethod
+    def _annual_share_fact(
+        company_facts: dict[str, Any] | None, fy: str
+    ) -> tuple[float | None, str | None]:
+        if not company_facts:
+            return None, None
+        year_n = _fy_int(fy)
+        for tag in _SHARE_TAGS:
+            for entry in _iter_tag_entries(company_facts, tag):
+                if entry.get("val") is None:
+                    continue
+                if _economic_year(entry) != year_n:
+                    continue
+                if not _is_annual_duration(entry, year_n):
+                    continue
+                val = _scale(float(entry["val"]), shares=True)
+                return val, f"sec_xbrl:{tag}"
+        return None, None
+
+    def _narrative_disclosures(
+        self,
+        sec: SecService,
+        *,
+        sec_manifest: dict[str, Any] | None,
+        filings_text: dict[str, str] | None,
+        warnings: list[str],
+    ) -> dict[int, dict[str, Any]]:
+        out: dict[int, dict[str, Any]] = {}
+        texts: list[tuple[str, str, str | None]] = []
+        if filings_text:
+            for key, body in filings_text.items():
+                texts.append((str(key), body, None))
+        elif sec_manifest:
+            cik = str(sec_manifest.get("cik") or "")
+            for filing in sec_manifest.get("selected_filings") or []:
+                if str(filing.get("filing_type") or "").upper() not in {"10-K", "10-K/A"}:
+                    continue
+                url = filing.get("document_url")
+                fy = filing.get("fiscal_year")
+                if not url or "Archives/edgar" not in str(url):
+                    continue
+                try:
+                    html = sec.fetch_document_text(
+                        url, cik=cik or None, cache_name=f"10k_buybacks_{fy}.htm"
+                    )
+                except (SecServiceError, OSError) as exc:
+                    warnings.append(f"BUYBACK_10K_RETRIEVAL_FAILED: FY{fy}: {exc}")
+                    continue
+                texts.append((f"FY{fy}", html, url))
+        for label, body, url in texts:
+            parsed = parse_share_repurchase_program_table(html_to_text(body))
+            source = f"sec_10k:share_repurchase_program_table:{label}"
+            if url:
+                source = f"{source}:{url}"
+            for year, payload in parsed.items():
+                if year in out:
+                    continue
+                row = dict(payload)
+                row["source"] = source
+                out[year] = row
+        return out
 
     @staticmethod
     def _fact(

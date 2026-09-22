@@ -22,6 +22,13 @@ class InputsBridge(BaseModel):
 
     pe10: FinancialSeries = Field(default_factory=lambda: _series("PE10"))
     e10: FinancialSeries = Field(default_factory=lambda: _series("E10"))
+    eps_10y_growth: FinancialSeries = Field(default_factory=lambda: _series("EPS 10-Year Growth"))
+    eps_10y_direction: FinancialSeries = Field(
+        default_factory=lambda: _series("EPS 10-Year Direction")
+    )
+    revenue_10y_growth: FinancialSeries = Field(
+        default_factory=lambda: _series("Revenue 10-Year Growth")
+    )
     tax_federal: FinancialSeries = Field(default_factory=lambda: _series("Federal Tax"))
     tax_state: FinancialSeries = Field(default_factory=lambda: _series("State Taxes"))
     tax_foreign: FinancialSeries = Field(default_factory=lambda: _series("Foreign Taxes"))

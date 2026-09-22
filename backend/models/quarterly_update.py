@@ -197,6 +197,8 @@ class QuarterlyProjectionReport(BaseModel):
     prior_fy_roce: float | None = None
     source_cells: dict[str, str] = Field(default_factory=dict)
     formulas_written: dict[str, str] = Field(default_factory=dict)
+    yellow_fill_applied: bool = False
+    percent_format_cells: list[str] = Field(default_factory=list)
     summary: str = ""
 
 
@@ -294,4 +296,27 @@ class QuarterlyPerformanceReport(BaseModel):
     total_elapsed_ms: float = 0.0
     stages: list[StageTiming] = Field(default_factory=list)
     annual_only_stages_skipped: list[str] = Field(default_factory=list)
+    summary: str = ""
+
+
+class QuarterlyValuationReport(BaseModel):
+    """Artifact: quarterly_valuation_report.json — Annual ER/EV/Graham parity."""
+
+    analysis_id: str
+    ticker: str
+    schema_version: str = "1.0.0"
+    status: str = "ok"
+    fiscal_quarter: int | None = None
+    fiscal_year: int | None = None
+    period_context: str = ""
+    original_assumptions_preserved: bool = True
+    excel_recalc_status: str | None = None
+    excel_recalc_method: str | None = None
+    circular_status: str | None = None
+    hap_introduced_circular_count: int = 0
+    judgment_summary: str = ""
+    er_decision: str | None = None
+    oe_decision: str | None = None
+    graham_decision: str | None = None
+    normalized_base_decision: str | None = None
     summary: str = ""

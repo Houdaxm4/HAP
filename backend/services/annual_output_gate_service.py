@@ -34,6 +34,7 @@ class AnnualOutputGateService:
         rd: AnnualRdReport | None,
         valuation: AnnualValuationOutputs | None,
         recalc: ExcelRecalcReport | None = None,
+        circular=None,
     ) -> AnnualOutputGateReport:
         blockers: list[str] = []
         warnings: list[str] = []
@@ -56,6 +57,30 @@ class AnnualOutputGateService:
             gates["workbook_recalculation"] = "fail"
         else:
             gates["workbook_recalculation"] = "pass"
+
+        if circular is not None:
+            if getattr(circular, "hap_introduced", None):
+                blockers.append("HAP_INTRODUCED_CIRCULAR_REFERENCE")
+                for cycle in circular.hap_introduced:
+                    blockers.append(
+                        "BLOCKING_STRUCTURAL_ERROR: " + (cycle.reason or " -> ".join(cycle.cells))
+                    )
+                gates["circular_references"] = "fail"
+            elif getattr(circular, "pre_existing", None):
+                warnings.append("PRE_EXISTING_CIRCULAR_REFERENCE")
+                gates["circular_references"] = "review"
+            else:
+                gates["circular_references"] = "pass"
+        else:
+            gates["circular_references"] = "skipped"
+
+        if inputs is not None:
+            if inputs.eps_10y_growth is None or inputs.eps_10y_growth.source_value is None:
+                warnings.append("ANNUAL_EPS_10Y_GROWTH_INPUT_MISSING")
+            if inputs.eps_10y_direction is None or inputs.eps_10y_direction.source_value is None:
+                warnings.append("ANNUAL_EPS_10Y_DIRECTION_INPUT_MISSING")
+            if inputs.revenue_10y_growth is None or inputs.revenue_10y_growth.source_value is None:
+                warnings.append("ANNUAL_REVENUE_10Y_GROWTH_INPUT_MISSING")
 
         # Gate — tax inputs + Tax sheet calculated outputs
         if tax is None or not tax.schedule_populated or not tax.cells_written:

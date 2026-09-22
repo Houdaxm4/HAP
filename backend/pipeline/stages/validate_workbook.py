@@ -217,6 +217,7 @@ class ValidateWorkbookStage:
                 workbook_path=completed_workbook_path,
                 company_facts=company_facts,
                 include_quarterly=(mode == AnalysisTypeMode.QUARTERLY_UPDATE),
+                annotate_workbook=(mode == AnalysisTypeMode.ANNUAL_UPDATE),
             )
             self.output_service.write_json(
                 analysis.analysis_id,

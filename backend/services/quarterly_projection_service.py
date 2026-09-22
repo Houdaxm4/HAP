@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from openpyxl import load_workbook
+from openpyxl.styles import PatternFill
 
 from models.quarterly_presentation import STATEMENT_SHEETS, QuarterlyStatementKind
 from models.quarterly_update import QuarterlyProjectionReport
@@ -18,6 +19,10 @@ LQ_CF = STATEMENT_SHEETS[QuarterlyStatementKind.CASH_FLOW]
 LAST_FY_COL = 12  # L
 PROJ_COL = 13  # M
 ROCE_COL = 14  # N
+_YELLOW = PatternFill(start_color="FFFF00", end_color="FFFF00", fill_type="solid")
+_PERCENT_FORMAT = "0.00%"
+_PCT_LABEL_NEEDLES = ("roic", "roce", "wacc", "margin", "spread")
+_DOLLAR_PROJ_ROWS = {3, 4, 5, 6, 7, 11, 13, 14, 15, 16, 17, 18, 19, 20}
 
 # Same annual BS row classifications as Inputs!81/82/84/85 (house ROIC OA/OL)
 _OA_CURRENT_ROWS = (11, 14, 20, 27)
@@ -275,6 +280,8 @@ class QuarterlyProjectionService:
             ic.cell(4, ROCE_COL).value = roce_f
             formulas["N4"] = roce_f
 
+            percent_cells = self._apply_projection_formats(ic)
+
             wb.save(workbook_path)
 
             bs_date = None
@@ -328,6 +335,8 @@ class QuarterlyProjectionService:
                     "prior_tax": f"{IC_SHEET}!L19",
                 },
                 formulas_written=formulas,
+                yellow_fill_applied=True,
+                percent_format_cells=percent_cells,
                 summary=(
                     (
                         f"Q{q} projection: factor={factor:.4g}, "
@@ -344,6 +353,50 @@ class QuarterlyProjectionService:
             wb.close()
             if prev_wb is not None:
                 prev_wb.close()
+
+    @staticmethod
+    def _apply_projection_formats(ic) -> list[str]:
+        """Yellow fill M1:N25; percentage format on ROIC/ROCE/WACC metrics only.
+
+        Does not rescale stored decimals (0.125 stays 0.125, displayed 12.50%).
+        """
+        percent_cells: list[str] = []
+        for row in range(1, 26):
+            for col in (PROJ_COL, ROCE_COL):
+                ic.cell(row, col).fill = _YELLOW
+
+        def _mark_percent(row: int, col: int) -> None:
+            cell = ic.cell(row, col)
+            cell.number_format = _PERCENT_FORMAT
+            from openpyxl.utils import get_column_letter
+
+            percent_cells.append(f"{get_column_letter(col)}{row}")
+
+        for row in (23, 24, 25):
+            _mark_percent(row, PROJ_COL)
+        _mark_percent(4, ROCE_COL)
+
+        for row in range(1, 26):
+            if row in _DOLLAR_PROJ_ROWS:
+                continue
+            label = str(ic.cell(row, 1).value or "").lower()
+            if row in {23, 24, 25}:
+                continue
+            if any(n in label for n in _PCT_LABEL_NEEDLES) and row != 1:
+                mval = ic.cell(row, PROJ_COL).value
+                if mval not in (None, "") and (
+                    isinstance(mval, (int, float)) or (isinstance(mval, str) and mval.startswith("="))
+                ):
+                    _mark_percent(row, PROJ_COL)
+            nval = ic.cell(row, ROCE_COL).value
+            if nval in (None, "") or row == 1:
+                continue
+            n_is_ratio = isinstance(nval, str) and nval.startswith("=") and "/" in nval
+            n_is_num = isinstance(nval, (int, float))
+            if n_is_ratio or (n_is_num and any(n in label for n in _PCT_LABEL_NEEDLES)):
+                if row != 4:
+                    _mark_percent(row, ROCE_COL)
+        return percent_cells
 
     def _last_fy_component(self, wb, ic, row: int, prev_wb=None) -> float | None:
         v = self._resolve_value(wb, ic.cell(row, LAST_FY_COL).value, IC_SHEET)

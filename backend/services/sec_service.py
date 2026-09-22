@@ -11,6 +11,8 @@ from typing import Any
 
 import httpx
 
+from ssl_config import default_ssl_context
+
 SEC_TICKERS_URL = "https://www.sec.gov/files/company_tickers.json"
 SEC_SUBMISSIONS_URL = "https://data.sec.gov/submissions/CIK{cik}.json"
 SEC_COMPANY_FACTS_URL = "https://data.sec.gov/api/xbrl/companyfacts/CIK{cik}.json"
@@ -115,6 +117,63 @@ class SecService:
             "selected_filings": [self._filing_to_dict(filing) for filing in selected],
             "total_filings_scanned": len(filings),
         }
+
+    def list_recent_filings(
+        self,
+        cik: str,
+        *,
+        forms: set[str] | None = None,
+        items_contains: str | None = None,
+    ) -> list[dict[str, Any]]:
+        """All recent EDGAR filings of the requested forms (does not change selected_filings)."""
+        submissions = self._get_json(SEC_SUBMISSIONS_URL.format(cik=cik))
+        recent = submissions.get("filings", {}).get("recent", {})
+        forms = forms or {"10-K", "10-Q", "8-K"}
+        out: list[dict[str, Any]] = []
+        form_list = recent.get("form", [])
+        items_list = recent.get("items", [])
+        desc_list = recent.get("primaryDocDescription", [])
+        for index, form in enumerate(form_list):
+            if form not in forms:
+                continue
+            items = items_list[index] if index < len(items_list) else ""
+            if items_contains and items_contains not in str(items):
+                continue
+            accession = recent["accessionNumber"][index].replace("-", "")
+            primary_document = recent["primaryDocument"][index]
+            filing = FilingDocument(
+                accession_number=recent["accessionNumber"][index],
+                filing_type=form,
+                filing_date=recent["filingDate"][index],
+                report_date=recent.get("reportDate", [None] * len(form_list))[index],
+                primary_document=primary_document,
+                document_url=(
+                    f"{SEC_ARCHIVES_BASE}/{int(cik)}/{accession}/{primary_document}"
+                ),
+                fiscal_year=self._extract_year(recent.get("reportDate", [None] * len(form_list))[index]),
+            )
+            row = self._filing_to_dict(filing)
+            row["items"] = items
+            row["primary_doc_description"] = desc_list[index] if index < len(desc_list) else ""
+            out.append(row)
+        return out
+
+    def fetch_document_text(self, url: str, *, cik: str | None = None, cache_name: str | None = None) -> str:
+        """Fetch a filing document body. Caches under cache_dir when configured.
+
+        This is the existing SEC HTTP client, not a second downloader.
+        """
+        cache_path = None
+        if self.cache_dir is not None and cik and cache_name:
+            safe = re.sub(r"[^A-Za-z0-9._-]", "_", cache_name)[:180]
+            cache_path = self.cache_dir / cik / "filings" / safe
+            if cache_path.exists():
+                return cache_path.read_text(encoding="utf-8", errors="replace")
+        body = self._get_text(url)
+        if cache_path:
+            cache_path.parent.mkdir(parents=True, exist_ok=True)
+            cache_path.write_text(body, encoding="utf-8", errors="replace")
+        return body
 
     def fetch_company_facts(self, cik: str) -> dict[str, Any]:
         """Download structured XBRL company facts for an issuer."""
@@ -311,13 +370,37 @@ class SecService:
             "User-Agent": self.user_agent,
             "Accept": "application/json",
         }
-        with httpx.Client(timeout=30.0, headers=headers, follow_redirects=True) as client:
+        with httpx.Client(
+            timeout=30.0,
+            headers=headers,
+            follow_redirects=True,
+            verify=default_ssl_context(),
+        ) as client:
             response = client.get(url)
             if response.status_code != 200:
                 raise SecServiceError(
                     f"SEC request failed ({response.status_code}) for {url}"
                 )
             return response.json()
+
+    def _get_text(self, url: str) -> str:
+        self._respect_rate_limit()
+        headers = {
+            "User-Agent": self.user_agent,
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,text/plain;q=0.8,*/*;q=0.7",
+        }
+        with httpx.Client(
+            timeout=60.0,
+            headers=headers,
+            follow_redirects=True,
+            verify=default_ssl_context(),
+        ) as client:
+            response = client.get(url)
+            if response.status_code != 200:
+                raise SecServiceError(
+                    f"SEC request failed ({response.status_code}) for {url}"
+                )
+            return response.text
 
     def _respect_rate_limit(self) -> None:
         elapsed = time.time() - self._last_request_at

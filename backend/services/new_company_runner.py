@@ -25,12 +25,16 @@ from services.new_company_lease_service import NewCompanyLeaseService
 from services.new_company_output_gate_service import NewCompanyOutputGateService
 from services.new_company_pe10_service import NewCompanyPe10Service
 from services.new_company_period_service import NewCompanyPeriodService
-from services.new_company_projection_service import NewCompanyProjectionService
+from services.new_company_projection_service import (
+    NewCompanyProjectionService,
+    resolve_workbook_wacc,
+)
 from services.new_company_rd_service import NewCompanyRdService
 from services.new_company_seasonality_service import NewCompanySeasonalityService
 from services.new_company_sec_coverage_service import NewCompanySecCoverageService
 from services.new_company_statement_validation_service import NewCompanyStatementValidationService
 from services.new_company_tax_service import NewCompanyTaxService
+from services.new_company_valuation_service import NewCompanyValuationService
 from services.output_service import OutputService
 
 
@@ -75,6 +79,7 @@ class NewCompanyRunner:
         self.gates = NewCompanyOutputGateService()
         self.deliverables = NewCompanyDeliverablesService()
         self.valuation_extract = AnnualValuationExtractService()
+        self.valuation_judgment = NewCompanyValuationService()
         self.excel_recalc = ExcelRecalcService()
         self.guard = AnnualFormulaGuardService()
         self.current = CurrentDataRefreshService()
@@ -233,6 +238,8 @@ class NewCompanyRunner:
                 workbook_path=working_path,
                 fiscal_years=years,
                 company_facts=company_facts,
+                sec_manifest=sec_manifest,
+                cache_dir=self.output_service.analysis_output_dir(analysis_id) / "sec_cache",
             ),
         )
         current_refresh = self.current.apply(
@@ -270,6 +277,7 @@ class NewCompanyRunner:
             current.as_of_mismatch = True
             current.warnings.append("CURRENT_DATA_AS_OF_DATE_MISMATCH")
 
+        mapped_wacc, mapped_wacc_src = (wacc, "custom_run.assumptions.wacc") if wacc is not None else resolve_workbook_wacc(working_path)
         seasonality = timed(
             "seasonality",
             lambda: self.seasonality.project(
@@ -278,6 +286,8 @@ class NewCompanyRunner:
                 workbook_path=working_path,
                 fiscal_years=years,
                 latest_quarter=periods.latest_quarter,
+                company_facts=company_facts,
+                latest_quarter_fiscal_year=periods.latest_quarter_fiscal_year,
             ),
         )
         projection = timed(
@@ -289,7 +299,8 @@ class NewCompanyRunner:
                 fiscal_years=years,
                 latest_quarter=periods.latest_quarter,
                 seasonality=seasonality,
-                wacc=wacc,
+                wacc=mapped_wacc,
+                wacc_source=mapped_wacc_src if mapped_wacc is not None else None,
             ),
         )
         self.guard.inspect(analysis_id=analysis_id, ticker=ticker, workbook_path=working_path)
@@ -303,6 +314,11 @@ class NewCompanyRunner:
 
         recalc = None
         valuation = None
+        val_report = None
+        er_rep = None
+        judgment = None
+        circular = None
+        analytical = None
         gate = None
         deliv = None
         if not awaiting:
@@ -317,6 +333,46 @@ class NewCompanyRunner:
                     fiscal_year=years[-1] if years else None,
                 ),
             )
+            fy_int = _fy_int(years[-1]) if years else 0
+            if genuine_excel_com_recalc(recalc):
+                val_pack = timed(
+                    "valuation_judgment",
+                    lambda: self.valuation_judgment.apply(
+                        analysis_id=analysis_id,
+                        ticker=ticker,
+                        workbook_path=working_path,
+                        previous_workbook_path=template_path,
+                        template_path=template_path,
+                        company_facts=company_facts,
+                        sec_manifest=sec_manifest,
+                        fiscal_year=fy_int or None,
+                        fiscal_quarter=periods.latest_quarter,
+                        cache_dir=self.output_service.analysis_output_dir(analysis_id),
+                        skip_initial_recalc=True,
+                        prior_recalc=recalc,
+                    ),
+                )
+                val_report, er_rep, judgment, circular, recalc_post, analytical = val_pack
+                if recalc_post is not None:
+                    recalc = recalc_post
+                mapped_wacc, mapped_wacc_src = (
+                    (wacc, "custom_run.assumptions.wacc")
+                    if wacc is not None
+                    else resolve_workbook_wacc(working_path)
+                )
+                projection = timed(
+                    "projected_roic_roce_after_com",
+                    lambda: self.projection.apply(
+                        analysis_id=analysis_id,
+                        ticker=ticker,
+                        workbook_path=working_path,
+                        fiscal_years=years,
+                        latest_quarter=periods.latest_quarter,
+                        seasonality=seasonality,
+                        wacc=mapped_wacc,
+                        wacc_source=mapped_wacc_src if mapped_wacc is not None else None,
+                    ),
+                )
             pe_fy = next((o.value for o in reversed(pe10.fiscal_year_pe10) if o.value is not None), None)
             pe_fy_label = years[-1] if years else None
             pe_fy_asof = next((o.as_of_date for o in reversed(pe10.fiscal_year_pe10) if o.as_of_date), None)
@@ -324,7 +380,7 @@ class NewCompanyRunner:
                 "valuation_extract",
                 lambda: self.valuation_extract.extract(
                     working_path,
-                    recalculation_complete=(recalc.status == "ok"),
+                    recalculation_complete=genuine_excel_com_recalc(recalc),
                     pe10_fiscal=pe_fy,
                     pe10_fiscal_label=pe_fy_label,
                     pe10_fiscal_as_of=pe_fy_asof,
@@ -351,10 +407,10 @@ class NewCompanyRunner:
                     projection=projection,
                     recalc=recalc,
                     valuation=valuation,
+                    valuation_judgment=val_report,
                 ),
             )
             authorized = gate.report_authorized
-            fy_int = _fy_int(years[-1]) if years else 0
             deliv = timed(
                 "deliverables",
                 lambda: self.deliverables.produce(
@@ -378,6 +434,8 @@ class NewCompanyRunner:
                     gate=gate,
                     authorized=authorized,
                     statement_summary=statements.summary,
+                    judgment=judgment,
+                    valuation_report=val_report,
                 ),
             )
             if authorized and genuine_excel_com_recalc(recalc):
@@ -426,6 +484,18 @@ class NewCompanyRunner:
             }
         if deliv is not None:
             artifacts["new_company_deliverables_report.json"] = deliv
+        if val_report is not None:
+            artifacts["new_company_valuation_report.json"] = val_report
+        if judgment is not None:
+            artifacts["new_company_analyst_judgment_report.json"] = judgment
+        if circular is not None:
+            artifacts["new_company_circular_reference_report.json"] = circular
+        if er_rep is not None:
+            artifacts["new_company_expected_return_report.json"] = er_rep
+        if analytical is not None:
+            artifacts["new_company_analytical_research_report.json"] = analytical
+        if judgment is not None and getattr(judgment, "oe_base_analysis", None) is not None:
+            artifacts["new_company_normalized_base_report.json"] = judgment.oe_base_analysis
         for name, obj in artifacts.items():
             self.output_service.write_json(analysis_id, name, obj)
 
@@ -457,6 +527,16 @@ class NewCompanyRunner:
                 "com_invoked": bool(recalc.com_invoked) if recalc is not None else False,
                 "recalc_status": recalc.status if recalc is not None else None,
                 "recalc_method": recalc.method if recalc is not None else None,
+                "valuation_judgment_status": val_report.status if val_report is not None else None,
+                "er_decision": val_report.er_decision if val_report is not None else None,
+                "oe_decision": val_report.oe_decision if val_report is not None else None,
+                "graham_decision": val_report.graham_decision if val_report is not None else None,
+                "original_assumptions_preserved": (
+                    val_report.original_assumptions_preserved if val_report is not None else None
+                ),
+                "hap_introduced_circular_count": (
+                    val_report.hap_introduced_circular_count if val_report is not None else None
+                ),
             },
         )
         self.output_service.write_json(
@@ -481,6 +561,9 @@ class NewCompanyRunner:
             "projection": projection,
             "recalc": recalc,
             "valuation": valuation,
+            "valuation_judgment": val_report,
+            "judgment": judgment,
+            "circular": circular,
             "output_gate": gate,
             "deliverables": deliv,
             "state": state,

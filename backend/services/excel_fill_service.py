@@ -11,6 +11,8 @@ from openpyxl.worksheet.worksheet import Worksheet
 
 from models.cell_diff import CellDiffEntry, CellDiffReport
 from models.provenance import CellProvenance, CellTransformation, ProvenanceReport
+from services.circular_reference_service import CircularReferenceService
+from services.formula_utils import formula_would_self_reference, is_formula
 from workbook_mapping.engine import IntentDecision, WriteIntent, WriteIntentReport
 
 
@@ -171,6 +173,36 @@ class ExcelFillService:
                         )
                     )
                     continue
+
+                if isinstance(intent.value, str) and str(intent.value).startswith("="):
+                    from openpyxl.utils.cell import coordinate_from_string, column_index_from_string
+
+                    col_letter, row_n = coordinate_from_string(intent.cell)
+                    if formula_would_self_reference(
+                        intent.value, column_index_from_string(col_letter), row_n, sheet=intent.sheet
+                    ) or CircularReferenceService().write_would_create_cycle(
+                        workbook, sheet=intent.sheet, cell=intent.cell, formula=str(intent.value)
+                    ):
+                        runtime_block += 1
+                        reason = (
+                            f"BLOCKING_STRUCTURAL_ERROR: proposed formula at "
+                            f"{intent.sheet}!{intent.cell} would create a circular reference"
+                        )
+                        diff_entries.append(
+                            self._diff_from_intent(
+                                intent,
+                                write_decision="BLOCK",
+                                reason=reason,
+                                original_value=original,
+                                new_value=original,
+                            )
+                        )
+                        provenance.append(
+                            self._prov_from_intent(
+                                intent, status="blocked", original=original, failure_reason=reason
+                            )
+                        )
+                        continue
 
                 # Assign value only — preserves number_format, font, fill, borders, etc.
                 cell.value = intent.value

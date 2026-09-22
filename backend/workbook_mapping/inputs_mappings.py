@@ -57,6 +57,66 @@ def inputs_mappings() -> list[MappingEntry]:
             notes="inputs_sink:e10 bloomberg_custom_run",
         )
     )
+    entries.append(
+        MappingEntry(
+            mapping_id="inputs.eps_10y_growth",
+            cfm_path="inputs.eps_10y_growth",
+            metric_name="EPS 10-Year Growth",
+            sheet="Inputs",
+            row=59,
+            columns=list(ANNUAL_PERIOD_COLS),
+            expected_label="EPS 10-Year Growth",
+            label_cell="A59",
+            time_dimension=TimeDimension.ANNUAL_FY,
+            unit="ratio",
+            data_type="float",
+            transformation=None,
+            validation_rules=list(_INPUTS_PERIOD_VALIDATION),
+            write_priority=5,
+            fill_priority="P0",
+            notes="inputs_sink:eps_10y_growth bloomberg_custom_run",
+        )
+    )
+    entries.append(
+        MappingEntry(
+            mapping_id="inputs.eps_10y_direction",
+            cfm_path="inputs.eps_10y_direction",
+            metric_name="EPS 10-Year Direction",
+            sheet="Inputs",
+            row=60,
+            columns=list(ANNUAL_PERIOD_COLS),
+            expected_label="EPS 10-Year Direction",
+            label_cell="A60",
+            time_dimension=TimeDimension.ANNUAL_FY,
+            unit="flag",
+            data_type="str",
+            transformation=None,
+            validation_rules=["null_skips_write"],
+            write_priority=5,
+            fill_priority="P0",
+            notes="inputs_sink:eps_10y_direction bloomberg_custom_run",
+        )
+    )
+    entries.append(
+        MappingEntry(
+            mapping_id="inputs.revenue_10y_growth",
+            cfm_path="inputs.revenue_10y_growth",
+            metric_name="Revenue 10-Year Growth",
+            sheet="Inputs",
+            row=61,
+            columns=list(ANNUAL_PERIOD_COLS),
+            expected_label="Revenue 10-Year Growth",
+            label_cell="A61",
+            time_dimension=TimeDimension.ANNUAL_FY,
+            unit="ratio",
+            data_type="float",
+            transformation=None,
+            validation_rules=list(_INPUTS_PERIOD_VALIDATION),
+            write_priority=5,
+            fill_priority="P0",
+            notes="inputs_sink:revenue_10y_growth bloomberg_custom_run",
+        )
+    )
 
     # --- Current data scalars ---
     current_points = [

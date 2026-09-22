@@ -12,7 +12,7 @@ class PresentationDecision(str, Enum):
     BLOOMBERG_PRESERVE = "BLOOMBERG_PRESERVE"
     BLOOMBERG_FILL_GAPS = "BLOOMBERG_FILL_GAPS"
     YAHOO_BASIC_TEMPLATE_REQUIRED = "YAHOO_BASIC_TEMPLATE_REQUIRED"
-    SEC_10Q_PRESENTATION_REQUIRED = "SEC_10Q_PRESENTATION_REQUIRED"  # secondary fallback
+    SEC_10Q_PRESENTATION_REQUIRED = "SEC_10Q_PRESENTATION_REQUIRED"
     BLOCKED = "BLOCKED"
 
 
@@ -41,6 +41,7 @@ class BloombergHealthAssessment(BaseModel):
     major_totals_missing: list[str] = Field(default_factory=list)
     structural_failure: bool = False
     isolated_gaps: bool = False
+    missing_fact_labels: list[str] = Field(default_factory=list)
     coherence_notes: list[str] = Field(default_factory=list)
     reason: str = ""
 
@@ -61,6 +62,11 @@ class SecLineItem(BaseModel):
     source_url: str | None = None
     duration_kind: str = "unknown"  # standalone_quarter | ytd | instant | unknown
     unit: str = "USD"
+    extraction_method: str | None = None  # reported_standalone | derived_ytd_subtract | reported_ytd | reported_instant | unresolved
+    derivation: str | None = None
+    unresolved_reason: str | None = None
+    ytd_value: float | None = None
+    source: str = "sec"
 
 
 class QuarterlyStatementPresentation(BaseModel):
@@ -84,6 +90,9 @@ class QuarterlyStatementPresentation(BaseModel):
     ytd_provenance: dict[str, Any] = Field(default_factory=dict)
     data_source_primary: str | None = None  # bloomberg | yahoo | sec
     data_source_secondary: str | None = None
+    unresolved_facts: list[dict[str, Any]] = Field(default_factory=list)
+    source_discrepancies: list[dict[str, Any]] = Field(default_factory=list)
+    derivation_notes: list[str] = Field(default_factory=list)
 
 
 class QuarterlyPresentationReport(BaseModel):
@@ -91,7 +100,7 @@ class QuarterlyPresentationReport(BaseModel):
 
     analysis_id: str
     ticker: str
-    schema_version: str = "1.0.0"
+    schema_version: str = "1.1.0"
     milestone: str = "quarterly_sec_10q_presentation_authority"
     statements: list[QuarterlyStatementPresentation] = Field(default_factory=list)
     summary: str = ""

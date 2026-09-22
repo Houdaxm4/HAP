@@ -302,6 +302,7 @@ class StatementValidationService:
         company_facts: dict[str, Any],
         include_quarterly: bool = False,
         annual_lines: bool = True,
+        annotate_workbook: bool = False,
     ) -> StatementValidationReport:
         wb = load_workbook(workbook_path, data_only=False)
         entries: list[StatementValidationEntry] = []
@@ -441,6 +442,9 @@ class StatementValidationService:
                             scale="USD_millions" if scale == "millions" else scale,
                         )
                     )
+            if annotate_workbook:
+                self._annotate_discrepancies(wb, entries)
+                wb.save(workbook_path)
         finally:
             wb.close()
 
@@ -453,7 +457,7 @@ class StatementValidationService:
             f"{counts[StatementValidationDecision.REVIEW_REQUIRED]} REVIEW_REQUIRED, "
             f"{counts[StatementValidationDecision.SOURCE_MISSING]} SOURCE_MISSING, "
             f"{counts[StatementValidationDecision.NOT_COMPARABLE]} NOT_COMPARABLE "
-            f"(no workbook writes)."
+            f"(no silent value rewrites; discrepancies flagged in-workbook)."
         )
         return StatementValidationReport(
             analysis_id=analysis_id,
@@ -467,6 +471,34 @@ class StatementValidationService:
             materiality_rules=dict(MATERIALITY_RULES),
             summary=summary,
         )
+
+    @staticmethod
+    def _annotate_discrepancies(wb, entries: list[StatementValidationEntry]) -> None:
+        from services.workbook_flag_service import flag_discrepancy
+
+        for entry in entries:
+            if entry.decision != StatementValidationDecision.DISCREPANCY:
+                continue
+            if "!" not in (entry.workbook_cell or ""):
+                continue
+            sheet, addr = entry.workbook_cell.split("!", 1)
+            if sheet not in wb.sheetnames:
+                continue
+            cell = wb[sheet][addr]
+            if isinstance(cell.value, str) and cell.value.startswith("="):
+                continue
+            provenance = (
+                f"{entry.filing_form or 'SEC'} {entry.accession_number or ''} "
+                f"{entry.fiscal_period} {entry.sec_concept or ''}"
+            ).strip()
+            flag_discrepancy(
+                wb[sheet],
+                addr,
+                workbook_value=entry.workbook_value,
+                source_value=entry.sec_value,
+                provenance=provenance,
+                issue=entry.reason,
+            )
 
     def _find_sec(
         self,

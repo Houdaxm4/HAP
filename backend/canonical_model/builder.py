@@ -375,6 +375,46 @@ class CompanyFinancialModelBuilder:
                     ],
                 )
 
+            def _annual_ratio_series(field: str, name: str, meta_key: str, concept: str) -> None:
+                series_map = meta.get(meta_key) or {}
+                if not series_map:
+                    return
+                setattr(
+                    bridge,
+                    field,
+                    FinancialSeries(
+                        name=name,
+                        currency="USD",
+                        points=[
+                            FinancialPoint(
+                                period=fy,
+                                value=float(val),
+                                source="bloomberg_custom_run",
+                                confidence=0.95,
+                                provenance=LineItemProvenance(
+                                    concept=concept,
+                                    source_document=src,
+                                ),
+                            )
+                            for fy, val in sorted(series_map.items())
+                            if isinstance(val, (int, float))
+                        ],
+                    ),
+                )
+
+            _annual_ratio_series(
+                "eps_10y_growth",
+                "EPS 10-Year Growth",
+                "inputs_annual_eps_10y_growth",
+                "EPS 10-Year Growth",
+            )
+            _annual_ratio_series(
+                "revenue_10y_growth",
+                "Revenue 10-Year Growth",
+                "inputs_annual_revenue_10y_growth",
+                "Revenue 10-Year Growth",
+            )
+
             def _crf_float(*keys: str) -> float | None:
                 val = custom_run.scalar(*keys)
                 return float(val) if isinstance(val, (int, float)) else None

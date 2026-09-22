@@ -20,6 +20,7 @@ from models.new_company import (
     NewCompanyProjectionReport,
     NewCompanyRdReport,
     NewCompanyTaxReport,
+    NewCompanyValuationReport,
     RdUsefulLifeDecision,
     SeasonalityProjectionReport,
     TenYearPeriodReport,
@@ -63,6 +64,8 @@ class NewCompanyDeliverablesService:
         gate: NewCompanyOutputGateReport | None,
         authorized: bool,
         statement_summary: str | None = None,
+        judgment: Any = None,
+        valuation_report: NewCompanyValuationReport | None = None,
     ) -> NewCompanyDeliverablesReport:
         output_dir.mkdir(parents=True, exist_ok=True)
         excel_name = f"{fiscal_year} {ticker.upper()} FA.xlsx"
@@ -89,6 +92,8 @@ class NewCompanyDeliverablesService:
                 valuation=valuation,
                 gate=gate,
                 statement_summary=statement_summary,
+                judgment=judgment,
+                valuation_report=valuation_report,
             )
         else:
             word_name = None
@@ -128,6 +133,8 @@ class NewCompanyDeliverablesService:
         valuation: AnnualValuationOutputs | None,
         gate: NewCompanyOutputGateReport | None,
         statement_summary: str | None,
+        judgment: Any = None,
+        valuation_report: NewCompanyValuationReport | None = None,
     ) -> None:
         doc = Document()
         style = doc.styles["Normal"]
@@ -358,7 +365,73 @@ class NewCompanyDeliverablesService:
             "seasonality projection error."
         )
 
-        doc.add_heading("16. Analyst judgments and overrides", level=1)
+        doc.add_heading("16. HAP valuation judgment (ER / EV / Owner Earnings / Graham)", level=1)
+        doc.add_paragraph(
+            "Original analyst growth-rate cells and valuation formulas were not overwritten. "
+            "Any HAP alternative appears as HAP ANALYSIS only and is not the applied model output. "
+            "When evidence is insufficient, HAP explains why rather than inventing a fallback growth rate."
+        )
+        if valuation_report is not None and valuation_report.period_context:
+            doc.add_paragraph(valuation_report.period_context)
+        elif periods and periods.latest_quarter in {2, 3}:
+            q = periods.latest_quarter
+            ytd = "six-month" if q == 2 else "nine-month"
+            doc.add_paragraph(
+                f"Q{q} initiation: distinguish reported {ytd} YTD, standalone Q{q}, and projected "
+                "full-year amounts. Partial-year figures do not feed annual valuation formulas "
+                "without annualization."
+            )
+        if judgment is not None:
+            er = getattr(judgment, "expected_return", None) or getattr(judgment, "er_analysis", None)
+            oe = getattr(judgment, "oe_analysis", None) or getattr(judgment, "owner_earnings_growth", None)
+            gr = getattr(judgment, "graham_analysis", None) or getattr(judgment, "graham_eps_growth", None)
+            for rec, title in ((er, "Expected Returns"), (oe, "Owner Earnings"), (gr, "Graham")):
+                if rec is None:
+                    continue
+                decision = getattr(rec, "decision", None)
+                rationale = getattr(rec, "rationale", None) or getattr(rec, "reason", None) or ""
+                existing = getattr(rec, "existing_assumption", None) or getattr(rec, "original_value", None)
+                hap_rate = getattr(rec, "selected_prospective_rate", None) or getattr(
+                    rec, "selected_value", None
+                )
+                line = f"{title}: {decision or 'n/a'}"
+                if existing is not None:
+                    line += f" | original {existing}"
+                if hap_rate is not None and decision == "ADJUST":
+                    line += f" | HAP suggested {hap_rate} (not applied to original cell)"
+                if decision == "INSUFFICIENT_EVIDENCE":
+                    line += " | no fallback growth rate invented"
+                doc.add_paragraph(line, style="List Bullet")
+                if rationale:
+                    doc.add_paragraph(str(rationale)[:500], style="List Bullet")
+            oe_base = getattr(judgment, "oe_base_analysis", None)
+            disclosure = getattr(oe_base, "disclosure", None) if oe_base is not None else None
+            if isinstance(oe_base, dict):
+                disclosure = oe_base.get("disclosure") or {}
+                word_text = disclosure.get("word_text") if isinstance(disclosure, dict) else None
+            else:
+                word_text = getattr(disclosure, "word_text", None) if disclosure is not None else None
+            if word_text:
+                doc.add_paragraph(
+                    "Normalized earnings-power disclosure (HAP ANALYSIS, not established fact):"
+                )
+                doc.add_paragraph(str(word_text)[:1200])
+            hap_cells = getattr(judgment, "hap_analysis_cells", None) or (
+                valuation_report.hap_analysis_cells if valuation_report else []
+            )
+            if hap_cells:
+                doc.add_paragraph(
+                    "HAP_ANALYSIS cells (not original analyst data): " + ", ".join(list(hap_cells)[:20])
+                )
+        elif valuation_report is not None:
+            doc.add_paragraph(valuation_report.summary)
+        else:
+            doc.add_paragraph(
+                "Valuation judgment was not run. Final authorization requires genuine Excel COM "
+                "CalculateFullRebuild after lease-rate approval."
+            )
+
+        doc.add_heading("17. Analyst judgments and overrides", level=1)
         if rd_decision:
             doc.add_paragraph(
                 f"R&D useful life {rd_decision.selected_useful_life}y was selected autonomously "
@@ -370,7 +443,7 @@ class NewCompanyDeliverablesService:
                 f"{lease_review.approved_rate}, action {lease_review.analyst_action}."
             )
 
-        doc.add_heading("17. Validation warnings and open issues", level=1)
+        doc.add_heading("18. Validation warnings and open issues", level=1)
         if gate:
             for b in gate.blockers[:12]:
                 doc.add_paragraph(b, style="List Bullet")
@@ -393,7 +466,7 @@ class NewCompanyDeliverablesService:
                         "value creation versus WACC."
                     )
 
-        doc.add_heading("18. Sources and provenance", level=1)
+        doc.add_heading("19. Sources and provenance", level=1)
         doc.add_paragraph(
             "Bloomberg Custom_Run_Filter (PE10/E10/current proprietary fields); SEC EDGAR 10-K/10-Q "
             "companyfacts; Industrial Template formulas after Excel COM CalculateFullRebuild."

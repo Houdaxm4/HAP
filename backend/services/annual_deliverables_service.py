@@ -18,6 +18,7 @@ from models.annual_update import (
     AnnualPerformanceReport,
     AnnualResearchReport,
     AnnualValuationOutputs,
+    DISCLOSE_DISTORTED_BASE,
     YoYMetric,
 )
 from services.annual_period_service import detect_year_columns
@@ -481,35 +482,99 @@ class AnnualDeliverablesService:
             doc.add_paragraph("Valuation outputs were not extracted.")
 
         doc.add_heading("8. Analyst Judgment", level=1)
+        doc.add_paragraph(
+            "HAP analysis is shown beside original workbook results. "
+            "HAP never silently replaces the original Expected Return, Enterprise Value, "
+            "Margin of Safety, or Graham Entry Price."
+        )
         if expected_return:
             growth = expected_return.selected_growth_rate
             reasonableness = expected_return.reasonableness
             if growth is None and reasonableness and "reasonable" in reasonableness.lower():
                 reasonableness = "reviewed — numerical assumption unavailable"
+            doc.add_paragraph("Expected Return — ORIGINAL WORKBOOK RESULT")
             doc.add_paragraph(
-                f"Expected Return judgment: {reasonableness} — "
-                f"{expected_return.selected_methodology} at {_fmt(growth, pct=True)}. "
-                f"{expected_return.rationale}"
+                f"Workbook Expected Return (E14): {_fmt(expected_return.original_expected_return, pct=True)}. "
+                f"Original growth assumption: {_fmt(expected_return.original_growth_rate, pct=True)}."
             )
-        if judgment and judgment.graham_eps_growth:
-            g = judgment.graham_eps_growth
-            label = g.reasonableness_classification or "reviewed"
-            if g.selected_value is None and label and "reasonable" in label.lower():
-                label = "reviewed — value unavailable"
-            doc.add_paragraph(
-                f"Graham EPS growth: {label} — {g.change_type}: "
-                f"{_fmt(g.original_value, pct=True)} → {_fmt(g.selected_value, pct=True)}. {g.rationale}"
-            )
+            doc.add_paragraph("Expected Return — HAP-ADJUSTED ANALYSIS")
+            if expected_return.final_expected_return is None and (
+                expected_return.reasonableness
+                and (
+                    "reasonable" in expected_return.reasonableness.lower()
+                    or expected_return.reasonableness in {"KEEP_EXISTING", "INSUFFICIENT_EVIDENCE"}
+                    or "KEEP" in expected_return.reasonableness
+                )
+            ):
+                if expected_return.reasonableness == "INSUFFICIENT_EVIDENCE":
+                    doc.add_paragraph(
+                        f"HAP adjusted: not selected (insufficient evidence). {expected_return.rationale}"
+                    )
+                else:
+                    doc.add_paragraph(
+                        f"HAP adjusted: not required ({reasonableness}). {expected_return.rationale}"
+                    )
+            else:
+                doc.add_paragraph(
+                    f"HAP adjusted Expected Return: {_fmt(expected_return.hap_expected_return or expected_return.final_expected_return, pct=True)} "
+                    f"using {expected_return.selected_methodology} at {_fmt(growth, pct=True)}. "
+                    f"Semantic substitution: {expected_return.semantic_substitution or 'n/a'}. "
+                    f"Reason: {expected_return.rationale}"
+                )
         if judgment and judgment.owner_earnings_growth:
             o = judgment.owner_earnings_growth
-            label = o.reasonableness_classification or "reviewed"
-            if o.selected_value is None and label and (
-                "reasonable" in label.lower() or "sustainable" in label.lower()
-            ):
-                label = "reviewed — unknown growth not treated as sustainable"
+            doc.add_paragraph("Enterprise Value — ORIGINAL WORKBOOK RESULT")
             doc.add_paragraph(
-                f"Owner Earnings growth: {label} — {o.change_type}: "
-                f"{_fmt(o.original_value, pct=True)} → {_fmt(o.selected_value, pct=True)}. {o.rationale}"
+                f"Workbook OE growth: {_fmt(o.original_value, pct=True)}. "
+                f"Workbook EV / MoS remain the original sheet outputs."
+            )
+            doc.add_paragraph("Enterprise Value — HAP-ADJUSTED ANALYSIS")
+            if o.decision == "INSUFFICIENT_EVIDENCE" or o.change_type == "INSUFFICIENT_EVIDENCE":
+                doc.add_paragraph(f"HAP adjusted: not selected (insufficient evidence). {o.rationale}")
+            elif not o.adjusted:
+                doc.add_paragraph(f"HAP adjusted: not required. {o.rationale}")
+            else:
+                doc.add_paragraph(
+                    f"HAP-adjusted OE growth: {_fmt(o.selected_value, pct=True)}. "
+                    f"MoS impact: see HAP_ANALYSIS block on the Enterprise Value tab. Reason: {o.rationale}"
+                )
+        disc = None
+        if judgment and judgment.oe_base_analysis is not None:
+            disc = judgment.oe_base_analysis.disclosure
+        if disc is not None and disc.decision == DISCLOSE_DISTORTED_BASE:
+            from services.annual_normalized_base_disclosure_service import format_millions
+
+            reported = format_millions(disc.reported_base)
+            doc.add_paragraph("Operating Earnings Base — ORIGINAL ANALYST VALUATION")
+            doc.add_paragraph(
+                f"The original valuation uses reported owner earnings of ${reported}m. "
+                "HAP has not replaced that owner-earnings base."
+            )
+            doc.add_paragraph("Operating Earnings Base — HAP ANALYTICAL OBSERVATION")
+            doc.add_paragraph(disc.word_text or disc.display_text)
+        if judgment and judgment.graham_eps_growth:
+            g = judgment.graham_eps_growth
+            doc.add_paragraph("Graham Entry Price — ORIGINAL WORKBOOK RESULT")
+            doc.add_paragraph(
+                f"Original relevant growth assumption: {_fmt(g.original_value, pct=True)}."
+            )
+            doc.add_paragraph("Graham Entry Price — HAP-ADJUSTED ANALYSIS")
+            if g.decision == "INSUFFICIENT_EVIDENCE" or g.change_type == "INSUFFICIENT_EVIDENCE":
+                doc.add_paragraph(f"HAP adjusted: not selected (insufficient evidence). {g.rationale}")
+            elif not g.adjusted:
+                doc.add_paragraph(
+                    f"HAP adjusted: not required. Historical EPS 10-year growth was not "
+                    f"automatically treated as the prospective Graham rate. {g.rationale}"
+                )
+            else:
+                doc.add_paragraph(
+                    f"HAP-adjusted growth: {_fmt(g.selected_value, pct=True)}. "
+                    f"Reason: {g.rationale}"
+                )
+        if judgment and judgment.hap_analysis_cells:
+            doc.add_paragraph(
+                "HAP_ANALYSIS cells (not original analyst data): "
+                + ", ".join(judgment.hap_analysis_cells[:20])
             )
 
         doc.add_heading("9. Validation and Open Issues", level=1)

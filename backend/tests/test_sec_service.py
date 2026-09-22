@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import ssl
+
 from services.sec_service import SecService
 
 # Minimal reproduction of Apple FY2018 10-K companyfacts: same filing fy/fp/form,
@@ -93,3 +95,31 @@ def test_comparative_in_later_10k_not_labeled_as_filing_year():
     assert fact.value != 215639000000
     # Economic evidence on the selected fact
     assert fact.frame == "CY2018"
+
+
+def test_sec_httpx_client_uses_os_ssl_context(monkeypatch):
+    captured: dict = {}
+
+    class DummyResponse:
+        status_code = 200
+
+        def json(self):
+            return {"0": {"ticker": "TTC", "cik_str": "737758"}}
+
+    class DummyClient:
+        def __init__(self, **kwargs):
+            captured.update(kwargs)
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def get(self, url):
+            assert "sec.gov" in url
+            return DummyResponse()
+
+    monkeypatch.setattr("services.sec_service.httpx.Client", DummyClient)
+    SecService()._load_ticker_map()
+    assert isinstance(captured.get("verify"), ssl.SSLContext)

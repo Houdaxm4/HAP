@@ -13,6 +13,8 @@ from models.annual_update import (
     ResearchQuestion,
 )
 from services.annual_continuity_service import detect_year_columns
+from services.annual_growth_analysis_service import AnnualGrowthAnalysisService
+from services.annual_normalized_base_service import AnnualNormalizedBaseService
 from services.annual_tax_research_service import AnnualTaxResearchService
 from services.expected_return_validation_service import ExpectedReturnValidationService
 from services.valuation_validation_service import ValuationValidationService
@@ -43,28 +45,6 @@ def _num(v: Any) -> float | None:
         return None
 
 
-def _cagr(start: float | None, end: float | None, years: int) -> float | None:
-    if start is None or end is None or years <= 0 or start <= 0 or end <= 0:
-        return None
-    return (end / start) ** (1.0 / years) - 1.0
-
-
-def _classify_growth(g: float | None, *, horizon: str = "10y") -> str:
-    if g is None:
-        return "UNKNOWN"
-    if g > 0.30:
-        return "VERY_AGGRESSIVE"
-    if g > 0.18:
-        return "AGGRESSIVE"
-    if g < -0.10:
-        return "DISTORTED"
-    if g < 0:
-        return "CONSERVATIVE"
-    if horizon == "20y" and g > 0.12:
-        return "AGGRESSIVE"
-    return "REASONABLE"
-
-
 def _is_formula(cell_val: Any) -> bool:
     return isinstance(cell_val, str) and cell_val.startswith("=")
 
@@ -74,6 +54,8 @@ class AnnualAnalystIntelligenceService:
         self.tax_research = AnnualTaxResearchService()
         self.er_validator = ExpectedReturnValidationService()
         self.val_validator = ValuationValidationService()
+        self.growth_analysis = AnnualGrowthAnalysisService()
+        self.normalized_base = AnnualNormalizedBaseService()
 
     def assess_completeness(
         self,
@@ -182,186 +164,70 @@ class AnnualAnalystIntelligenceService:
         ctx: dict[str, Any] = {"evidence": evidence}
 
         try:
-            # --- Book value growth (Expected Return methodology) ---
-            bv_growth = None
+            analyses = self.growth_analysis.analyze_workbooks(wb, wb_f)
+            er_a = analyses["er"]
+            oe_a = analyses["oe"]
+            gr_a = analyses["graham"]
+            base_a = self.normalized_base.analyze_workbooks(wb, wb_f)
+            evidence.extend(er_a.evidence[:8])
+            evidence.extend(oe_a.distortions_identified[:6])
+            evidence.extend(gr_a.evidence[:6])
+            evidence.extend(base_a.distortions_identified[:6])
+
             if ER_SHEET in wb.sheetnames:
-                er = wb[ER_SHEET]
-                bv_growth = _num(er["A11"].value)
-                if bv_growth is None:
-                    bv_growth = _num(er["B5"].value)
-                ctx["expected_return"] = _num(er["E14"].value)
+                ctx["expected_return"] = _num(wb[ER_SHEET]["E14"].value)
 
-            # --- EPS growth (Graham / ER alternate) ---
-            eps_growth = None
-            if FM_SHEET in wb.sheetnames:
-                eps_growth = _num(wb[FM_SHEET]["L31"].value)
-            if eps_growth is None and ER_SHEET in wb.sheetnames:
-                eps_growth = _num(wb[ER_SHEET]["B5"].value)
-
-            eps_5y = _num(wb[FM_SHEET]["C31"].value) if FM_SHEET in wb.sheetnames else None
-
-            # --- Owner earnings growth ---
-            oe_growth = None
-            oe_3y = oe_5y = oe_10y = None
-            if EV_SHEET in wb.sheetnames:
-                oe_growth = _num(wb[EV_SHEET]["B6"].value)
-                if oe_growth is None:
-                    oe_growth = _num(wb[EV_SHEET]["C6"].value)
-            oe_series = self._owner_earnings_series(wb)
-            if len(oe_series) >= 4:
-                oe_3y = _cagr(oe_series[-4], oe_series[-1], 3)
-            if len(oe_series) >= 6:
-                oe_5y = _cagr(oe_series[-6], oe_series[-1], 5)
-            if len(oe_series) >= 10:
-                oe_10y = _cagr(oe_series[0], oe_series[-1], len(oe_series) - 1)
-
-            # --- Revenue / operating income growth for cross-check ---
-            rev_cagr = oi_cagr = None
-            if INCOME_SHEET in wb.sheetnames and FM_SHEET in wb.sheetnames:
-                rev_cagr = _num(wb[FM_SHEET]["C31"].value) if "C31" in wb[FM_SHEET] else None
-
-            # --- ER validation (read-only deep review) ---
             er_report = self.er_validator.validate(
                 analysis_id=analysis_id,
                 ticker=ticker,
                 workbook_path=workbook_path,
                 company_facts=company_facts,
             )
-            if bv_growth is None and er_report.growth.workbook_growth_assumption is not None:
-                bv_growth = er_report.growth.workbook_growth_assumption
-            if eps_growth is None and er_report.growth.independent_eps_cagr is not None:
-                eps_growth = er_report.growth.independent_eps_cagr
-            if eps_5y is None and er_report.growth.recent_5y_cagr is not None:
-                eps_5y = er_report.growth.recent_5y_cagr
-            if er_report.growth.independent_eps_cagr is not None:
-                evidence.append(
-                    f"Independent EPS CAGR {er_report.growth.independent_eps_cagr:.1%} "
-                    f"({er_report.growth.growth_decision.value})."
-                )
-            if er_report.growth.recent_5y_cagr is not None:
-                evidence.append(f"Recent 5y EPS CAGR {er_report.growth.recent_5y_cagr:.1%}.")
-            if bv_growth is not None:
-                evidence.append(f"BV per-share growth {bv_growth:.1%}.")
-            if oe_growth is not None:
-                evidence.append(f"Owner Earnings YoY growth {oe_growth:.1%}.")
-
-            # --- Valuation validation ---
             val_report = self.val_validator.validate(
                 analysis_id=analysis_id,
                 ticker=ticker,
                 workbook_path=workbook_path,
             )
-
-            # --- Expected Return reasonableness ---
-            bv_class = _classify_growth(bv_growth)
-            eps_class = _classify_growth(eps_growth)
-            prefer_eps = False
-            normalized_bv = None
-            if bv_class in {"AGGRESSIVE", "VERY_AGGRESSIVE", "DISTORTED"}:
-                if eps_class == "REASONABLE" and eps_growth is not None:
-                    prefer_eps = True
-                    evidence.append(
-                        f"BV growth {bv_growth:.1%} classified {bv_class}; EPS growth "
-                        f"{eps_growth:.1%} more sustainable."
-                    )
-                else:
-                    candidates = [
-                        g
-                        for g in (
-                            er_report.growth.recent_5y_cagr,
-                            er_report.growth.independent_eps_cagr,
-                            eps_growth,
-                            0.08,
-                        )
-                        if g is not None and -0.05 < g < 0.18
-                    ]
-                    normalized_bv = min(candidates) if candidates else 0.08
-                    evidence.append(
-                        f"BV growth {bv_growth:.1%} normalized to {normalized_bv:.1%}."
-                    )
-
-            # --- Graham EPS sustainability ---
-            graham_class = _classify_growth(eps_growth)
-            eps_distorted = False
-            normalized_eps = None
-            if eps_growth is not None and eps_5y is not None:
-                if abs(eps_growth - eps_5y) > 0.08:
-                    graham_class = "DISTORTED"
-                    eps_distorted = True
-                    evidence.append(
-                        f"10y EPS CAGR {eps_growth:.1%} diverges from 5y {eps_5y:.1%}."
-                    )
-            if graham_class in {"AGGRESSIVE", "VERY_AGGRESSIVE", "DISTORTED"}:
-                sustainable = [
-                    g for g in (eps_5y, er_report.growth.recent_5y_cagr, rev_cagr, 0.08) if g is not None
-                ]
-                normalized_eps = min(max(sustainable), 0.12) if sustainable else 0.08
+            if er_report.growth.independent_eps_cagr is not None:
                 evidence.append(
-                    f"Graham EPS growth {eps_growth:.1%} → normalized {normalized_eps:.1%}."
+                    f"Independent EPS CAGR {er_report.growth.independent_eps_cagr:.1%} "
+                    f"({er_report.growth.growth_decision.value})."
                 )
 
-            # --- Owner Earnings sustainability (20y horizon discipline) ---
-            oe_class = _classify_growth(oe_growth, horizon="20y")
-            normalized_oe = None
-            if oe_growth is not None:
-                windows = [w for w in (oe_3y, oe_5y, oe_10y) if w is not None]
-                if windows and abs(oe_growth - windows[-1]) > 0.15:
-                    oe_class = "DISTORTED"
-                if oe_class in {"AGGRESSIVE", "VERY_AGGRESSIVE", "DISTORTED"}:
-                    sustainable_oe = [w for w in windows if w is not None and -0.05 < w < 0.12]
-                    normalized_oe = min(sustainable_oe) if sustainable_oe else 0.08
-                    evidence.append(
-                        f"OE growth {oe_growth:.1%} ({oe_class}) → normalized {normalized_oe:.1%} "
-                        f"(3y={oe_3y}, 5y={oe_5y}, 10y={oe_10y})."
-                    )
-
+            hist_oe = oe_a.historical_observations
+            hist_gr = gr_a.historical_observations
             ctx.update(
                 {
-                    "book_value_growth": bv_growth,
-                    "eps_growth": eps_growth,
-                    "eps_growth_5y": eps_5y,
-                    "owner_earnings_growth": oe_growth,
-                    "owner_earnings_3y": oe_3y,
-                    "owner_earnings_5y": oe_5y,
-                    "owner_earnings_10y": oe_10y,
-                    "prefer_eps": prefer_eps,
-                    "eps_distorted": eps_distorted,
-                    "normalized_bv_growth": normalized_bv,
-                    "normalized_eps_growth": normalized_eps,
-                    "normalized_oe_growth": normalized_oe,
-                    "bv_classification": bv_class,
-                    "eps_classification": graham_class,
-                    "oe_classification": oe_class,
+                    "er_analysis": er_a.model_dump(),
+                    "oe_analysis": oe_a.model_dump(),
+                    "graham_analysis": gr_a.model_dump(),
+                    "oe_base_analysis": base_a.model_dump(),
+                    "book_value_growth": er_a.existing_assumption,
+                    "eps_growth": hist_gr.get("eps_10y_cagr") if hist_gr.get("eps_10y_cagr") is not None else gr_a.existing_assumption,
+                    "eps_growth_5y": hist_gr.get("eps_5y_cagr"),
+                    "owner_earnings_growth": oe_a.existing_assumption,
+                    "owner_earnings_total_change": hist_oe.get("oe_total_change_b6"),
+                    "owner_earnings_3y": hist_oe.get("oe_3y_cagr"),
+                    "owner_earnings_5y": hist_oe.get("oe_5y_cagr"),
+                    "owner_earnings_10y": hist_oe.get("oe_10y_cagr"),
+                    "prefer_eps": False,
+                    "eps_distorted": bool(gr_a.distortions_identified),
+                    "normalized_bv_growth": er_a.selected_prospective_rate if er_a.decision == "ADJUST" else None,
+                    "normalized_eps_growth": gr_a.selected_prospective_rate if gr_a.decision == "ADJUST" else None,
+                    "normalized_oe_growth": oe_a.selected_prospective_rate if oe_a.decision == "ADJUST" else None,
+                    "bv_classification": er_a.decision,
+                    "eps_classification": gr_a.decision,
+                    "oe_classification": oe_a.decision,
                     "er_validation": er_report,
                     "valuation_validation": val_report,
                     "assumption_cells": self._discover_assumption_cells(wb_f),
+                    "fm_c31_ignored": hist_gr.get("fm_c31_ignored"),
                 }
             )
         finally:
             wb.close()
             wb_f.close()
         return ctx
-
-    def _owner_earnings_series(self, wb) -> list[float]:
-        """Owner earnings proxy: Net Income + D&A + CapEx per Inputs FY columns."""
-        if INPUTS_SHEET not in wb.sheetnames:
-            return []
-        ws = wb[INPUTS_SHEET]
-        cols = detect_year_columns(ws)
-        fy_cols = sorted(
-            ((k, c) for k, c in cols.items() if k.startswith("FY")),
-            key=lambda x: x[0],
-        )
-        series: list[float] = []
-        for _fy, col in fy_cols:
-            ni = _num(ws.cell(38, col).value)
-            da = _num(ws.cell(44, col).value)
-            capex = _num(ws.cell(46, col).value)
-            if ni is None:
-                continue
-            oe = ni + (da or 0) + (capex or 0)
-            series.append(oe)
-        return series
 
     def _discover_assumption_cells(self, wb_f) -> dict[str, str]:
         """Locate writable growth-assumption cells (non-formula) by label scan."""

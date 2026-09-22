@@ -454,6 +454,7 @@ class NewCompanyProjectionReport(BaseModel):
     ytd_unadjusted_annualized_roic: float | None = None
     seasonality_adjusted_roic: float | None = None
     wacc: float | None = None
+    wacc_source: str | None = None
     projected_roic_wacc: float | None = None
     latest_annual_roce: float | None = None
     ten_year_avg_roic: float | None = None
@@ -468,6 +469,32 @@ class NewCompanyProjectionReport(BaseModel):
     backtests: list[ProjectionBacktestYear] = Field(default_factory=list)
     status: str = "ok"
     warnings: list[str] = Field(default_factory=list)
+    summary: str = ""
+
+
+class NewCompanyValuationReport(BaseModel):
+    """Artifact: new_company_valuation_report.json — Annual ER/EV/Graham/OE-base parity."""
+
+    analysis_id: str
+    ticker: str
+    schema_version: str = "1.0.0"
+    status: str = "ok"
+    fiscal_quarter: int | None = None
+    fiscal_year: int | None = None
+    period_context: str = ""
+    original_assumptions_preserved: bool = True
+    original_assumption_snapshot: dict[str, Any] = Field(default_factory=dict)
+    hap_analysis_cells: list[str] = Field(default_factory=list)
+    excel_recalc_status: str | None = None
+    excel_recalc_method: str | None = None
+    circular_status: str | None = None
+    hap_introduced_circular_count: int = 0
+    judgment_summary: str = ""
+    er_decision: str | None = None
+    oe_decision: str | None = None
+    graham_decision: str | None = None
+    normalized_base_decision: str | None = None
+    skipped_reason: str | None = None
     summary: str = ""
 
 

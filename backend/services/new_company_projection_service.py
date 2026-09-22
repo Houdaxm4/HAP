@@ -14,10 +14,75 @@ from models.new_company import (
     SeasonalityProjectionReport,
 )
 from services.annual_period_service import detect_year_columns
-from services.new_company_seasonality_service import NewCompanySeasonalityService
-from services.quarterly_projection_service import _num
+from services.new_company_seasonality_service import (
+    NewCompanySeasonalityService,
+    preferred_statement_row,
+)
+from services.quarterly_projection_service import (
+    _num,
+    _OA_CURRENT_ROWS,
+    _OA_NONCURRENT_ROWS,
+    _OL_CURRENT_ROWS,
+    _OL_NONCURRENT_ROWS,
+    _sum_rows,
+)
 
 IC_SHEET = "IC & NOPAT & ROIC "
+
+
+def _as_rate(val: float | None) -> float | None:
+    if val is None:
+        return None
+    if abs(val) > 1.5:
+        return val / 100.0
+    return val
+
+
+def resolve_workbook_wacc(path: Path) -> tuple[float | None, str | None]:
+    """Map WACC from the workbook. Never invent a rate.
+
+    Provenance order: Final Metrics labeled WACC (L7 / last FY) → Inputs
+    'WACC Fiscal Year' → Balance Sheet 'WACC Fiscal'. Percent values are
+    converted to decimals. Missing remains missing.
+    """
+    for data_only in (True, False):
+        wb = load_workbook(path, data_only=data_only)
+        try:
+            hits: list[tuple[int, float, str]] = []
+            if "Final Metrics" in wb.sheetnames:
+                ws = wb["Final Metrics"]
+                cols = detect_year_columns(ws, wb)
+                last_col = max(cols.values()) if cols else 12
+                for row in range(1, min(ws.max_row or 1, 20) + 1):
+                    lab = str(ws.cell(row, 1).value or "").strip().lower()
+                    if lab == "wacc" or lab.startswith("wacc "):
+                        val = _as_rate(_num(ws.cell(row, last_col).value))
+                        if val is not None:
+                            hits.append((3, val, f"Final Metrics!{ws.cell(row, last_col).coordinate}"))
+            for sheet, needles, rank in (
+                ("Inputs", ("wacc fiscal year", "wacc"), 2),
+                ("Balance Sheet - Standardized", ("wacc fiscal", "wacc"), 1),
+            ):
+                if sheet not in wb.sheetnames:
+                    continue
+                ws = wb[sheet]
+                for row in range(1, min(ws.max_row or 1, 140) + 1):
+                    lab = str(ws.cell(row, 1).value or "").strip().lower()
+                    if not any(n in lab for n in needles):
+                        continue
+                    if "wacc" not in lab:
+                        continue
+                    for col in (12, 11, 3, 2):
+                        val = _as_rate(_num(ws.cell(row, col).value))
+                        if val is not None:
+                            hits.append((rank, val, f"{sheet}!{ws.cell(row, col).coordinate}"))
+                            break
+            if hits:
+                hits.sort(key=lambda h: -h[0])
+                return hits[0][1], hits[0][2]
+        finally:
+            wb.close()
+    return None, None
 
 
 class NewCompanyProjectionService:
@@ -32,6 +97,7 @@ class NewCompanyProjectionService:
         seasonality: SeasonalityProjectionReport | None = None,
         wacc: float | None = None,
         tax_rate: float | None = None,
+        wacc_source: str | None = None,
     ) -> NewCompanyProjectionReport:
         if latest_quarter in (None, 4):
             annual = self._annual_returns(workbook_path, fiscal_years)
@@ -44,6 +110,7 @@ class NewCompanyProjectionService:
                 ten_year_avg_roic=annual.get("avg_roic"),
                 ten_year_avg_roce=annual.get("avg_roce"),
                 wacc=wacc,
+                wacc_source=wacc_source,
                 projected_roic_wacc=(
                     annual.get("latest_roic") - wacc
                     if annual.get("latest_roic") is not None and wacc is not None
@@ -106,6 +173,8 @@ class NewCompanyProjectionService:
                 conf = ProjectionConfidence.LOW
         status = "ok"
         warnings = list(seasonality.warnings)
+        if wacc is None:
+            warnings.append("WACC_NOT_SUPPLIED")
         if proj_roic is None:
             status = "PROJECTED_ROIC_FAILED"
             warnings.append("PROJECTED_ROIC_FAILED")
@@ -125,6 +194,7 @@ class NewCompanyProjectionService:
             ytd_unadjusted_annualized_roic=unadj_roic,
             seasonality_adjusted_roic=proj_roic,
             wacc=wacc,
+            wacc_source=wacc_source,
             projected_roic_wacc=proj_roic_wacc,
             latest_annual_roce=annual.get("latest_roce"),
             ten_year_avg_roic=annual.get("avg_roic"),
@@ -140,6 +210,7 @@ class NewCompanyProjectionService:
                 "Unadjusted annualized YTD is shown for comparison and is not the authorized metric.",
                 "Invested capital uses the latest balance sheet plus existing R&D/lease capitalization.",
                 "ROCE uses the same house definition as annual actuals.",
+                "Projected ROIC/ROCE do not require WACC; WACC is used only for the ROIC–WACC spread.",
             ],
             backtests=backtests,
             status=status,
@@ -161,12 +232,7 @@ class NewCompanyProjectionService:
                 return out
             ws = wb["Income - GAAP"]
             cols = detect_year_columns(ws, wb)
-            oi_row = None
-            for r in range(1, min(ws.max_row or 1, 80) + 1):
-                lab = str(ws.cell(r, 1).value or "").lower()
-                if "operating income" in lab:
-                    oi_row = r
-                    break
+            oi_row = preferred_statement_row(ws, ("operating income",))
             naive = {2: 0.5, 3: 0.75}.get(quarter)
             if not naive or not oi_row:
                 return out
@@ -285,50 +351,99 @@ class NewCompanyProjectionService:
 
     @staticmethod
     def _latest_ic(path: Path, fiscal_years: list[str]) -> float | None:
-        wb = load_workbook(path, data_only=False)
-        try:
-            name = next((n for n in wb.sheetnames if "nopat" in n.lower() and "roic" in n.lower()), None)
-            if not name or not fiscal_years:
-                return None
-            ws = wb[name]
-            cols = detect_year_columns(ws, wb)
-            col = cols.get(fiscal_years[-1])
-            if not col:
-                return None
-            for row in range(1, 30):
-                lab = str(ws.cell(row, 1).value or "").lower()
-                if "invested capital" in lab:
-                    return _num(ws.cell(row, col).value)
-            return _num(ws.cell(7, col).value)
-        finally:
-            wb.close()
+        for data_only in (True, False):
+            wb = load_workbook(path, data_only=data_only)
+            try:
+                name = next((n for n in wb.sheetnames if "nopat" in n.lower() and "roic" in n.lower()), None)
+                if not fiscal_years:
+                    continue
+                cols: dict[str, int] = {}
+                for sheet in ("Income - GAAP", "Balance Sheet - Standardized"):
+                    if sheet not in wb.sheetnames:
+                        continue
+                    found = detect_year_columns(wb[sheet], wb)
+                    fy_only = {k: v for k, v in found.items() if str(k).startswith("FY")}
+                    if fy_only:
+                        cols = fy_only
+                        break
+                if name is not None and not cols:
+                    found = detect_year_columns(wb[name], wb)
+                    cols = {k: v for k, v in found.items() if str(k).startswith("FY")}
+                col = cols.get(fiscal_years[-1])
+                if not col:
+                    continue
+                if name is not None:
+                    ws = wb[name]
+                    for row in range(1, 30):
+                        lab = str(ws.cell(row, 1).value or "").lower()
+                        if "invested capital" in lab:
+                            val = _num(ws.cell(row, col).value)
+                            if val is not None:
+                                return val
+                    val = _num(ws.cell(7, col).value)
+                    if val is not None:
+                        return val
+                house = NewCompanyProjectionService._house_invested_capital(wb, col)
+                if house is not None:
+                    return house
+            finally:
+                wb.close()
+        return None
+
+    @staticmethod
+    def _house_invested_capital(wb, col: int) -> float | None:
+        """OA − OL + capitalized leases + capitalized R&D (same rows as Inputs!80–85)."""
+        if "Balance Sheet - Standardized" not in wb.sheetnames:
+            return None
+        bs = wb["Balance Sheet - Standardized"]
+        oa = _sum_rows(bs, _OA_CURRENT_ROWS, col) + _sum_rows(bs, _OA_NONCURRENT_ROWS, col)
+        ol = _sum_rows(bs, _OL_CURRENT_ROWS, col) + _sum_rows(bs, _OL_NONCURRENT_ROWS, col)
+        cap_lease = 0.0
+        if "Leases" in wb.sheetnames:
+            cap_lease = _num(wb["Leases"].cell(16, 11).value) or 0.0
+        cap_rd = 0.0
+        if "R&D" in wb.sheetnames:
+            cap_rd = _num(wb["R&D"].cell(3, 14).value) or 0.0
+        ic = oa - ol + cap_lease + cap_rd
+        if abs(ic) < 1e-6:
+            return None
+        return ic
 
     @staticmethod
     def _latest_capital_employed(path: Path, fiscal_years: list[str]) -> float | None:
         """Equity + interest-bearing debt when both are present; otherwise None."""
-        wb = load_workbook(path, data_only=False)
-        try:
-            if "Balance Sheet - Standardized" not in wb.sheetnames or not fiscal_years:
-                return None
-            ws = wb["Balance Sheet - Standardized"]
-            cols = detect_year_columns(ws, wb)
-            col = cols.get(fiscal_years[-1])
-            if not col:
-                return None
-            equity = debt = None
-            for row in range(1, min(ws.max_row or 1, 120) + 1):
-                lab = str(ws.cell(row, 1).value or "").lower()
-                val = _num(ws.cell(row, col).value)
-                if val is None:
+        for data_only in (True, False):
+            wb = load_workbook(path, data_only=data_only)
+            try:
+                if "Balance Sheet - Standardized" not in wb.sheetnames or not fiscal_years:
                     continue
-                if "shareholders" in lab and "equity" in lab:
-                    equity = val
-                elif lab.strip() in {"long-term debt", "long term debt"} or (
-                    "long-term debt" in lab
-                ):
-                    debt = val
-            if equity is None or debt is None:
-                return None
-            return equity + debt
-        finally:
-            wb.close()
+                ws = wb["Balance Sheet - Standardized"]
+                cols = detect_year_columns(ws, wb)
+                col = cols.get(fiscal_years[-1])
+                if not col:
+                    continue
+                equity = debt = None
+                for row in range(1, min(ws.max_row or 1, 130) + 1):
+                    lab = str(ws.cell(row, 1).value or "").strip().lower()
+                    lab = lab.lstrip("+").lstrip("-").strip()
+                    val = _num(ws.cell(row, col).value)
+                    if val is None:
+                        continue
+                    if lab in {
+                        "total equity",
+                        "total shareholders' equity",
+                        "total stockholders' equity",
+                    } or (
+                        "shareholders" in lab and "equity" in lab and "liabilit" not in lab
+                    ):
+                        equity = val
+                    elif lab in {"lt debt", "long-term debt", "long term debt"} or (
+                        "long-term debt" in lab and "current" not in lab
+                    ):
+                        debt = val
+                if equity is None or debt is None:
+                    continue
+                return equity + debt
+            finally:
+                wb.close()
+        return None
