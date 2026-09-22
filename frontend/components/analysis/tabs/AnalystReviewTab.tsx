@@ -12,7 +12,10 @@ type ReviewPayload = {
   lease_rate_review: {
     status?: string;
     proposed_rate?: number | null;
+    selected_rate?: number | null;
     approved_rate?: number | null;
+    decision_class?: string;
+    classification?: string;
     supporting_evidence?: string[];
     prior_or_comparable_rates?: number[];
     calculated_lease_asset?: number | null;
@@ -49,8 +52,9 @@ export default function AnalystReviewTab({ analysis }: { analysis: AnalysisDetai
         if (!cancelled) {
           setPayload(data as ReviewPayload);
           if (data.lease_rate_review && typeof data.lease_rate_review === "object") {
-            const proposed = (data.lease_rate_review as { proposed_rate?: number }).proposed_rate;
-            if (proposed != null) setRate(String(proposed));
+            const review = data.lease_rate_review as { selected_rate?: number; proposed_rate?: number };
+            const shown = review.selected_rate ?? review.proposed_rate;
+            if (shown != null) setRate(String(shown));
           }
           if (data.rd_useful_life_decision && typeof data.rd_useful_life_decision === "object") {
             const life = (data.rd_useful_life_decision as { selected_useful_life?: number })
@@ -113,18 +117,22 @@ export default function AnalystReviewTab({ analysis }: { analysis: AnalysisDetai
 
       <section className="rounded border border-hap-border bg-hap-panel p-5">
         <h3 className="text-sm font-semibold uppercase tracking-widest text-hap-orange">
-          Long-term lease rate — required review
+          Long-term lease rate — agent decision (optional override)
         </h3>
         {!lease ? (
-          <p className="mt-3 text-sm text-hap-muted">No lease-rate review is pending for this analysis.</p>
+          <p className="mt-3 text-sm text-hap-muted">No lease-rate decision is recorded for this analysis.</p>
         ) : (
           <div className="mt-3 space-y-3 text-sm">
             <p>{lease.summary}</p>
             <p>
-              Proposed rate:{" "}
+              Selected rate:{" "}
               <span className="font-mono">
-                {lease.proposed_rate == null ? "—" : `${(lease.proposed_rate * 100).toFixed(2)}%`}
+                {(lease.selected_rate ?? lease.proposed_rate) == null
+                  ? "—"
+                  : `${((lease.selected_rate ?? lease.proposed_rate) as number * 100).toFixed(2)}%`}
               </span>
+              {lease.classification ? ` · ${lease.classification}` : ""}
+              {lease.decision_class ? ` · ${lease.decision_class}` : ""}
               {lease.proposal?.methodology ? ` via ${lease.proposal.methodology}` : ""}
             </p>
             <p>
@@ -165,11 +173,11 @@ export default function AnalystReviewTab({ analysis }: { analysis: AnalysisDetai
             <div className="flex flex-wrap gap-2">
               <button
                 type="button"
-                disabled={busy || lease.blocking === false}
+                disabled={busy}
                 onClick={() => onLease("approve")}
                 className="rounded border border-hap-orange/40 bg-hap-orange/10 px-3 py-2 text-xs font-semibold text-hap-orange"
               >
-                Approve
+                Acknowledge (optional)
               </button>
               <button
                 type="button"

@@ -245,14 +245,30 @@ class NewCompanyDeliverablesService:
 
         doc.add_heading("9. Lease capitalization", level=1)
         if lease_review:
-            doc.add_paragraph(
-                f"Proposed long-term lease rate {_fmt(lease_review.proposed_rate, pct=True)} "
-                f"via {(lease_review.proposal.methodology if lease_review.proposal else 'n/a')}. "
-                f"Analyst-approved rate {_fmt(lease_review.approved_rate, pct=True)} "
-                f"({lease_review.analyst_action or 'pending'})."
+            selected = (
+                lease_review.selected_rate
+                if lease_review.selected_rate is not None
+                else lease_review.proposed_rate
             )
             doc.add_paragraph(
-                f"Effect on invested capital uses the approved rate. "
+                f"Selected long-term lease discount rate {_fmt(selected, pct=True)} "
+                f"({lease_review.classification or 'n/a'}) via "
+                f"{(lease_review.proposal.methodology if lease_review.proposal else 'n/a')}. "
+                f"Decision class: {lease_review.decision_class}. "
+                "This is not a fabricated human approval."
+            )
+            if lease_review.proposal and lease_review.proposal.source_fiscal_year:
+                doc.add_paragraph(
+                    f"Source period {lease_review.proposal.source_fiscal_year}; "
+                    f"form {lease_review.proposal.source_form or 'SEC'}; "
+                    f"accession {lease_review.proposal.source_accession or 'n/a'}."
+                )
+            for ev in (lease_review.supporting_evidence or [])[:4]:
+                doc.add_paragraph(ev, style="List Bullet")
+            if lease_review.proposal and lease_review.proposal.limitations:
+                doc.add_paragraph(f"Limitations: {lease_review.proposal.limitations}")
+            doc.add_paragraph(
+                f"Effect on invested capital uses the selected rate. "
                 f"Calculated ROU asset {_fmt(lease_review.calculated_lease_asset)}; "
                 f"liability {_fmt(lease_review.calculated_lease_liability)}."
             )
@@ -428,19 +444,22 @@ class NewCompanyDeliverablesService:
         else:
             doc.add_paragraph(
                 "Valuation judgment was not run. Final authorization requires genuine Excel COM "
-                "CalculateFullRebuild after lease-rate approval."
+                "CalculateFullRebuild after autonomous lease-rate and R&D useful-life selection."
             )
 
         doc.add_heading("17. Analyst judgments and overrides", level=1)
         if rd_decision:
             doc.add_paragraph(
-                f"R&D useful life {rd_decision.selected_useful_life}y was selected autonomously "
+                f"R&D useful life {rd_decision.selected_useful_life}y is an "
+                f"{'ANALYST_OVERRIDE' if rd_decision.analyst_override is not None else 'AUTONOMOUS_AGENT_DECISION'} "
                 f"({rd_decision.provenance_class}) and remains editable."
             )
+            doc.add_paragraph(rd_decision.rationale)
         if lease_review:
             doc.add_paragraph(
-                f"Lease rate proposed {lease_review.proposed_rate}, approved "
-                f"{lease_review.approved_rate}, action {lease_review.analyst_action}."
+                f"Lease rate selected {lease_review.selected_rate if lease_review.selected_rate is not None else lease_review.proposed_rate} "
+                f"({lease_review.decision_class}; classification={lease_review.classification}). "
+                f"Analyst action {lease_review.analyst_action or 'none'}."
             )
 
         doc.add_heading("18. Validation warnings and open issues", level=1)

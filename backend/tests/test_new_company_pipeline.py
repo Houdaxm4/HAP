@@ -421,6 +421,18 @@ def _stub_current_data_refresh():
         yield
 
 
+@pytest.fixture(autouse=True)
+def _stub_excel_com_unavailable():
+    """Keep unit tests off live Excel COM. Genuine-COM tests patch recalculate()."""
+    from services.excel_recalc_service import ExcelComUnavailable
+
+    with patch(
+        "services.excel_recalc_service.load_excel_com",
+        side_effect=ExcelComUnavailable("test isolation"),
+    ):
+        yield
+
+
 def test_ten_year_period_detection(tmp_path: Path):
     path = industrial_workbook(tmp_path / "wb.xlsx", quarter=2)
     report = NewCompanyPeriodService().detect(analysis_id="a", ticker="MSFT", workbook_path=path)
@@ -569,7 +581,7 @@ def test_rd_useful_life_schema_and_not_from_spend(tmp_path: Path):
     assert pharma.selected_useful_life >= tech.selected_useful_life
     assert consumer.selected_useful_life <= 5
     assert tech.provenance_class == "agent_selected_analyst_assumption"
-    assert "agent-selected" in tech.warning.lower() or "not been manually approved" in tech.warning.lower()
+    assert "autonomous agent decision" in tech.warning.lower() or "agent-selected" in tech.warning.lower()
     assert tech.original_agent_selection == tech.selected_useful_life
     # Amount of R&D must not be the decision driver: same spend, different industries → different lives
     assert {tech.selected_useful_life, pharma.selected_useful_life, consumer.selected_useful_life}
@@ -650,18 +662,24 @@ def test_lease_rate_hierarchy_and_review_checkpoint(tmp_path: Path):
     report = svc.apply(
         analysis_id="a", ticker="TJX", workbook_path=path, fiscal_years=FY, company_facts=company_facts_for()
     )
-    assert report.review.blocking
-    assert report.review.status == "LEASE_RATE_REVIEW_PENDING"
-    approved = svc.apply_review(report.review, action="approve", reason="matches 10-K", workbook_path=path)
-    assert not approved.blocking
-    assert approved.approved_rate == report.review.proposed_rate
+    assert not report.review.blocking
+    assert report.review.status == "autonomous_selected"
+    assert report.review.decision_class == "AUTONOMOUS_AGENT_DECISION"
+    assert report.review.selected_rate == report.review.proposed_rate
+    assert any(e.get("event") == "AUTONOMOUS_AGENT_DECISION" for e in report.review.audit_trail)
+    assert not any(e.get("event") == "LEASE_RATE_APPROVED" for e in report.review.audit_trail)
+    acknowledged = svc.apply_review(report.review, action="approve", reason="optional ack", workbook_path=path)
+    assert not acknowledged.blocking
+    assert acknowledged.decision_class == "AUTONOMOUS_AGENT_DECISION"
+    assert any(e.get("event") == "ANALYST_ACKNOWLEDGED" for e in acknowledged.audit_trail)
     overridden = svc.apply_review(
         report.review, action="correct", rate=0.05, reason="credit spread widened", workbook_path=path
     )
     assert overridden.status == "overridden"
-    assert overridden.approved_rate == pytest.approx(0.05)
+    assert overridden.selected_rate == pytest.approx(0.05)
+    assert overridden.decision_class == "ANALYST_OVERRIDE"
     assert overridden.proposed_rate == report.review.proposed_rate
-    assert any(e.get("event") == "LEASE_RATE_ANALYST_OVERRIDDEN" for e in overridden.audit_trail)
+    assert any(e.get("event") == "ANALYST_OVERRIDE" for e in overridden.audit_trail)
     pending = svc.apply_review(report.review, action="request_more_evidence", reason="need IBR")
     assert pending.blocking
 
@@ -766,7 +784,7 @@ def test_roic_roce_projection_and_backtest_confidence(tmp_path: Path):
     assert proj.backtests
 
 
-def test_output_gates_lease_pending_blocks_complete(tmp_path: Path):
+def test_output_gates_insufficient_lease_evidence_blocks_authorization(tmp_path: Path):
     path = industrial_workbook(tmp_path / "wb.xlsx")
     periods = NewCompanyPeriodService().detect(analysis_id="a", ticker="MSFT", workbook_path=path)
     coverage = NewCompanySecCoverageService().build(
@@ -785,15 +803,24 @@ def test_output_gates_lease_pending_blocks_complete(tmp_path: Path):
         rd_decision=None,
         rd=None,
         leases=None,
-        lease_review=LeaseRateReview(analysis_id="a", ticker="MSFT", status="LEASE_RATE_REVIEW_PENDING", proposed_rate=0.04, blocking=True),
+        lease_review=LeaseRateReview(
+            analysis_id="a",
+            ticker="MSFT",
+            status="LEASE_RATE_EVIDENCE_INSUFFICIENT",
+            proposed_rate=None,
+            selected_rate=None,
+            blocking=False,
+            classification="insufficient",
+            decision_class="EVIDENCE_INSUFFICIENT",
+        ),
         buybacks=None,
         current=None,
         projection=None,
         recalc=None,
         valuation=None,
     )
-    assert "LEASE_RATE_REVIEW_PENDING" in gate.blockers
-    assert gate.status == "AWAITING_ANALYST_REVIEW"
+    assert "LEASE_RATE_EVIDENCE_INSUFFICIENT" in gate.blockers
+    assert gate.status == "NEEDS_REVIEW"
     assert not gate.report_authorized
 
 
@@ -839,23 +866,9 @@ def test_recalc_unavailable_needs_review(tmp_path: Path, out_svc: OutputService,
             sec_manifest=_filings_manifest(),
             tax_year_inputs=tax_inputs,
         )
-    assert result["workflow_state"] == NewCompanyWorkflowState.AWAITING_ANALYST_REVIEW
-    _approve_persisted_lease(out_svc, "run1", result["lease_review"], tmp_path / "working.xlsx")
-    with patch(_CRF_PARSE, return_value=crf):
-        result = runner.run(
-            analysis_id="run1",
-            ticker="MSFT",
-            company="Microsoft",
-            template_path=tmp_path / "working.xlsx",
-            working_path=tmp_path / "working.xlsx",
-            custom_run_path=crf_path,
-            company_facts=company_facts_for(),
-            sec_manifest=_filings_manifest(),
-            tax_year_inputs=tax_inputs,
-            finalize=True,
-            prepare_working=False,
-        )
     assert result["workflow_state"] == NewCompanyWorkflowState.NEEDS_REVIEW
+    assert result["lease_review"].blocking is False
+    assert result["lease_review"].decision_class == "AUTONOMOUS_AGENT_DECISION"
     assert "WORKBOOK_RECALCULATION_INCOMPLETE" in result["output_gate"].blockers
     assert result["deliverables"] is None or result["deliverables"].authorized is False
     assert result["certification_status"] == CLOUD_PENDING_WINDOWS_CERTIFICATION
@@ -890,7 +903,7 @@ def test_runner_pauses_for_lease_review_then_blocks_without_com(tmp_path: Path, 
         for fy in FY
     }
     with patch(_CRF_PARSE, return_value=crf):
-        paused = runner.run(
+        done = runner.run(
             analysis_id="run2",
             ticker="AMZN",
             company="Amazon",
@@ -901,25 +914,10 @@ def test_runner_pauses_for_lease_review_then_blocks_without_com(tmp_path: Path, 
             sec_manifest=_filings_manifest(),
             tax_year_inputs=tax_inputs,
         )
-        assert paused["workflow_state"] == NewCompanyWorkflowState.AWAITING_ANALYST_REVIEW
-        assert paused["lease_review"].blocking
-        assert paused["output_gate"] is None
-        assert paused["deliverables"] is None or paused["deliverables"].authorized is False
-        _approve_persisted_lease(out_svc, "run2", paused["lease_review"], tmp_path / "working.xlsx")
-        done = runner.run(
-            analysis_id="run2",
-            ticker="AMZN",
-            company="Amazon",
-            template_path=tmp_path / "working.xlsx",
-            working_path=tmp_path / "working.xlsx",
-            custom_run_path=crf_path,
-            company_facts=company_facts_for(),
-            sec_manifest=_filings_manifest(),
-            tax_year_inputs=tax_inputs,
-            finalize=True,
-            prepare_working=False,
-        )
+        assert done["workflow_state"] != NewCompanyWorkflowState.AWAITING_ANALYST_REVIEW
         assert done["lease_review"].blocking is False
+        assert done["lease_review"].decision_class == "AUTONOMOUS_AGENT_DECISION"
+        assert not any(e.get("event") == "LEASE_RATE_APPROVED" for e in done["lease_review"].audit_trail)
         gate = done["output_gate"]
         assert gate is not None
         assert "LEASE_RATE_REVIEW_PENDING" not in gate.blockers
@@ -1014,7 +1012,7 @@ def test_cross_company_runner_suite(tmp_path: Path, out_svc: OutputService, monk
             )
             crf_path = tmp_path / f"{ticker}_crf.xlsx"
             crf_path.write_bytes(b"x")
-            paused = runner.run(
+            done = runner.run(
                 analysis_id=f"{ticker}-nc",
                 ticker=ticker,
                 company=name,
@@ -1025,23 +1023,10 @@ def test_cross_company_runner_suite(tmp_path: Path, out_svc: OutputService, monk
                 sec_manifest={**_filings_manifest(), "company_name": name, "sic": sic},
                 tax_year_inputs=tax_inputs,
             )
-            assert paused["workflow_state"] == NewCompanyWorkflowState.AWAITING_ANALYST_REVIEW
-            _approve_persisted_lease(out_svc, f"{ticker}-nc", paused["lease_review"], tmp_path / f"{ticker}_work.xlsx")
-            done = runner.run(
-                analysis_id=f"{ticker}-nc",
-                ticker=ticker,
-                company=name,
-                template_path=tmp_path / f"{ticker}_work.xlsx",
-                working_path=tmp_path / f"{ticker}_work.xlsx",
-                custom_run_path=crf_path,
-                company_facts=company_facts_for(),
-                sec_manifest={**_filings_manifest(), "company_name": name, "sic": sic},
-                tax_year_inputs=tax_inputs,
-                finalize=True,
-                prepare_working=False,
-            )
             results.append((ticker, done["workflow_state"], done["output_gate"].blockers if done["output_gate"] else []))
+            assert done["workflow_state"] != NewCompanyWorkflowState.AWAITING_ANALYST_REVIEW
             assert done["lease_review"].blocking is False
+            assert done["lease_review"].decision_class == "AUTONOMOUS_AGENT_DECISION"
             assert done["rd_decision"].selected_useful_life
             assert len(done["pe10"].fiscal_year_pe10) == 10
             assert len(done["tax"].years) == 10
@@ -1259,7 +1244,7 @@ def test_unsigned_lease_override_cannot_bypass_review(tmp_path: Path, out_svc: O
         for fy in FY
     }
     with patch(_CRF_PARSE, return_value=crf):
-        paused = runner.run(
+        done = runner.run(
             analysis_id="bypass",
             ticker="MSFT",
             company="Microsoft",
@@ -1284,10 +1269,10 @@ def test_unsigned_lease_override_cannot_bypass_review(tmp_path: Path, out_svc: O
             finalize=True,
             prepare_working=False,
         )
-    assert paused["workflow_state"] == NewCompanyWorkflowState.AWAITING_ANALYST_REVIEW
-    assert sneaky["workflow_state"] == NewCompanyWorkflowState.AWAITING_ANALYST_REVIEW
-    assert sneaky["lease_review"].blocking is True
-    assert sneaky["output_gate"] is None
+    assert done["workflow_state"] != NewCompanyWorkflowState.AWAITING_ANALYST_REVIEW
+    assert sneaky["lease_review"].decision_class == "AUTONOMOUS_AGENT_DECISION"
+    assert not any(e.get("event") == "LEASE_RATE_APPROVED" for e in sneaky["lease_review"].audit_trail)
+    assert sneaky["lease_review"].blocking is False
 
 
 def test_rd_override_writes_audit_trail(tmp_path: Path):
@@ -1310,12 +1295,12 @@ def test_rd_override_writes_audit_trail(tmp_path: Path):
         override_reason="longer platform cycle",
         prior_decision=first,
     )
-    assert any(e.get("event") == "RD_USEFUL_LIFE_ANALYST_OVERRIDE" for e in second.audit_trail)
+    assert any(e.get("event") == "ANALYST_OVERRIDE" for e in second.audit_trail)
     wb = load_workbook(path)
     # apply writes the visible warning
     svc.apply(analysis_id="a", ticker="MSFT", workbook_path=path, fiscal_years=FY, decision=second)
     wb = load_workbook(path)
-    assert "ANALYST WARNING" in str(wb["R&D"]["A1"].value)
+    assert "HAP ANALYSIS" in str(wb["R&D"]["A1"].value)
     wb.close()
 
 
@@ -1503,14 +1488,14 @@ def _patch_genuine_com(monkeypatch):
     )
 
 
-def test_lease_pending_blocks_valuation_judgment_and_authorization(tmp_path: Path, out_svc: OutputService):
+def test_supported_lease_does_not_pause_before_com(tmp_path: Path, out_svc: OutputService):
     path = industrial_workbook(tmp_path / "wb.xlsx")
     runner = NewCompanyRunner(output_service=out_svc)
     crf_path = tmp_path / "crf.xlsx"
     crf_path.write_bytes(b"x")
     with patch(_CRF_PARSE, return_value=_crf_for("MSFT")):
-        paused = runner.run(
-            analysis_id="nc-lease-pending",
+        result = runner.run(
+            analysis_id="nc-lease-autonomous",
             ticker="MSFT",
             company="Microsoft",
             template_path=path,
@@ -1520,14 +1505,23 @@ def test_lease_pending_blocks_valuation_judgment_and_authorization(tmp_path: Pat
             sec_manifest=_filings_manifest(),
             tax_year_inputs=_tax_inputs(),
         )
-    assert paused["workflow_state"] == NewCompanyWorkflowState.AWAITING_ANALYST_REVIEW
-    assert paused["lease_review"].blocking
-    assert paused["valuation_judgment"] is None
-    assert paused["output_gate"] is None
-    assert paused["deliverables"] is None or paused["deliverables"].authorized is False
-    out_dir = out_svc.analysis_output_dir("nc-lease-pending")
-    assert not (out_dir / "new_company_valuation_report.json").exists()
-    assert not (out_dir / "new_company_analyst_judgment_report.json").exists()
+    assert result["workflow_state"] != NewCompanyWorkflowState.AWAITING_ANALYST_REVIEW
+    assert result["lease_review"].blocking is False
+    assert result["lease_review"].decision_class == "AUTONOMOUS_AGENT_DECISION"
+    assert result["output_gate"] is not None
+    assert result["valuation_judgment"] is None
+    notes = out_svc.read_json("nc-lease-autonomous", "new_company_assumption_notes.json")
+    assert notes["lease"]["decision_class"] == "AUTONOMOUS_AGENT_DECISION"
+    wb = load_workbook(tmp_path / "working.xlsx")
+    try:
+        found = False
+        for row in wb["Leases"].iter_rows(min_row=1, max_row=20, max_col=20):
+            for cell in row:
+                if "HAP ANALYSIS" in str(cell.value or ""):
+                    found = True
+        assert found
+    finally:
+        wb.close()
 
 
 def test_approved_lease_permits_com_and_valuation_judgment(
@@ -1539,8 +1533,9 @@ def test_approved_lease_permits_com_and_valuation_judgment(
     crf_path = tmp_path / "crf.xlsx"
     crf_path.write_bytes(b"x")
     working = tmp_path / "working.xlsx"
+    original_a11 = load_workbook(path)["Expected Returns & Buybacks"]["A11"].value
     with patch(_CRF_PARSE, return_value=_crf_for("MSFT")):
-        paused = runner.run(
+        done = runner.run(
             analysis_id="nc-com-judge",
             ticker="MSFT",
             company="Microsoft",
@@ -1551,23 +1546,8 @@ def test_approved_lease_permits_com_and_valuation_judgment(
             sec_manifest=_filings_manifest(),
             tax_year_inputs=_tax_inputs(),
         )
-        assert paused["workflow_state"] == NewCompanyWorkflowState.AWAITING_ANALYST_REVIEW
-        assert paused["valuation_judgment"] is None
-        original_a11 = load_workbook(working)["Expected Returns & Buybacks"]["A11"].value
-        _approve_persisted_lease(out_svc, "nc-com-judge", paused["lease_review"], working)
-        done = runner.run(
-            analysis_id="nc-com-judge",
-            ticker="MSFT",
-            company="Microsoft",
-            template_path=working,
-            working_path=working,
-            custom_run_path=crf_path,
-            company_facts=company_facts_for(),
-            sec_manifest=_filings_manifest(),
-            tax_year_inputs=_tax_inputs(),
-            finalize=True,
-            prepare_working=False,
-        )
+    assert done["workflow_state"] != NewCompanyWorkflowState.AWAITING_ANALYST_REVIEW
+    assert done["lease_review"].decision_class == "AUTONOMOUS_AGENT_DECISION"
     assert done["lease_review"].blocking is False
     assert genuine_excel_com_recalc(done["recalc"])
     assert done["valuation_judgment"] is not None
@@ -2216,5 +2196,248 @@ def test_period_detects_current_lq_year_not_prior_column(tmp_path: Path):
     assert report.latest_quarter == 2
     assert report.latest_quarter_fiscal_year == "FY2026"
     assert report.fiscal_years[-1] == "FY2025"
+
+
+def test_insufficient_lease_evidence_does_not_fabricate_rate(tmp_path: Path):
+    path = industrial_workbook(tmp_path / "wb.xlsx")
+    svc = NewCompanyLeaseService()
+    report = svc.apply(
+        analysis_id="a",
+        ticker="NONE",
+        workbook_path=path,
+        fiscal_years=FY,
+        company_facts=company_facts_for(leases=False),
+    )
+    assert report.review.selected_rate is None
+    assert report.review.proposed_rate is None
+    assert report.review.classification == "insufficient"
+    assert report.review.decision_class == "EVIDENCE_INSUFFICIENT"
+    assert report.review.status == "LEASE_RATE_EVIDENCE_INSUFFICIENT"
+    assert not any(e.get("event") == "LEASE_RATE_APPROVED" for e in report.review.audit_trail)
+    assert "No rate was fabricated" in report.review.summary
+
+
+def test_autonomous_rd_does_not_derive_life_from_spend_and_does_not_pause(tmp_path: Path):
+    path = industrial_workbook(tmp_path / "wb.xlsx")
+    svc = NewCompanyRdService()
+    decision = svc.select_useful_life(
+        analysis_id="a",
+        ticker="LNN",
+        workbook_path=path,
+        fiscal_years=FY,
+        sec_manifest={"company_name": "Lindsay Corporation", "sic": "3523", "sic_description": "Farm machinery"},
+    )
+    assert decision.blocking is False
+    assert decision.selected_useful_life == 5
+    assert any(e.get("event") == "AUTONOMOUS_AGENT_DECISION" for e in decision.audit_trail)
+    assert not any("coefficient of variation" in e.lower() for e in decision.company_evidence)
+    report = svc.apply(
+        analysis_id="a", ticker="LNN", workbook_path=path, fiscal_years=FY, decision=decision
+    )
+    wb = load_workbook(path)
+    try:
+        assert wb["R&D"]["B8"].value == 5 or wb["R&D"]["C8"].value == 5 or wb["R&D"]["B2"].value == 5
+        hap = False
+        for row in wb["R&D"].iter_rows(min_row=1, max_row=20, max_col=22):
+            for cell in row:
+                if "HAP ANALYSIS" in str(cell.value or "") or "useful life" in str(cell.value or "").lower():
+                    hap = True
+        assert hap
+        assert report.lookback_complete or report.expenses
+    finally:
+        wb.close()
+
+
+def test_analyst_lease_override_is_distinct_from_agent_decision(tmp_path: Path):
+    path = industrial_workbook(tmp_path / "wb.xlsx")
+    svc = NewCompanyLeaseService()
+    report = svc.apply(
+        analysis_id="a", ticker="TJX", workbook_path=path, fiscal_years=FY, company_facts=company_facts_for()
+    )
+    overridden = svc.apply_review(report.review, action="correct", rate=0.055, reason="documented credit change", workbook_path=path)
+    events = [e.get("event") for e in overridden.audit_trail]
+    assert "AUTONOMOUS_AGENT_DECISION" in events
+    assert "ANALYST_OVERRIDE" in events
+    assert "LEASE_RATE_APPROVED" not in events
+    assert overridden.decision_class == "ANALYST_OVERRIDE"
+
+
+def test_gate_f_autonomous_supported_rate_passes_without_human_approval():
+    from models.new_company import LeaseRateReview, LeaseRateProposal
+
+    review = LeaseRateReview(
+        analysis_id="a",
+        ticker="MSFT",
+        status="autonomous_selected",
+        proposed_rate=0.04,
+        selected_rate=0.04,
+        blocking=False,
+        classification="disclosed",
+        decision_class="AUTONOMOUS_AGENT_DECISION",
+        supporting_evidence=["FY2025 reported 0.04"],
+        notes_written=["Leases!L1"],
+        proposal=LeaseRateProposal(
+            proposed_rate=0.04,
+            methodology="reported_weighted_average_discount_rate",
+            classification="disclosed",
+            source_fiscal_year="FY2025",
+        ),
+    )
+    gate = NewCompanyOutputGateService().evaluate(
+        analysis_id="a",
+        ticker="MSFT",
+        periods=MagicMock(template_family="industrial_template", fiscal_years=FY, chronology_ok=True, latest_quarter=2),
+        coverage=MagicMock(complete=True, lookback_complete=True),
+        statements=MagicMock(unresolved_material=[], summary="ok"),
+        pe10=MagicMock(
+            fiscal_year_pe10=[MagicMock(missing=False) for _ in FY],
+            fiscal_year_e10=[MagicMock(missing=False) for _ in FY],
+            current_pe10=MagicMock(value=20.0),
+            current_e10=MagicMock(value=5.0),
+            warnings=[],
+        ),
+        tax=MagicMock(complete=True, years=[]),
+        rd_decision=MagicMock(selected_useful_life=5, blocking=False, blocking_reasons=[], analyst_override=None),
+        rd=MagicMock(lookback_complete=True, capitalization_ok=True),
+        leases=MagicMock(complete=True, review=review),
+        lease_review=review,
+        buybacks=MagicMock(
+            years=[MagicMock(dollars=1.0, shares=1.0, absence_class=None) for _ in FY],
+            complete=True,
+        ),
+        current=MagicMock(as_of_mismatch=False, warnings=[]),
+        projection=MagicMock(
+            seasonality_adjusted_roic=0.1,
+            seasonality_adjusted_roce=0.1,
+            confidence=ProjectionConfidence.HIGH,
+            wacc=0.08,
+        ),
+        recalc=_ok_recalc(),
+        valuation=MagicMock(
+            expected_annual_return=0.1,
+            expected_return_with_dividends=0.12,
+            current_graham_intrinsic_value=100.0,
+            nopat=80.0,
+            invested_capital=500.0,
+            roic=0.16,
+        ),
+        valuation_judgment=MagicMock(
+            status="ok",
+            original_assumptions_preserved=True,
+            hap_introduced_circular_count=0,
+            er_decision="KEEP_EXISTING",
+            oe_decision="KEEP_EXISTING",
+            graham_decision="KEEP_EXISTING",
+            normalized_base_decision="KEEP_EXISTING",
+        ),
+    )
+    assert gate.gates["F_lease_rate"] == "pass"
+    assert gate.gates["E_rd"] == "pass"
+    assert "LEASE_RATE_REVIEW_PENDING" not in gate.blockers
+    assert gate.report_authorized
+
+
+def test_lease_notes_and_rate_cell_are_written(tmp_path: Path):
+    path = industrial_workbook(tmp_path / "wb.xlsx")
+    report = NewCompanyLeaseService().apply(
+        analysis_id="a", ticker="TJX", workbook_path=path, fiscal_years=FY, company_facts=company_facts_for()
+    )
+    assert report.review.selected_rate == pytest.approx(0.045)
+    wb = load_workbook(path)
+    try:
+        blob = " ".join(
+            str(cell.value or "")
+            for row in wb["Leases"].iter_rows(min_row=1, max_row=20, max_col=22)
+            for cell in row
+        )
+        assert "HAP ANALYSIS" in blob
+        assert "Classification" in blob
+        assert "Source filing" in blob
+        assert "Why HAP selected" in blob
+        assert "Material uncertainty" in blob
+        rate_vals = [wb["Leases"].cell(18, c).value for c in range(3, 13)]
+        assert any(isinstance(v, (int, float)) and abs(float(v) - 0.045) < 1e-9 for v in rate_vals)
+        assert wb["Expected Returns & Buybacks"]["A11"].value == 0.04
+    finally:
+        wb.close()
+    assert report.review.notes_written
+    assert not any(e.get("event") == "LEASE_RATE_APPROVED" for e in report.review.audit_trail)
+
+
+def test_optional_analyst_override_triggers_dependent_recalculation(tmp_path: Path, out_svc: OutputService):
+    from services.new_company_review_service import NewCompanyReviewService
+
+    path = industrial_workbook(tmp_path / "wb.xlsx")
+    applied = NewCompanyLeaseService().apply(
+        analysis_id="ov-recalc",
+        ticker="TJX",
+        workbook_path=path,
+        fiscal_years=FY,
+        company_facts=company_facts_for(),
+    )
+    out_svc.write_json("ov-recalc", "lease_rate_review.json", applied.review)
+    svc = NewCompanyReviewService(output_service=out_svc)
+    captured: dict = {}
+
+    def fake_run(**kwargs):
+        captured.update(kwargs)
+        return {
+            "workflow_state": NewCompanyWorkflowState.NEEDS_REVIEW,
+            "lease_review": applied.review,
+            "rd_decision": None,
+        }
+
+    svc.runner.run = fake_run  # type: ignore[method-assign]
+    result = svc.resolve_lease_rate(
+        analysis_id="ov-recalc",
+        ticker="TJX",
+        company="TJX",
+        workbook_path=path,
+        custom_run_path=None,
+        action="correct",
+        rate=0.055,
+        reason="documented credit change",
+    )
+    assert captured.get("finalize") is True
+    assert result["workflow_state"] == NewCompanyWorkflowState.NEEDS_REVIEW
+    stored = out_svc.read_json("ov-recalc", "lease_rate_review.json")
+    assert stored["decision_class"] == "ANALYST_OVERRIDE"
+    assert stored["selected_rate"] == pytest.approx(0.055)
+    assert not any(e.get("event") == "LEASE_RATE_APPROVED" for e in stored["audit_trail"])
+
+
+def test_more_evidence_request_pauses_and_does_not_fabricate_approval(tmp_path: Path, out_svc: OutputService):
+    path = industrial_workbook(tmp_path / "wb.xlsx")
+    applied = NewCompanyLeaseService().apply(
+        analysis_id="more-ev",
+        ticker="TJX",
+        workbook_path=path,
+        fiscal_years=FY,
+        company_facts=company_facts_for(),
+    )
+    pending = NewCompanyLeaseService().apply_review(
+        applied.review, action="request_more_evidence", reason="need incremental borrowing rate"
+    )
+    out_svc.write_json("more-ev", "lease_rate_review.json", pending)
+    runner = NewCompanyRunner(output_service=out_svc)
+    crf_path = tmp_path / "crf.xlsx"
+    crf_path.write_bytes(b"x")
+    with patch(_CRF_PARSE, return_value=_crf_for("TJX")):
+        done = runner.run(
+            analysis_id="more-ev",
+            ticker="TJX",
+            company="TJX",
+            template_path=path,
+            working_path=tmp_path / "working-more.xlsx",
+            custom_run_path=crf_path,
+            company_facts=company_facts_for(),
+            sec_manifest=_filings_manifest(),
+            tax_year_inputs=_tax_inputs(),
+        )
+    assert done["workflow_state"] == NewCompanyWorkflowState.AWAITING_ANALYST_REVIEW
+    assert done["lease_review"].blocking is True
+    assert done["output_gate"] is None or "LEASE_RATE_REVIEW_PENDING" in (done["output_gate"].blockers or [])
+    assert not any(e.get("event") == "LEASE_RATE_APPROVED" for e in done["lease_review"].audit_trail)
+
 
 

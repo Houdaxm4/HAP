@@ -16,6 +16,7 @@ from models.new_company import (
     NewCompanyLeaseReport,
 )
 from services.annual_period_service import detect_year_columns
+from services.hap_analysis_layout_service import HapAnalysisLayoutService
 from services.sec_service import SecService
 
 _COMMITMENT_TAGS = {
@@ -77,7 +78,7 @@ _IBR_TAGS = (
 )
 
 _RATE_ROW = 18
-_RISK_FREE_FALLBACK = 0.04
+_SUPPORTED = {"disclosed", "disclosed_historical", "derived", "estimated"}
 
 
 def _num(v: Any) -> float | None:
@@ -140,38 +141,89 @@ class NewCompanyLeaseService:
             market_date=market_date,
             comparable_rates=comparable_rates,
         )
-        self._write_workbook(workbook_path, years, proposal.proposed_rate, written)
+        supported = (
+            proposal.classification in _SUPPORTED and proposal.proposed_rate is not None
+        )
+        applied_rate = proposal.proposed_rate if supported else None
+        self._write_workbook(workbook_path, years, applied_rate, written)
 
         latest = years[-1] if years else None
-        review = LeaseRateReview(
-            analysis_id=analysis_id,
-            ticker=ticker,
-            status="LEASE_RATE_REVIEW_PENDING",
-            proposed_rate=proposal.proposed_rate,
-            supporting_evidence=proposal.company_evidence,
-            prior_or_comparable_rates=list(comparable_rates or []),
-            calculated_lease_asset=latest.rou_asset if latest else None,
-            calculated_lease_liability=(
-                (latest.current_liability or 0) + (latest.long_term_liability or 0)
-                if latest and (latest.current_liability is not None or latest.long_term_liability is not None)
-                else None
-            ),
-            sensitivity=proposal.sensitivity,
-            proposal=proposal,
-            blocking=True,
-            audit_trail=[
-                {
-                    "event": "LEASE_RATE_ESTIMATED",
-                    "rate": proposal.proposed_rate,
-                    "methodology": proposal.methodology,
-                    "timestamp": datetime.now(timezone.utc).isoformat(),
-                }
-            ],
-            summary=(
-                f"Proposed long-term lease rate {proposal.proposed_rate} via {proposal.methodology}. "
-                "Analyst approval is required before COMPLETE."
-            ),
-        )
+        now = datetime.now(timezone.utc).isoformat()
+        if supported:
+            review = LeaseRateReview(
+                analysis_id=analysis_id,
+                ticker=ticker,
+                status="autonomous_selected",
+                proposed_rate=proposal.proposed_rate,
+                selected_rate=proposal.proposed_rate,
+                approved_rate=None,
+                decision_class="AUTONOMOUS_AGENT_DECISION",
+                classification=proposal.classification,
+                supporting_evidence=proposal.company_evidence,
+                prior_or_comparable_rates=list(comparable_rates or []),
+                calculated_lease_asset=latest.rou_asset if latest else None,
+                calculated_lease_liability=(
+                    (latest.current_liability or 0) + (latest.long_term_liability or 0)
+                    if latest
+                    and (latest.current_liability is not None or latest.long_term_liability is not None)
+                    else None
+                ),
+                sensitivity=proposal.sensitivity,
+                proposal=proposal,
+                blocking=False,
+                audit_trail=[
+                    {
+                        "event": "AUTONOMOUS_AGENT_DECISION",
+                        "rate": proposal.proposed_rate,
+                        "methodology": proposal.methodology,
+                        "classification": proposal.classification,
+                        "timestamp": now,
+                    }
+                ],
+                summary=(
+                    f"AUTONOMOUS_AGENT_DECISION: selected_rate={proposal.proposed_rate} "
+                    f"({proposal.classification} via {proposal.methodology}). "
+                    "Optional analyst override is available; routine approval is not required."
+                ),
+            )
+        else:
+            review = LeaseRateReview(
+                analysis_id=analysis_id,
+                ticker=ticker,
+                status="LEASE_RATE_EVIDENCE_INSUFFICIENT",
+                proposed_rate=None,
+                selected_rate=None,
+                approved_rate=None,
+                decision_class="EVIDENCE_INSUFFICIENT",
+                classification="insufficient",
+                supporting_evidence=proposal.company_evidence,
+                prior_or_comparable_rates=list(comparable_rates or []),
+                calculated_lease_asset=latest.rou_asset if latest else None,
+                calculated_lease_liability=(
+                    (latest.current_liability or 0) + (latest.long_term_liability or 0)
+                    if latest
+                    and (latest.current_liability is not None or latest.long_term_liability is not None)
+                    else None
+                ),
+                sensitivity=proposal.sensitivity,
+                proposal=proposal,
+                blocking=False,
+                audit_trail=[
+                    {
+                        "event": "LEASE_RATE_EVIDENCE_INSUFFICIENT",
+                        "methodology": proposal.methodology,
+                        "timestamp": now,
+                    }
+                ],
+                summary=(
+                    "LEASE_RATE_EVIDENCE_INSUFFICIENT: no company-disclosed or derived rate "
+                    "could be supported. No rate was fabricated. Gate F fails; the run does "
+                    "not pause for routine approval."
+                ),
+            )
+        notes = self.write_decision_notes(workbook_path, review)
+        review = review.model_copy(update={"notes_written": notes})
+        written.extend(notes)
         complete = all(
             y.year_1 is not None
             or y.rou_asset is not None
@@ -191,7 +243,8 @@ class NewCompanyLeaseService:
             cells_written=written,
             summary=(
                 f"Leases: {len(years)} years; mixed_asc842={mixed}; "
-                f"proposed_rate={proposal.proposed_rate}; review=pending."
+                f"selected_rate={review.selected_rate}; "
+                f"decision={review.decision_class}; status={review.status}."
             ),
         )
 
@@ -208,56 +261,202 @@ class NewCompanyLeaseService:
     ) -> LeaseRateProposal:
         attempts: list[dict[str, Any]] = []
         evidence: list[str] = []
-        latest = next((y for y in reversed(years) if y.reported_discount_rate is not None), None)
+        latest_year = years[-1] if years else None
         duration = next((y.remaining_term for y in reversed(years) if y.remaining_term), None)
 
-        # 1. Company-reported weighted-average operating-lease discount rate
-        if latest and latest.reported_discount_rate is not None:
-            rate = _as_rate(latest.reported_discount_rate)
-            attempts.append({"rank": 1, "method": "reported_weighted_average_discount_rate", "rate": rate})
-            evidence.append(f"{latest.fiscal_year} reported operating-lease WtdAvg discount rate {rate:.4f}.")
-            return self._proposal(rate, "reported_weighted_average_discount_rate", 1, duration, treasury_yield, credit_spread, evidence, attempts, market_date)
+        def _src(year: LeaseYearData | None) -> tuple[str | None, str | None]:
+            if year is None:
+                return None, None
+            form = next((str(r.get("form")) for r in year.raw_labels if r.get("form")), None)
+            accn = next((str(r.get("accn")) for r in year.raw_labels if r.get("accn")), None)
+            return form, accn
 
-        # 2. Incremental borrowing rate
+        # A. Company-disclosed weighted-average operating-lease discount rate — latest year.
+        if latest_year and latest_year.reported_discount_rate is not None:
+            rate = _as_rate(latest_year.reported_discount_rate)
+            form, accn = _src(latest_year)
+            attempts.append({"rank": 1, "method": "reported_weighted_average_discount_rate", "rate": rate})
+            evidence.append(
+                f"{latest_year.fiscal_year} reported operating-lease WtdAvg discount rate {rate:.4f}."
+            )
+            return self._proposal(
+                rate,
+                "reported_weighted_average_discount_rate",
+                1,
+                duration,
+                treasury_yield,
+                credit_spread,
+                evidence,
+                attempts,
+                market_date,
+                classification="disclosed",
+                source_fiscal_year=latest_year.fiscal_year,
+                source_form=form,
+                source_accession=accn,
+                limitations="Company-disclosed ASC 842 weighted-average discount rate for the latest fiscal year.",
+            )
+
+        # B. Historical company-disclosed rate if the latest year is missing.
+        historical = next((y for y in reversed(years) if y.reported_discount_rate is not None), None)
+        if historical is not None:
+            rate = _as_rate(historical.reported_discount_rate)
+            form, accn = _src(historical)
+            attempts.append({"rank": 2, "method": "historical_reported_weighted_average_discount_rate", "rate": rate})
+            latest_label = latest_year.fiscal_year if latest_year else "latest year"
+            evidence.append(
+                f"{historical.fiscal_year} reported operating-lease WtdAvg discount rate {rate:.4f}. "
+                f"{latest_label} did not disclose a current rate."
+            )
+            return self._proposal(
+                rate,
+                "historical_reported_weighted_average_discount_rate",
+                2,
+                duration,
+                treasury_yield,
+                credit_spread,
+                evidence,
+                attempts,
+                market_date,
+                classification="disclosed_historical",
+                source_fiscal_year=historical.fiscal_year,
+                source_form=form,
+                source_accession=accn,
+                limitations=(
+                    f"Used a prior-year disclosed rate ({historical.fiscal_year}) because the "
+                    f"latest period did not report a weighted-average discount rate. Applicability "
+                    "depends on whether the company's lease portfolio and credit profile are still comparable."
+                ),
+            )
+
+        # C. Incremental borrowing rate (company-disclosed).
         ibr = next((y for y in reversed(years) if any(
             r.get("field") == "incremental_borrowing_rate" for r in y.raw_labels
         )), None)
         if ibr:
             raw = next(r for r in ibr.raw_labels if r.get("field") == "incremental_borrowing_rate")
             rate = _as_rate(float(raw["value"]))
-            attempts.append({"rank": 2, "method": "incremental_borrowing_rate", "rate": rate})
+            attempts.append({"rank": 3, "method": "incremental_borrowing_rate", "rate": rate})
             evidence.append(f"{ibr.fiscal_year} incremental borrowing rate {rate:.4f}.")
-            return self._proposal(rate, "incremental_borrowing_rate", 2, duration, treasury_yield, credit_spread, evidence, attempts, market_date)
+            return self._proposal(
+                rate,
+                "incremental_borrowing_rate",
+                3,
+                duration,
+                treasury_yield,
+                credit_spread,
+                evidence,
+                attempts,
+                market_date,
+                classification="disclosed",
+                source_fiscal_year=ibr.fiscal_year,
+                source_form=str(raw.get("form") or "") or None,
+                source_accession=str(raw.get("accn") or "") or None,
+                limitations="Company-disclosed incremental borrowing rate used as the lease discount rate.",
+            )
 
-        # 3. Inferred from undiscounted payments vs reported liability
+        # C. Inferred from undiscounted payments vs reported liability.
         inferred = self._infer_from_liability(years)
-        attempts.append({"rank": 3, "method": "inferred_undiscounted_vs_liability", "rate": inferred})
+        attempts.append({"rank": 4, "method": "inferred_undiscounted_vs_liability", "rate": inferred})
         if inferred is not None:
-            evidence.append(f"Inferred discount rate {inferred:.4f} from undiscounted commitments vs lease liability.")
-            return self._proposal(inferred, "inferred_undiscounted_vs_liability", 3, duration, treasury_yield, credit_spread, evidence, attempts, market_date)
+            evidence.append(
+                f"Inferred discount rate {inferred:.4f} from undiscounted commitments vs lease liability."
+            )
+            src_year = next(
+                (y.fiscal_year for y in reversed(years) if (y.current_liability or y.long_term_liability) and (y.total_undiscounted or y.year_1)),
+                None,
+            )
+            return self._proposal(
+                inferred,
+                "inferred_undiscounted_vs_liability",
+                4,
+                duration,
+                treasury_yield,
+                credit_spread,
+                evidence,
+                attempts,
+                market_date,
+                classification="derived",
+                source_fiscal_year=src_year,
+                limitations="Derived from the relationship between undiscounted lease payments and the reported liability; not a company-stated rate.",
+            )
 
-        # 4. Company debt yield / after-tax cost of debt
+        # C. After-tax cost of debt when that input is evidenced.
         if after_tax_cost_of_debt is not None:
             pretax = after_tax_cost_of_debt / 0.79 if after_tax_cost_of_debt < 0.2 else after_tax_cost_of_debt
-            attempts.append({"rank": 4, "method": "debt_yield_adjusted", "rate": pretax})
-            evidence.append(f"After-tax cost of debt {after_tax_cost_of_debt:.4f} grossed up for lease-term unsecured borrowing.")
-            return self._proposal(float(pretax), "debt_yield_adjusted", 4, duration, treasury_yield, credit_spread, evidence, attempts, market_date)
+            attempts.append({"rank": 5, "method": "debt_yield_adjusted", "rate": pretax})
+            evidence.append(
+                f"After-tax cost of debt {after_tax_cost_of_debt:.4f} grossed up for lease-term unsecured borrowing."
+            )
+            return self._proposal(
+                float(pretax),
+                "debt_yield_adjusted",
+                5,
+                duration,
+                treasury_yield,
+                credit_spread,
+                evidence,
+                attempts,
+                market_date,
+                classification="estimated",
+                limitations="Estimated from evidenced after-tax cost of debt; not a lease footnote disclosure.",
+            )
         if wacc is not None:
-            attempts.append({"rank": 4, "method": "wacc_proxy_rejected_prefer_debt", "rate": None})
+            attempts.append({"rank": 5, "method": "wacc_proxy_rejected_prefer_debt", "rate": None})
+            evidence.append("WACC was available but was not used as a lease-rate proxy.")
 
-        # 5. Risk-free + credit spread
-        rf = treasury_yield if treasury_yield is not None else _RISK_FREE_FALLBACK
-        spread = credit_spread if credit_spread is not None else 0.015
-        blended = rf + spread
-        attempts.append({"rank": 5, "method": "risk_free_plus_credit_spread", "rate": blended, "rf": rf, "spread": spread})
-        evidence.append(f"Benchmark yield {rf:.4f} plus company credit spread {spread:.4f}.")
+        if treasury_yield is not None and credit_spread is not None:
+            blended = treasury_yield + credit_spread
+            attempts.append(
+                {
+                    "rank": 6,
+                    "method": "risk_free_plus_credit_spread",
+                    "rate": blended,
+                    "rf": treasury_yield,
+                    "spread": credit_spread,
+                }
+            )
+            evidence.append(
+                f"Benchmark yield {treasury_yield:.4f} plus company credit spread {credit_spread:.4f}."
+            )
+            return self._proposal(
+                blended,
+                "risk_free_plus_credit_spread",
+                6,
+                duration,
+                treasury_yield,
+                credit_spread,
+                evidence,
+                attempts,
+                market_date,
+                classification="estimated",
+                limitations="Estimated from evidenced treasury yield and credit spread; not a company-disclosed lease rate.",
+            )
+
         if comparable_rates:
             med = sorted(comparable_rates)[len(comparable_rates) // 2]
-            attempts.append({"rank": 6, "method": "comparable_or_sector", "rate": med})
-            evidence.append(f"Comparable/sector median {med:.4f} recorded as last-resort evidence.")
-            if treasury_yield is None and credit_spread is None and after_tax_cost_of_debt is None:
-                return self._proposal(med, "comparable_or_sector", 6, duration, treasury_yield, credit_spread, evidence, attempts, market_date)
-        return self._proposal(blended, "risk_free_plus_credit_spread", 5, duration, rf, spread, evidence, attempts, market_date)
+            attempts.append({"rank": 7, "method": "comparable_or_sector_not_used", "rate": med})
+            evidence.append(
+                f"Comparable/sector median {med:.4f} was observed but not substituted as the selected rate."
+            )
+
+        evidence.append(
+            "No company-disclosed weighted-average lease discount rate, incremental borrowing rate, "
+            "or evidenced derivation inputs were available. No rate was fabricated."
+        )
+        attempts.append({"rank": 99, "method": "insufficient_evidence", "rate": None})
+        return self._proposal(
+            None,
+            "insufficient_evidence",
+            99,
+            duration,
+            treasury_yield,
+            credit_spread,
+            evidence,
+            attempts,
+            market_date,
+            classification="insufficient",
+            limitations="Insufficient evidence to select a defensible long-term lease discount rate.",
+        )
 
     def apply_review(
         self,
@@ -279,44 +478,75 @@ class NewCompanyLeaseService:
                     "analyst_reason": reason,
                     "audit_trail": trail,
                     "blocking": True,
-                    "summary": "Analyst requested more evidence; review still pending.",
+                    "decision_class": review.decision_class,
+                    "summary": "Analyst requested more evidence; optional review is pending.",
                 }
             )
         if action == "approve":
-            approved = review.proposed_rate
-            trail.append({"event": "LEASE_RATE_APPROVED", "rate": approved, "reason": reason, "timestamp": now})
-            status = "approved"
-            code = "LEASE_RATE_ESTIMATED"
+            selected = review.selected_rate if review.selected_rate is not None else review.proposed_rate
+            trail.append(
+                {
+                    "event": "ANALYST_ACKNOWLEDGED",
+                    "rate": selected,
+                    "reason": reason,
+                    "timestamp": now,
+                }
+            )
+            status = review.status if review.status != "LEASE_RATE_REVIEW_PENDING" else "autonomous_selected"
+            decision_class = review.decision_class or "AUTONOMOUS_AGENT_DECISION"
+            if decision_class == "EVIDENCE_INSUFFICIENT":
+                decision_class = "AUTONOMOUS_AGENT_DECISION"
+            code = "ANALYST_ACKNOWLEDGED"
+            approved = None
+            analyst_action = "acknowledge"
         elif action == "correct":
             if rate is None:
                 raise ValueError("correct action requires a rate")
-            approved = float(rate)
+            selected = float(rate)
             trail.append(
                 {
-                    "event": "LEASE_RATE_ANALYST_OVERRIDDEN",
+                    "event": "ANALYST_OVERRIDE",
                     "proposed": review.proposed_rate,
-                    "approved": approved,
+                    "selected": selected,
                     "reason": reason,
                     "timestamp": now,
                 }
             )
             status = "overridden"
-            code = "LEASE_RATE_ANALYST_OVERRIDDEN"
+            code = "ANALYST_OVERRIDE"
+            approved = selected
+            analyst_action = "correct"
+            decision_class = "ANALYST_OVERRIDE"
         else:
             raise ValueError(f"Unknown lease review action: {action}")
 
-        if workbook_path is not None and approved is not None:
-            self._write_rate(workbook_path, approved)
+        if workbook_path is not None and selected is not None:
+            self._write_rate(workbook_path, selected)
+            notes = self.write_decision_notes(
+                workbook_path,
+                review.model_copy(
+                    update={
+                        "selected_rate": selected,
+                        "decision_class": decision_class,
+                        "classification": "estimated" if decision_class == "ANALYST_OVERRIDE" else review.classification,
+                    }
+                ),
+            )
+        else:
+            notes = list(review.notes_written)
 
         return review.model_copy(
             update={
                 "status": status,
+                "selected_rate": selected,
                 "approved_rate": approved,
-                "analyst_action": action,
+                "analyst_action": analyst_action,
                 "analyst_reason": reason,
+                "decision_class": decision_class,
                 "audit_trail": trail,
                 "blocking": False,
-                "summary": f"{code}: approved_rate={approved} (proposed={review.proposed_rate}).",
+                "notes_written": notes,
+                "summary": f"{code}: selected_rate={selected} (proposed={review.proposed_rate}).",
             }
         )
 
@@ -453,11 +683,17 @@ class NewCompanyLeaseService:
                 "finance rou": "finance_rou_asset",
                 "finance lease liability current": "finance_current_liability",
             }
+            rate_row = _RATE_ROW
             for row in range(1, min(ws.max_row or 1, 40) + 1):
                 lab = str(ws.cell(row, 1).value or "").strip().lower()
                 for needle, field in label_fields.items():
                     if needle in lab:
                         field_rows[field] = row
+                if any(
+                    n in lab
+                    for n in ("long-term rate", "long term rate", "discount rate", "lease rate")
+                ):
+                    rate_row = row
             for y in years:
                 col = cols.get(y.fiscal_year)
                 if not col:
@@ -473,11 +709,10 @@ class NewCompanyLeaseService:
                         cell.value = val
                         written.append(f"Leases!{get_column_letter(col)}{row}")
                 if rate is not None:
-                    cell = ws.cell(_RATE_ROW, col)
+                    cell = ws.cell(rate_row, col)
                     if not (isinstance(cell.value, str) and cell.value.startswith("=")):
-                        if cell.value in (None, ""):
-                            cell.value = rate
-                            written.append(f"Leases!{get_column_letter(col)}{_RATE_ROW}")
+                        cell.value = rate
+                        written.append(f"Leases!{get_column_letter(col)}{rate_row}")
             wb.save(path)
         finally:
             wb.close()
@@ -490,9 +725,18 @@ class NewCompanyLeaseService:
                 return
             ws = wb["Leases"]
             cols = detect_year_columns(ws, wb)
+            rate_row = _RATE_ROW
+            for row in range(1, min(ws.max_row or 1, 40) + 1):
+                lab = str(ws.cell(row, 1).value or "").strip().lower()
+                if any(
+                    n in lab
+                    for n in ("long-term rate", "long term rate", "discount rate", "lease rate")
+                ):
+                    rate_row = row
+                    break
             fy_cols = [c for k, c in cols.items() if str(k).startswith("FY")]
             for col in fy_cols:
-                cell = ws.cell(_RATE_ROW, col)
+                cell = ws.cell(rate_row, col)
                 if isinstance(cell.value, str) and cell.value.startswith("="):
                     continue
                 cell.value = rate
@@ -501,8 +745,50 @@ class NewCompanyLeaseService:
             wb.close()
 
     @staticmethod
+    def write_decision_notes(path: Path, review: LeaseRateReview) -> list[str]:
+        wb = load_workbook(path, data_only=False)
+        try:
+            if "Leases" not in wb.sheetnames:
+                return []
+            proposal = review.proposal
+            rate = review.selected_rate if review.selected_rate is not None else review.proposed_rate
+            rate_txt = f"{rate * 100:.2f}%" if isinstance(rate, (int, float)) else "not selected"
+            rows = [
+                ("Lease discount rate (selected)", rate_txt),
+                ("Classification", review.classification or (proposal.classification if proposal else "—")),
+                ("Decision class", review.decision_class),
+                (
+                    "Source filing / period",
+                    (
+                        f"{(proposal.source_form if proposal else '') or 'SEC'} "
+                        f"{(proposal.source_fiscal_year if proposal else '') or ''} "
+                        f"{(proposal.source_accession if proposal else '') or ''}"
+                    ).strip()
+                    or "—",
+                ),
+                (
+                    "Disclosure / methodology",
+                    (proposal.methodology if proposal else None) or "—",
+                ),
+                (
+                    "Why HAP selected this rate",
+                    "; ".join((review.supporting_evidence or [])[:3]) or review.summary,
+                ),
+                (
+                    "Material uncertainty",
+                    (proposal.limitations if proposal else None)
+                    or "Optional analyst override is available.",
+                ),
+            ]
+            written = HapAnalysisLayoutService().write_block(wb["Leases"], rows=rows, start_col=12)
+            wb.save(path)
+            return written
+        finally:
+            wb.close()
+
+    @staticmethod
     def _proposal(
-        rate: float,
+        rate: float | None,
         method: str,
         rank: int,
         duration: float | None,
@@ -511,23 +797,38 @@ class NewCompanyLeaseService:
         evidence: list[str],
         attempts: list[dict[str, Any]],
         market_date: str | None,
+        *,
+        classification: str,
+        source_fiscal_year: str | None = None,
+        source_form: str | None = None,
+        source_accession: str | None = None,
+        limitations: str | None = None,
     ) -> LeaseRateProposal:
-        lo = max(rate - 0.01, 0.001)
-        hi = rate + 0.01
+        rounded = round(float(rate), 6) if rate is not None else None
+        lo = max((rate or 0) - 0.01, 0.001) if rate is not None else None
+        hi = (rate + 0.01) if rate is not None else None
+        sensitivity: list[dict[str, Any]] = []
+        if rate is not None and lo is not None and hi is not None:
+            sensitivity = [
+                {"rate": round(lo, 4), "role": "lower"},
+                {"rate": round(rate, 4), "role": "proposed"},
+                {"rate": round(hi, 4), "role": "upper"},
+            ]
         return LeaseRateProposal(
-            proposed_rate=round(float(rate), 6),
+            proposed_rate=rounded,
             methodology=method,
             methodology_rank=rank,
+            classification=classification,
+            source_fiscal_year=source_fiscal_year,
+            source_form=source_form,
+            source_accession=source_accession,
+            limitations=limitations,
             market_date=market_date,
             estimated_lease_duration=duration,
             benchmark_rate=benchmark,
             credit_spread=spread,
             company_evidence=evidence,
-            confidence={1: 0.9, 2: 0.85, 3: 0.7, 4: 0.6, 5: 0.45, 6: 0.3}.get(rank, 0.4),
-            sensitivity=[
-                {"rate": round(lo, 4), "role": "lower"},
-                {"rate": round(rate, 4), "role": "proposed"},
-                {"rate": round(hi, 4), "role": "upper"},
-            ],
+            confidence={1: 0.9, 2: 0.75, 3: 0.85, 4: 0.7, 5: 0.6, 6: 0.5}.get(rank, 0.2),
+            sensitivity=sensitivity,
             hierarchy_attempts=attempts,
         )

@@ -1,4 +1,4 @@
-"""New Company initiation runner — ten-year coverage, analyst lease-rate checkpoint, Word."""
+"""New Company initiation runner — ten-year coverage, autonomous lease/R&D decisions, Word."""
 
 from __future__ import annotations
 
@@ -44,12 +44,16 @@ def _fy_int(token: str | None) -> int:
 
 
 def _certification_status(workflow, lease_review, recalc, gate) -> str:
-    """COMPLETE only after genuine Excel COM. Cloud COM-unavailable + lease approved → pending Windows."""
+    """COMPLETE only after genuine Excel COM. Cloud COM-unavailable + selected rate → pending Windows."""
     if workflow == NewCompanyWorkflowState.COMPLETE and genuine_excel_com_recalc(recalc):
         return NewCompanyWorkflowState.COMPLETE.value
     if workflow == NewCompanyWorkflowState.AWAITING_ANALYST_REVIEW:
         return NewCompanyWorkflowState.AWAITING_ANALYST_REVIEW.value
-    lease_ok = bool(lease_review and not lease_review.blocking)
+    lease_ok = bool(
+        lease_review
+        and not lease_review.blocking
+        and (lease_review.selected_rate is not None or lease_review.proposed_rate is not None)
+    )
     recalc_unavailable = bool(recalc is not None and recalc.status == "UNAVAILABLE" and not recalc.com_invoked)
     blockers = list(gate.blockers) if gate is not None else []
     com_blocked = "WORKBOOK_RECALCULATION_INCOMPLETE" in blockers
@@ -221,13 +225,21 @@ class NewCompanyRunner:
         )
         lease_review = leases.review
         persisted = self._load_persisted_lease_review(analysis_id)
-        if persisted is not None and not persisted.blocking:
+        if persisted is not None:
             lease_review = persisted
-            if persisted.approved_rate is not None:
-                self.leases._write_rate(working_path, persisted.approved_rate)
+            if not persisted.blocking:
+                applied = (
+                    persisted.selected_rate
+                    if persisted.selected_rate is not None
+                    else persisted.approved_rate
+                )
+                if applied is not None:
+                    self.leases._write_rate(working_path, applied)
+                notes = self.leases.write_decision_notes(working_path, lease_review)
+                lease_review = lease_review.model_copy(update={"notes_written": notes})
             leases = leases.model_copy(update={"review": lease_review})
         elif lease_review_override:
-            # Programmatic approve is ignored unless a persisted analyst decision already exists.
+            # Programmatic approve is ignored; it is not a human override.
             del lease_review_override
 
         buybacks = timed(
@@ -305,7 +317,11 @@ class NewCompanyRunner:
         )
         self.guard.inspect(analysis_id=analysis_id, ticker=ticker, workbook_path=working_path)
 
-        awaiting = bool(lease_review and lease_review.blocking)
+        awaiting = bool(
+            lease_review
+            and lease_review.blocking
+            and lease_review.status == "LEASE_RATE_REVIEW_PENDING"
+        )
         workflow = (
             NewCompanyWorkflowState.AWAITING_ANALYST_REVIEW
             if awaiting
@@ -508,12 +524,18 @@ class NewCompanyRunner:
             latest_quarter=periods.latest_quarter,
             workbook_path=str(working_path),
             custom_run_path=str(custom_run_path) if custom_run_path else None,
-            lease_rate_approved=bool(lease_review and not lease_review.blocking),
+            lease_rate_approved=bool(lease_review and lease_review.decision_class == "ANALYST_OVERRIDE"),
+            lease_rate_selected=bool(
+                lease_review
+                and not lease_review.blocking
+                and (lease_review.selected_rate is not None or lease_review.proposed_rate is not None)
+            ),
             rd_life_overridden=bool(rd_decision.analyst_override),
             phases_completed=[t["stage"] for t in timings],
             certification_status=cert,
             summary=f"New Company {workflow.value} cert={cert} in {(time.perf_counter()-t0):.1f}s.",
         )
+        self._record_assumption_provenance(analysis_id, lease_review, rd_decision)
         self.output_service.write_json(analysis_id, "new_company_run_state.json", state)
         self.output_service.write_json(
             analysis_id,
@@ -523,7 +545,15 @@ class NewCompanyRunner:
                 "ticker": ticker,
                 "workflow_state": workflow.value,
                 "certification_status": cert,
-                "lease_rate_approved": bool(lease_review and not lease_review.blocking),
+                "lease_rate_approved": bool(
+                    lease_review and lease_review.decision_class == "ANALYST_OVERRIDE"
+                ),
+                "lease_rate_selected": bool(
+                    lease_review
+                    and not lease_review.blocking
+                    and (lease_review.selected_rate is not None or lease_review.proposed_rate is not None)
+                ),
+                "lease_decision_class": lease_review.decision_class if lease_review else None,
                 "com_invoked": bool(recalc.com_invoked) if recalc is not None else False,
                 "recalc_status": recalc.status if recalc is not None else None,
                 "recalc_method": recalc.method if recalc is not None else None,
@@ -580,3 +610,92 @@ class NewCompanyRunner:
             return LeaseRateReview.model_validate(raw)
         except Exception:  # noqa: BLE001
             return None
+
+    def _record_assumption_provenance(self, analysis_id: str, lease_review, rd_decision) -> None:
+        notes = {
+            "analysis_id": analysis_id,
+            "lease": {
+                "selected_rate": getattr(lease_review, "selected_rate", None) if lease_review else None,
+                "classification": getattr(lease_review, "classification", None) if lease_review else None,
+                "decision_class": getattr(lease_review, "decision_class", None) if lease_review else None,
+                "methodology": (
+                    lease_review.proposal.methodology
+                    if lease_review and lease_review.proposal
+                    else None
+                ),
+                "evidence": list(lease_review.supporting_evidence) if lease_review else [],
+                "limitations": (
+                    lease_review.proposal.limitations
+                    if lease_review and lease_review.proposal
+                    else None
+                ),
+                "notes_written": list(lease_review.notes_written) if lease_review else [],
+                "audit_trail": list(lease_review.audit_trail) if lease_review else [],
+            },
+            "rd": {
+                "selected_useful_life": rd_decision.selected_useful_life if rd_decision else None,
+                "decision_class": (
+                    "ANALYST_OVERRIDE"
+                    if rd_decision and rd_decision.analyst_override is not None
+                    else "AUTONOMOUS_AGENT_DECISION"
+                ),
+                "rationale": rd_decision.rationale if rd_decision else None,
+                "evidence": list(rd_decision.company_evidence) if rd_decision else [],
+                "industry_evidence": list(rd_decision.industry_evidence) if rd_decision else [],
+                "citations": list(rd_decision.filing_citations) if rd_decision else [],
+                "limitations": list(rd_decision.blocking_reasons) if rd_decision else [],
+                "audit_trail": list(rd_decision.audit_trail) if rd_decision else [],
+            },
+        }
+        self.output_service.write_json(analysis_id, "new_company_assumption_notes.json", notes)
+        try:
+            raw = self.output_service.read_json(analysis_id, "provenance_report.json")
+        except FileNotFoundError:
+            return
+        entries = list(raw.get("entries") or [])
+        if lease_review and lease_review.selected_rate is not None:
+            entries.append(
+                {
+                    "cell_ref": "Leases!rate",
+                    "worksheet": "Leases",
+                    "cell": "HAP_ANALYSIS",
+                    "concept": "long_term_lease_discount_rate",
+                    "period": (
+                        lease_review.proposal.source_fiscal_year if lease_review.proposal else ""
+                    ) or "",
+                    "value": lease_review.selected_rate,
+                    "status": "filled",
+                    "source_document": (
+                        lease_review.proposal.source_accession if lease_review.proposal else None
+                    ),
+                    "filing_type": (
+                        lease_review.proposal.source_form if lease_review.proposal else None
+                    ),
+                    "reasoning": lease_review.summary,
+                    "write_decision": lease_review.decision_class,
+                }
+            )
+        if rd_decision and rd_decision.selected_useful_life is not None:
+            entries.append(
+                {
+                    "cell_ref": "R&D!B8",
+                    "worksheet": "R&D",
+                    "cell": "B8",
+                    "concept": "rd_useful_life_years",
+                    "period": "assumption",
+                    "value": rd_decision.selected_useful_life,
+                    "status": "filled",
+                    "reasoning": rd_decision.rationale,
+                    "write_decision": (
+                        "ANALYST_OVERRIDE"
+                        if rd_decision.analyst_override is not None
+                        else "AUTONOMOUS_AGENT_DECISION"
+                    ),
+                }
+            )
+        raw["entries"] = entries
+        raw["filled_count"] = int(raw.get("filled_count") or 0) + (
+            (1 if lease_review and lease_review.selected_rate is not None else 0)
+            + (1 if rd_decision and rd_decision.selected_useful_life is not None else 0)
+        )
+        self.output_service.write_json(analysis_id, "provenance_report.json", raw)

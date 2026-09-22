@@ -49,8 +49,7 @@ export default function AnalysisHeader({
           )}
           {analysis.status === "Review" && (
             <p className="mt-2 text-xs text-amber-300">
-              Analyst review required — lease discount rate must be approved or corrected before
-              the New Company report can be authorized.
+              Analyst review is optional — lease discount rate and R&D useful life were selected autonomously. Override them here if needed.
             </p>
           )}
         </div>

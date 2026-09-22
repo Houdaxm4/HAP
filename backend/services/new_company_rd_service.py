@@ -16,6 +16,7 @@ from models.new_company import (
 )
 from services.annual_period_service import detect_workbook_years, detect_year_columns
 from services.annual_rd_service import AnnualRdService
+from services.hap_analysis_layout_service import HapAnalysisLayoutService
 from services.sec_service import SecService
 
 _PERMITTED = (1, 10)
@@ -33,7 +34,7 @@ _INDUSTRY_LIFE = (
     (("semiconductor", "chip", "hardware", "electronic"), 4, "hardware product cycle"),
     (("retail", "store", "apparel", "grocery", "restaurant"), 3, "short merchandising cycle; limited R&D"),
     (("food", "beverage", "consumer staples", "household"), 3, "brand/formulation cycle"),
-    (("industrial", "machinery", "manufacturing", "chemical"), 5, "industrial product development cycle"),
+    (("industrial", "machinery", "manufacturing", "chemical", "irrigation", "agriculture", "farm"), 5, "industrial product development cycle"),
 )
 
 
@@ -82,16 +83,9 @@ class NewCompanyRdService:
                 "No separately disclosed positive R&D expense in the displayed financial statements."
             )
         else:
-            mean = sum(positive) / len(positive)
-            var = sum((v - mean) ** 2 for v in positive) / len(positive)
-            cv = (var ** 0.5) / mean if mean else 0.0
             company_ev.append(
-                f"Historical R&D spending persists across {len(positive)} years "
-                f"(mean={mean:.1f}, coefficient of variation={cv:.2f})."
-            )
-            company_ev.append(
-                "Useful life is inferred from the nature and duration of economic benefits, "
-                "not from the dollar amount of R&D."
+                f"R&D expense is separately disclosed in {len(positive)} displayed years. "
+                "Useful life is based on the economic duration of R&D benefits, not on the dollar amount spent."
             )
 
         blob = f"{industry or ''} {sic or ''} {(sec_manifest or {}).get('company_name') or ''}".lower()
@@ -139,19 +133,19 @@ class NewCompanyRdService:
             else:
                 selected = int(override)
                 company_ev.append(f"Analyst override to {override} years: {override_reason or 'no reason supplied'}.")
-                trail.append(
-                    {
-                        "event": "RD_USEFUL_LIFE_ANALYST_OVERRIDE",
-                        "original": original,
-                        "override": selected,
-                        "reason": override_reason,
-                        "timestamp": datetime.now(timezone.utc).isoformat(),
-                    }
-                )
+            trail.append(
+                {
+                    "event": "ANALYST_OVERRIDE",
+                    "original": original,
+                    "override": selected,
+                    "reason": override_reason,
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                }
+            )
         else:
             trail.append(
                 {
-                    "event": "RD_USEFUL_LIFE_AGENT_SELECTED",
+                    "event": "AUTONOMOUS_AGENT_DECISION",
                     "life": selected,
                     "timestamp": datetime.now(timezone.utc).isoformat(),
                 }
@@ -172,10 +166,10 @@ class NewCompanyRdService:
             citations.append(str(sec_manifest["selected_filings"][0].get("document_url") or "SEC 10-K"))
 
         rationale = (
-            f"Selected {selected}-year straight-line R&D life. "
-            f"{industry_reason or 'Defaulted to a 5-year industrial mid-point because industry evidence was thin.'} "
-            "This is an agent-selected analyst assumption, not a measured accounting fact, "
-            "and has not been manually approved."
+            f"Selected {selected}-year straight-line R&D capitalization life. "
+            f"{industry_reason or 'Industry/SIC evidence was thin, so HAP used a 5-year industrial economic mid-point rather than deriving life from annual R&D spending.'} "
+            "This is an AUTONOMOUS_AGENT_DECISION, not a measured accounting fact. "
+            "An analyst may override it with a documented reason."
         )
         return RdUsefulLifeDecision(
             analysis_id=analysis_id,
@@ -195,9 +189,11 @@ class NewCompanyRdService:
             analyst_override=override,
             analyst_override_reason=override_reason,
             audit_trail=trail,
-            blocking=bool(blocking and "insufficient" in " ".join(blocking).lower()) or (
-                "RD_USEFUL_LIFE_EVIDENCE_WEAK" in blocking and not positive and industry_life == 5 and not industry_reason
+            warning=(
+                "R&D useful life is an autonomous agent decision. "
+                "Override it if the economic life of the company's R&D differs from this selection."
             ),
+            blocking=False,
             blocking_reasons=blocking,
             industry=industry,
             sic=str(sic) if sic else None,
@@ -244,6 +240,7 @@ class NewCompanyRdService:
                 )
             self._write_inputs_rd(wb, amounts, written)
             extended = self._extend_schedule(wb, fiscal_years, life, written)
+            notes = self._write_decision_notes(wb, decision, lookback, written)
             wb.save(workbook_path)
         finally:
             wb.close()
@@ -400,8 +397,8 @@ class NewCompanyRdService:
             return
         ws = wb["R&D"]
         warning = (
-            "ANALYST WARNING: R&D useful life is an agent-selected analyst assumption "
-            "and has not been manually approved. Override it if the economic life differs."
+            "HAP ANALYSIS: R&D useful life is an autonomous agent decision. "
+            "Override it if the economic life differs."
         )
         for addr in _LIFE_CELLS:
             cell = ws[addr]
@@ -414,9 +411,41 @@ class NewCompanyRdService:
         warn_cell = ws["A1"]
         existing = str(warn_cell.value or "")
         if not (isinstance(warn_cell.value, str) and warn_cell.value.startswith("=")):
-            if "ANALYST WARNING" not in existing:
+            if "ANALYST WARNING" not in existing and "HAP ANALYSIS" not in existing:
                 warn_cell.value = warning
                 written.append("R&D!A1")
+
+    @staticmethod
+    def _write_decision_notes(wb, decision: RdUsefulLifeDecision, lookback: list[str], written: list[str]) -> list[str]:
+        if "R&D" not in wb.sheetnames:
+            return []
+        override = (
+            f"Analyst override to {decision.analyst_override} years ({decision.analyst_override_reason})."
+            if decision.analyst_override is not None
+            else "None — AUTONOMOUS_AGENT_DECISION"
+        )
+        lookback_txt = f"{lookback[0]}–{lookback[-1]}" if lookback else "—"
+        rows = [
+            ("R&D useful life (selected)", f"{decision.selected_useful_life} years"),
+            ("Decision class", "ANALYST_OVERRIDE" if decision.analyst_override is not None else "AUTONOMOUS_AGENT_DECISION"),
+            ("Source disclosures", "; ".join((decision.filing_citations or [])[:2]) or "—"),
+            (
+                "Economic rationale",
+                decision.rationale or "; ".join((decision.industry_evidence or [])[:2]),
+            ),
+            (
+                "Capitalization methodology",
+                f"Straight-line capitalization over {decision.selected_useful_life} years; lookback {lookback_txt}.",
+            ),
+            (
+                "Material uncertainty",
+                "; ".join(decision.blocking_reasons) or "Optional analyst override is available.",
+            ),
+            ("Override", override),
+        ]
+        notes = HapAnalysisLayoutService().write_block(wb["R&D"], rows=rows, start_col=16)
+        written.extend(notes)
+        return notes
 
     def _write_inputs_rd(self, wb, amounts: dict[str, RdYearAmount], written: list[str]) -> None:
         if "Inputs" not in wb.sheetnames:
@@ -479,14 +508,15 @@ class NewCompanyRdService:
     def _industry(
         company_facts: dict[str, Any] | None, sec_manifest: dict[str, Any] | None
     ) -> tuple[str | None, Any]:
-        sic = (sec_manifest or {}).get("sic") or (company_facts or {}).get("sic")
+        sic = (
+            (sec_manifest or {}).get("sic")
+            or (sec_manifest or {}).get("sicCode")
+            or (company_facts or {}).get("sic")
+        )
         name = (sec_manifest or {}).get("company_name") or (company_facts or {}).get("entityName")
-        industry = None
-        dei = ((company_facts or {}).get("facts") or {}).get("dei") or {}
-        for tag in ("EntityFilerCategory",):
-            if tag in dei:
-                industry = tag
-        blob = " ".join(str(x) for x in (name, sic, industry) if x)
+        sic_desc = (sec_manifest or {}).get("sic_description") or (sec_manifest or {}).get("sicDescription")
+        industry = sic_desc or name
+        blob = " ".join(str(x) for x in (name, sic, sic_desc, industry) if x)
         return blob or None, sic
 
     @staticmethod

@@ -81,7 +81,11 @@ class NewCompanyReviewService:
         prior = self._load_rd_decision(analysis_id)
         review = self._load_review(analysis_id)
         override = {"life": life, "reason": reason}
-        lease_still_blocking = review is None or review.blocking
+        lease_still_blocking = bool(
+            review is not None
+            and review.blocking
+            and review.status == "LEASE_RATE_REVIEW_PENDING"
+        )
         result = self.runner.run(
             analysis_id=analysis_id,
             ticker=ticker,

@@ -121,22 +121,17 @@ class NewCompanyOutputGateService:
                     blockers.append("TAX_RECONCILIATION_FAILED")
                     gates["D_tax"] = "fail"
 
-        # Gate E — R&D
+        # Gate E — R&D useful life and capitalization (autonomous; optional override)
         if rd_decision is None or rd_decision.selected_useful_life is None:
             blockers.append("RD_USEFUL_LIFE_EVIDENCE_WEAK")
             gates["E_rd"] = "fail"
         else:
             warnings.append("RD_USEFUL_LIFE_AGENT_SELECTED")
-            if rd_decision.blocking or rd_decision.blocking_reasons:
-                for r in rd_decision.blocking_reasons:
-                    warnings.append(r)
-                if rd_decision.blocking:
-                    blockers.append("RD_USEFUL_LIFE_EVIDENCE_WEAK")
-                    gates["E_rd"] = "fail"
-                else:
-                    gates["E_rd"] = "pass"
-            else:
-                gates["E_rd"] = "pass"
+            for r in rd_decision.blocking_reasons or []:
+                warnings.append(r)
+            gates["E_rd"] = "pass"
+            if rd_decision.analyst_override is not None:
+                warnings.append("RD_USEFUL_LIFE_ANALYST_OVERRIDE")
         if rd is None or not rd.lookback_complete:
             blockers.append("RD_LOOKBACK_COVERAGE_INCOMPLETE")
             gates["E_rd"] = "fail"
@@ -144,27 +139,46 @@ class NewCompanyOutputGateService:
             blockers.append("RD_CAPITALIZATION_FAILED")
             gates["E_rd"] = "fail"
 
-        # Gate F — leases (blocking until analyst approval)
+        # Gate F — leases: supported, documented, applied. Not a human-approval gate.
         if leases is None or not leases.complete:
             blockers.append("LEASE_HISTORY_INCOMPLETE")
             gates["F_leases"] = "fail"
         else:
             gates["F_leases"] = "pass"
         review = lease_review or (leases.review if leases else None)
-        if review is None or review.proposed_rate is None:
-            blockers.append("LEASE_RATE_REVIEW_REQUIRED")
+        selected = None
+        if review is not None:
+            selected = review.selected_rate if review.selected_rate is not None else review.proposed_rate
+        classification = getattr(review, "classification", None) if review is not None else None
+        decision_class = getattr(review, "decision_class", None) if review is not None else None
+        status = getattr(review, "status", None) if review is not None else None
+        if review is None or selected is None or status == "LEASE_RATE_EVIDENCE_INSUFFICIENT" or classification == "insufficient":
+            blockers.append("LEASE_RATE_EVIDENCE_INSUFFICIENT")
             gates["F_lease_rate"] = "fail"
-        elif review.blocking or review.status in {
-            "LEASE_RATE_REVIEW_PENDING",
-            "pending",
-        }:
+        elif review.blocking or status == "LEASE_RATE_REVIEW_PENDING":
             blockers.append("LEASE_RATE_REVIEW_PENDING")
-            warnings.append("LEASE_RATE_ESTIMATED")
+            warnings.append("LEASE_RATE_MORE_EVIDENCE_REQUESTED")
             gates["F_lease_rate"] = "fail"
         else:
-            gates["F_lease_rate"] = "pass"
-            if review.analyst_action == "correct":
-                warnings.append("LEASE_RATE_ANALYST_OVERRIDDEN")
+            proposal = getattr(review, "proposal", None)
+            methodology = getattr(proposal, "methodology", None) if proposal is not None else None
+            raw_evidence = getattr(review, "supporting_evidence", None)
+            evidence = list(raw_evidence) if isinstance(raw_evidence, (list, tuple)) else []
+            if not evidence and not methodology:
+                blockers.append("LEASE_RATE_PROVENANCE_MISSING")
+                gates["F_lease_rate"] = "fail"
+            else:
+                gates["F_lease_rate"] = "pass"
+                written = getattr(leases, "cells_written", None) if leases is not None else None
+                if isinstance(written, list) and not any("Leases!" in str(c) for c in written):
+                    warnings.append("LEASE_RATE_CELL_NOT_CONFIRMED")
+                notes = getattr(review, "notes_written", None)
+                if isinstance(notes, list) and not notes:
+                    warnings.append("LEASE_RATE_NOTES_MISSING")
+                if decision_class == "ANALYST_OVERRIDE" or review.analyst_action == "correct":
+                    warnings.append("LEASE_RATE_ANALYST_OVERRIDE")
+                elif decision_class == "AUTONOMOUS_AGENT_DECISION":
+                    warnings.append("LEASE_RATE_AUTONOMOUS_AGENT_DECISION")
 
         # Gate G — buybacks
         if buybacks is None:
@@ -298,6 +312,8 @@ class NewCompanyOutputGateService:
             status = "NEEDS_REVIEW"
             if "LEASE_RATE_REVIEW_PENDING" in blockers:
                 status = "AWAITING_ANALYST_REVIEW"
+            elif "LEASE_RATE_EVIDENCE_INSUFFICIENT" in blockers:
+                status = "NEEDS_REVIEW"
         else:
             gates["report_authorization"] = "authorized"
             status = "ok"

@@ -23,7 +23,7 @@ export default function OverviewTab({ analysis }: { analysis: AnalysisDetail }) 
             : analysis.status === "Failed"
               ? "No overview is available because the analysis failed."
               : analysis.status === "Review"
-                ? "Pipeline paused for required analyst review. Open the Review tab to approve or correct the long-term lease rate. The R&D useful life was selected autonomously and shows a visible warning."
+                ? "Pipeline paused only if the analyst requested more lease-rate evidence. Open the Review tab to override the autonomous lease-rate or R&D useful-life decisions."
                 : `Pipeline in progress (${analysis.progress}%). Overview will populate when analysis completes.`}
         </p>
       </div>

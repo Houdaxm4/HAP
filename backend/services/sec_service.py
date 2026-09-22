@@ -114,6 +114,8 @@ class SecService:
             "ticker": ticker,
             "cik": cik,
             "company_name": submissions.get("name"),
+            "sic": submissions.get("sic") or submissions.get("sicCode"),
+            "sic_description": submissions.get("sicDescription"),
             "selected_filings": [self._filing_to_dict(filing) for filing in selected],
             "total_filings_scanned": len(filings),
         }

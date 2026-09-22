@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 """Windows New Company certification driver.
 
-Creates an analysis, runs Mode A then NewCompanyRunner until the lease-rate
-pause, accepts approval through the real FastAPI analyst-review endpoint, then
-continues through genuine Excel COM CalculateFullRebuild, HAP valuation
-judgment, save+reopen, validation, and Word generation only when authorized.
+Creates an analysis, runs Mode A then NewCompanyRunner with autonomous
+lease-rate and R&D useful-life selection, then continues through genuine
+Excel COM CalculateFullRebuild. Optional FastAPI analyst-review overrides
+remain available but are not required to complete the run.
 
-Does not mock Excel COM. Does not substitute LibreOffice or Python formula values.
-Does not pull or merge main. Does not bypass the lease-rate review service.
+Does not mock Excel COM. Does not overwrite the prior IDCC production
+certification at commit da1765b.
 """
 
 from __future__ import annotations
@@ -111,6 +111,9 @@ def _print_report(analysis_id: str, analysis, output_service, extra: dict) -> di
         "pipeline_state": analysis.pipeline.state,
         "certification_status": cert.get("certification_status"),
         "workflow_state": cert.get("workflow_state"),
+        "selected_lease_rate": lease.get("selected_rate"),
+        "lease_classification": lease.get("classification"),
+        "lease_decision_class": lease.get("decision_class"),
         "lease_rate_approved": cert.get("lease_rate_approved"),
         "proposed_lease_rate": lease.get("proposed_rate"),
         "approved_lease_rate": lease.get("approved_rate"),
@@ -169,7 +172,7 @@ def _preflight_excel() -> str:
 
 def _write_frozen_markdown(path: Path, payload: dict, gates: dict[str, dict]) -> None:
     lines = [
-        "# New Company Production Certification",
+        "# New Company Autonomous-Decision Certification",
         "",
         f"Recommendation: **{payload.get('recommendation', 'NOT_READY_FOR_PRODUCTION')}**",
         "",
@@ -188,12 +191,14 @@ def _write_frozen_markdown(path: Path, payload: dict, gates: dict[str, dict]) ->
         lines.append(f"| {name} | **{row.get('result')}** | {row.get('evidence', '')} |")
     lines += [
         "",
-        "## Lease-rate proposal and approval",
+        "## Lease-rate autonomous decision",
         "",
-        f"- Proposed rate: `{payload.get('proposed_lease_rate')}`",
-        f"- Approved rate: `{payload.get('approved_lease_rate')}`",
+        f"- Selected rate: `{payload.get('selected_lease_rate') or payload.get('proposed_lease_rate')}`",
+        f"- Classification: `{payload.get('lease_classification')}`",
+        f"- Decision class: `{payload.get('lease_decision_class')}`",
         f"- Analyst action: `{payload.get('lease_action')}`",
-        f"- Approval path: `{payload.get('lease_approval_path', 'not recorded')}`",
+        f"- Review path: `{payload.get('lease_approval_path', 'not_required')}`",
+        f"- Prior certified baseline: `da1765badfd339dfdc3deb2ffc92968ff0012268`",
         "",
         "## Excel COM recalculation",
         "",
@@ -231,14 +236,14 @@ def main() -> int:
     parser.add_argument(
         "--lease-action",
         default="",
-        help="approve | correct | request_more_evidence. Omit for interactive prompt.",
+        help="Optional override only: approve | correct | request_more_evidence. Default is autonomous (no prompt).",
     )
     parser.add_argument("--lease-rate", type=float, default=None, help="Required when --lease-action correct")
-    parser.add_argument("--reason", default="", help="Analyst reason recorded on the review endpoint")
+    parser.add_argument("--reason", default="", help="Analyst reason recorded on an optional override")
     parser.add_argument(
         "--no-prompt",
         action="store_true",
-        help="Do not prompt. If no --lease-action, mark lease approval BLOCKED.",
+        help="Do not prompt if the run unexpectedly pauses for more evidence.",
     )
     args = parser.parse_args()
 
@@ -384,10 +389,12 @@ def _emit_frozen(output_service, analysis_id: str, payload: dict) -> None:
             "result": "PASS" if lease.get("proposed_rate") is not None else "BLOCKED",
             "evidence": str(out_dir / "lease_rate_review.json"),
         },
-        "Analyst lease-rate approval": {
+        "Autonomous lease-rate decision": {
             "result": (
                 "PASS"
                 if lease.get("blocking") is False
+                and (lease.get("selected_rate") is not None or lease.get("proposed_rate") is not None)
+                and lease.get("decision_class") != "EVIDENCE_INSUFFICIENT"
                 else "BLOCKED"
             ),
             "evidence": payload.get("lease_approval_path") or str(out_dir / "lease_rate_review.json"),
@@ -431,9 +438,9 @@ def _emit_frozen(output_service, analysis_id: str, payload: dict) -> None:
         json.dumps({"payload": payload, "gates": gate_rows}, indent=2, default=str),
         encoding="utf-8",
     )
-    _write_frozen_markdown(out_dir / "NEW_COMPANY_PRODUCTION_CERTIFICATION.md", payload, gate_rows)
-    repo_copy = BACKEND_ROOT / "NEW_COMPANY_PRODUCTION_CERTIFICATION.md"
-    shutil.copy2(out_dir / "NEW_COMPANY_PRODUCTION_CERTIFICATION.md", repo_copy)
+    _write_frozen_markdown(out_dir / "NEW_COMPANY_AUTONOMOUS_DECISION_CERTIFICATION.md", payload, gate_rows)
+    repo_copy = BACKEND_ROOT / "NEW_COMPANY_AUTONOMOUS_DECISION_CERTIFICATION.md"
+    shutil.copy2(out_dir / "NEW_COMPANY_AUTONOMOUS_DECISION_CERTIFICATION.md", repo_copy)
 
 
 if __name__ == "__main__":

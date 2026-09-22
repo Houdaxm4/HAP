@@ -300,6 +300,11 @@ class LeaseRateProposal(BaseModel):
     proposed_rate: float | None = None
     methodology: str | None = None
     methodology_rank: int | None = None
+    classification: str | None = None  # disclosed | disclosed_historical | derived | estimated | insufficient
+    source_fiscal_year: str | None = None
+    source_form: str | None = None
+    source_accession: str | None = None
+    limitations: str | None = None
     market_date: str | None = None
     estimated_lease_duration: float | None = None
     benchmark_rate: float | None = None
@@ -313,11 +318,14 @@ class LeaseRateProposal(BaseModel):
 class LeaseRateReview(BaseModel):
     analysis_id: str
     ticker: str
-    status: str = "LEASE_RATE_REVIEW_PENDING"
+    status: str = "autonomous_selected"
     proposed_rate: float | None = None
+    selected_rate: float | None = None
     approved_rate: float | None = None
-    analyst_action: str | None = None  # approve | correct | request_more_evidence
+    analyst_action: str | None = None  # acknowledge | correct | request_more_evidence
     analyst_reason: str | None = None
+    decision_class: str = "AUTONOMOUS_AGENT_DECISION"
+    classification: str | None = None
     supporting_evidence: list[str] = Field(default_factory=list)
     prior_or_comparable_rates: list[float] = Field(default_factory=list)
     calculated_lease_asset: float | None = None
@@ -325,7 +333,8 @@ class LeaseRateReview(BaseModel):
     sensitivity: list[dict[str, Any]] = Field(default_factory=list)
     proposal: LeaseRateProposal | None = None
     audit_trail: list[dict[str, Any]] = Field(default_factory=list)
-    blocking: bool = True
+    notes_written: list[str] = Field(default_factory=list)
+    blocking: bool = False
     summary: str = ""
 
 
@@ -541,6 +550,7 @@ class NewCompanyRunState(BaseModel):
     workbook_path: str | None = None
     custom_run_path: str | None = None
     lease_rate_approved: bool = False
+    lease_rate_selected: bool = False
     rd_life_overridden: bool = False
     phases_completed: list[str] = Field(default_factory=list)
     artifacts: dict[str, str] = Field(default_factory=dict)
