@@ -189,6 +189,10 @@ def interpret_workbook_label(
 ) -> list[str]:
     """Return ranked concept ids that could match a workbook label."""
     n = _norm(label)
+    # Bloomberg component rows ("+ Other Operating Income") are not the
+    # parent total. Matching them would write the total into the detail line.
+    if n.startswith("+") or n.startswith("-"):
+        return []
     allowed = STATEMENT_CONCEPTS[kind]
     hits: list[tuple[int, str]] = []
     for concept, aliases in CONCEPT_ALIASES.items():
@@ -227,7 +231,10 @@ def match_sec_item_to_concept(
             if kind == QuarterlyStatementKind.INCOME and item.duration_kind != "standalone_quarter":
                 if item.duration_kind != "ytd":  # ytd IS used in separate path
                     continue
-            if kind == QuarterlyStatementKind.CASH_FLOW and item.duration_kind != "ytd":
+            if kind == QuarterlyStatementKind.CASH_FLOW and item.duration_kind not in {
+                "ytd",
+                "standalone_quarter",
+            }:
                 continue
         if item.xbrl_concept and item.xbrl_concept in xbrl_prefs:
             by_xbrl.append(item)

@@ -283,6 +283,129 @@ def test_structural_broken_sec_10q_required(broken_quarterly_wb: Path):
         wb.close()
 
 
+def test_duplicate_cash_flow_totals_fill_and_components_stay_blank(monkeypatch):
+    from models.quarterly_presentation import SecLineItem
+
+    item = SecLineItem(
+        statement="quarterly_cash_flow",
+        label="Cash used in investing activities",
+        xbrl_concept="NetCashProvidedByUsedInInvestingActivities",
+        value=-81.728,
+        fiscal_period="Q2",
+        form="10-Q",
+        accession_number="0001405495-26-000066",
+        duration_kind="standalone_quarter",
+        extraction_method="derived_ytd_subtract",
+        derivation="Q2 standalone = six-month YTD - Q1 YTD",
+    )
+    monkeypatch.setattr(
+        "services.quarterly_presentation_service.extract_sec_10q_statement",
+        lambda *args, **kwargs: [item],
+    )
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Last Quarter CF Standardized"
+    ws["A29"] = "Cash from Investing Activities"
+    ws["A47"] = "  + Other Investing Activities"
+    ws["A49"] = "Cash from Investing Activities"
+    filled, _, unresolved = QuarterlyPresentationService()._fill_major_gaps(
+        wb,
+        QuarterlyStatementKind.CASH_FLOW,
+        ["cash from investing", "investing activities"],
+        {"facts": {}},
+        None,
+        2026,
+        "Q2",
+        2,
+    )
+    assert ws["C29"].value == pytest.approx(-81.728)
+    assert ws["C47"].value is None
+    assert ws["C49"].value == pytest.approx(-81.728)
+    assert unresolved == []
+    assert any("C29:" in row and "=" in row for row in filled)
+    assert any("C49:" in row and "=" in row for row in filled)
+
+
+def test_income_notes_are_placed_below_margin_formulas():
+    from models.quarterly_presentation import (
+        BloombergHealthAssessment,
+        QuarterlyStatementPresentation,
+    )
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Last Quarter IS Standardized"
+    ws["A11"] = "Revenue"
+    ws["C11"] = 100
+    ws["A77"] = "Gross Margin"
+    ws["C77"] = '=IF(C11="","",C21/C11)'
+    ws["A78"] = "Operating Margin"
+    ws["A79"] = "Net Margin"
+    health = BloombergHealthAssessment(
+        statement=QuarterlyStatementKind.INCOME,
+        sheet=ws.title,
+        present=True,
+        reason="test",
+    )
+    entry = QuarterlyStatementPresentation(
+        statement=QuarterlyStatementKind.INCOME,
+        sheet=ws.title,
+        health=health,
+        decision=PresentationDecision.BLOOMBERG_FILL_GAPS,
+        reason="test",
+        data_source_primary="sec",
+    )
+    QuarterlyPresentationService()._write_statement_notes(wb, [entry], 2026, "Q2")
+    assert ws["A77"].value == "Gross Margin"
+    assert str(ws["C77"].value).startswith("=IF")
+    header_rows = [
+        row
+        for row in range(1, (ws.max_row or 1) + 1)
+        if ws.cell(row, 1).value == "HAP ANALYSIS — NOTES"
+    ]
+    assert header_rows and header_rows[0] > 79
+
+
+def test_blank_values_do_not_rebuild_an_intact_taxonomy():
+    """Partial or blank Bloomberg values stay FILL_GAPS. Only a missing taxonomy rebuilds."""
+    wb = Workbook()
+    wb.active.title = "Income - GAAP"
+    _add_lq_sheets(wb)
+    income = wb["Last Quarter IS Standardized"]
+    _healthy_is(income)
+    income["A9"] = "YTD"
+    for row in range(20, 32):
+        income.cell(row, 3).value = None
+    cash_flow = wb["Last Quarter CF Standardized"]
+    for row, label in enumerate(
+        (
+            "Cash from Operating Activities",
+            "Cash from Investing Activities",
+            "Cash from Financing Activities",
+            "Capital Expenditures",
+            "Depreciation & Amortization",
+            "Change in Working Capital",
+            "Dividends Paid",
+            "Net Change in Cash",
+        ),
+        start=11,
+    ):
+        cash_flow.cell(row, 1, label)
+    partial = assess_statement_health(wb, QuarterlyStatementKind.INCOME)
+    blank = assess_statement_health(wb, QuarterlyStatementKind.CASH_FLOW)
+    assert decide_presentation(partial) == PresentationDecision.BLOOMBERG_FILL_GAPS
+    assert partial.structural_failure is False
+    assert decide_presentation(blank) == PresentationDecision.BLOOMBERG_FILL_GAPS
+    assert blank.structural_failure is False
+    broken = Workbook()
+    broken.active.title = "Income - GAAP"
+    _add_lq_sheets(broken)
+    broken["Last Quarter IS Standardized"]["A11"] = "Misc line"
+    broken["Last Quarter IS Standardized"]["A12"] = "Other"
+    missing = assess_statement_health(broken, QuarterlyStatementKind.INCOME)
+    assert decide_presentation(missing) == PresentationDecision.SEC_10Q_PRESENTATION_REQUIRED
+
+
 def test_duration_quarter_vs_ytd():
     assert (
         classify_duration_from_dates("2024-06-30", "2024-09-28") == "standalone_quarter"
@@ -424,9 +547,119 @@ def test_preserve_does_not_rewrite_healthy(healthy_quarterly_wb: Path, tmp_path:
     assert all(
         s.decision == PresentationDecision.BLOOMBERG_PRESERVE for s in report.statements
     )
+    is_stmt = next(s for s in report.statements if s.statement == QuarterlyStatementKind.INCOME)
+    revenue = next(d for d in is_stmt.source_discrepancies if d["label"] == "Revenue")
+    assert revenue["authority"] == "sec"
+    assert revenue["sec_value"] != before_rev
     after = load_workbook(dest)
     try:
-        assert after["Last Quarter IS Standardized"]["C11"].value == before_rev
+        # Layout stays on the original rows; the conflicting value is SEC's.
+        assert after["Last Quarter IS Standardized"]["C11"].value == pytest.approx(revenue["sec_value"])
         assert after["Last Quarter IS Standardized"]["A12"].value == "Cost of Revenue"
+        assert after["Last Quarter IS Standardized"]["C2"].value == "=C4"
+        assert any(
+            after["Last Quarter IS Standardized"].cell(row, 1).value == "HAP ANALYSIS — NOTES"
+            for row in range(1, (after["Last Quarter IS Standardized"].max_row or 1) + 1)
+        )
     finally:
         after.close()
+
+
+def test_labeled_blank_cash_flow_fills_original_cells(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """A complete Bloomberg cash-flow taxonomy with blank values is filled in place."""
+    from services.yahoo_quarterly_statement_service import YahooQuarterlyBundle
+
+    monkeypatch.setattr(
+        "services.quarterly_presentation_service.YahooQuarterlyStatementService.fetch",
+        lambda self, ticker: YahooQuarterlyBundle(),
+    )
+    wb = Workbook()
+    wb.active.title = "Income - GAAP"
+    _add_lq_sheets(wb)
+    _healthy_is(wb["Last Quarter IS Standardized"])
+    _healthy_bs(wb["Last Quarter BS Standardized"])
+    cf = wb["Last Quarter CF Standardized"]
+    labels = [
+        (11, "Cash from Operating Activities"),
+        (12, "Cash from Investing Activities"),
+        (13, "Cash from Financing Activities"),
+        (14, "Capital Expenditures"),
+        (15, "Depreciation & Amortization"),
+        (16, "Change in Working Capital"),
+        (17, "Dividends Paid"),
+        (18, "Net Change in Cash"),
+    ]
+    for row, label in labels:
+        cf.cell(row, 1, label)
+    cf["E11"] = "=IF(C11=\"\",\"\",C11)"
+    src = tmp_path / "blank_cf.xlsx"
+    dest = tmp_path / "filled_cf.xlsx"
+    wb.save(src)
+    wb.close()
+    facts = {
+        "facts": {
+            "us-gaap": {
+                "RevenueFromContractWithCustomerExcludingAssessedTax": {
+                    "units": {
+                        "USD": [
+                            {
+                                "val": 109_417_000_000,
+                                "fy": 2024,
+                                "fp": "Q2",
+                                "form": "10-Q",
+                                "filed": "2024-08-01",
+                                "accn": "0000320193-24-000123",
+                                "start": "2024-04-01",
+                                "end": "2024-06-30",
+                            }
+                        ]
+                    }
+                },
+                "NetCashProvidedByUsedInOperatingActivities": {
+                    "units": {
+                        "USD": [
+                            {
+                                "val": 30_000_000,
+                                "fy": 2024,
+                                "fp": "Q1",
+                                "form": "10-Q",
+                                "filed": "2024-05-01",
+                                "accn": "0000320193-24-000100",
+                                "start": "2024-01-01",
+                                "end": "2024-03-31",
+                            },
+                            {
+                                "val": 80_000_000,
+                                "fy": 2024,
+                                "fp": "Q2",
+                                "form": "10-Q",
+                                "filed": "2024-08-01",
+                                "accn": "0000320193-24-000123",
+                                "start": "2024-01-01",
+                                "end": "2024-06-30",
+                            },
+                        ]
+                    }
+                }
+            }
+        }
+    }
+    report = QuarterlyPresentationService().plan_and_apply(
+        analysis_id="blank-cf",
+        ticker="AAPL",
+        source_workbook_path=src,
+        destination_workbook_path=dest,
+        company_facts=facts,
+    )
+    cf_stmt = next(s for s in report.statements if s.statement == QuarterlyStatementKind.CASH_FLOW)
+    assert cf_stmt.decision == PresentationDecision.BLOOMBERG_FILL_GAPS
+    assert not report.unresolved_dependencies
+    out = load_workbook(dest)
+    try:
+        sheet = out["Last Quarter CF Standardized"]
+        assert sheet["A11"].value == "Cash from Operating Activities"
+        assert sheet["C11"].value == pytest.approx(50.0)
+        assert sheet["G11"].value == pytest.approx(80.0)
+        assert sheet["E11"].value == '=IF(C11="","",C11)'
+    finally:
+        out.close()

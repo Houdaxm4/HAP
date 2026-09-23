@@ -22,7 +22,7 @@ from services.quarterly_valuation_service import QuarterlyValuationService
 from services.formula_utils import is_formula
 
 SOURCE_ANALYSIS = "275d5e21-42e2-4a39-9f78-be9fa48c1b44"
-CERT_ID = "quarterly-idcc-q2-cert"
+CERT_ID = "quarterly-idcc-q2-hardening"
 
 
 def _json(path: Path):

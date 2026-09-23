@@ -18,6 +18,8 @@ from models.quarterly_presentation import (
     SecLineItem,
 )
 from services.accounting_concept_matcher import resolve_workbook_gap
+from services.hap_analysis_layout_service import HapAnalysisLayoutService
+from services.quarterly_dependency_service import QuarterlyDependencyService
 from services.quarterly_health_service import (
     BODY_END,
     BODY_START,
@@ -47,6 +49,28 @@ def _is_formula(value: Any) -> bool:
     return isinstance(value, str) and value.startswith("=")
 
 
+def quarter_incorporated(report: QuarterlyPresentationReport | None) -> bool:
+    """True only when the latest quarter was actually written into IS and CF."""
+    if report is None:
+        return False
+    needed = {QuarterlyStatementKind.INCOME, QuarterlyStatementKind.CASH_FLOW}
+    found = [entry for entry in report.statements if entry.statement in needed]
+    if len(found) < 2:
+        return False
+    for entry in found:
+        if entry.decision == PresentationDecision.BLOCKED:
+            return False
+        has_rows = bool(
+            entry.rows_preserved
+            or entry.rows_filled
+            or entry.sec_rows_introduced
+            or entry.yahoo_rows_introduced
+        )
+        if not has_rows:
+            return False
+    return True
+
+
 class QuarterlyPresentationService:
     """
     Inspect LQ statements at the fact level. SEC EDGAR is authoritative for reported
@@ -66,6 +90,7 @@ class QuarterlyPresentationService:
         destination_workbook_path: Path,
         company_facts: dict[str, Any] | None,
         already_copied: bool = False,
+        defer_notes: bool = False,
     ) -> QuarterlyPresentationReport:
         """
         Copy source→destination (unless already_copied), assess each statement,
@@ -83,6 +108,7 @@ class QuarterlyPresentationService:
                 fy, fp = select_latest_10q_period(company_facts)
             yahoo_bundle = self.yahoo.fetch(ticker)
             fiscal_q = self._detect_fiscal_quarter(wb)
+            dependency_snapshot = QuarterlyDependencyService().snapshot(wb)
 
             statements: list[QuarterlyStatementPresentation] = []
             for health, decision in assess_all_quarterly_statements(wb):
@@ -99,6 +125,13 @@ class QuarterlyPresentationService:
                     rows = iter_statement_rows(wb[health.sheet]) if health.present else []
                     entry.rows_preserved = [r["cell_ref"] for r in rows if r["populated"] or r["formula"]]
                     entry.reason = f"BLOOMBERG_PRESERVE — {health.reason}"
+                    entry.rows_filled.extend(
+                        self._fill_blank_ytd_from_sec(wb, health.statement, company_facts, fy, fp)
+                    )
+                    self._reconcile_populated_with_sec(
+                        wb, entry, company_facts, fy, fp
+                    )
+                    self._record_sec_provenance(entry, company_facts, fy, fp)
                 elif decision == PresentationDecision.BLOOMBERG_FILL_GAPS:
                     rows = iter_statement_rows(wb[health.sheet]) if health.present else []
                     entry.rows_preserved = [r["cell_ref"] for r in rows if r["populated"] or r["formula"]]
@@ -118,7 +151,14 @@ class QuarterlyPresentationService:
                     entry.unresolved_facts = unresolved
                     entry.data_source_primary = "sec"
                     entry.data_source_secondary = "yahoo"
+                    entry.rows_filled.extend(
+                        self._fill_blank_ytd_from_sec(wb, health.statement, company_facts, fy, fp)
+                    )
                     entry.reason = f"BLOOMBERG_FILL_GAPS — SEC-first, Yahoo supplementary. {health.reason}"
+                    self._reconcile_populated_with_sec(
+                        wb, entry, company_facts, fy, fp
+                    )
+                    self._record_sec_provenance(entry, company_facts, fy, fp)
                 elif decision == PresentationDecision.BLOCKED:
                     entry.blocked_or_ambiguous = [health.reason]
                     entry.reason = f"BLOCKED — {health.reason}"
@@ -160,11 +200,20 @@ class QuarterlyPresentationService:
                 f"Quarterly presentation: PRESERVE={preserve}, FILL_GAPS={gaps}, "
                 f"YAHOO_BASIC={yahoo_n}, SEC_10Q={sec_n}, BLOCKED={blocked}"
             )
+            dependency = QuarterlyDependencyService().reconnect(wb, dependency_snapshot)
+            if not defer_notes:
+                self._write_statement_notes(wb, statements, fy, fp)
+            if dependency["unresolved_dependencies"]:
+                summary += f"; unresolved_dependencies={len(dependency['unresolved_dependencies'])}"
             wb.save(destination_workbook_path)
             return QuarterlyPresentationReport(
                 analysis_id=analysis_id,
                 ticker=ticker,
                 statements=statements,
+                dependency_diff=dependency["changed_formulas"],
+                unresolved_dependencies=dependency["unresolved_dependencies"],
+                fiscal_year=fy,
+                fiscal_period=fp,
                 summary=summary,
             )
         finally:
@@ -209,11 +258,10 @@ class QuarterlyPresentationService:
         populated_sec = [i for i in sec_items if i.value is not None]
         unresolved_sec = [i for i in sec_items if i.value is None]
         entry.sec_line_items = sec_items
-        if company_facts is not None and sec_items:
-            if populated_sec:
-                entry.sec_filing_form = populated_sec[0].form
-                entry.sec_filing_period = populated_sec[0].fiscal_period
-                entry.sec_accession = populated_sec[0].accession_number
+        if company_facts is not None and populated_sec:
+            entry.sec_filing_form = populated_sec[0].form
+            entry.sec_filing_period = populated_sec[0].fiscal_period
+            entry.sec_accession = populated_sec[0].accession_number
             ytd_items: list[SecLineItem] = []
             if kind == QuarterlyStatementKind.INCOME:
                 ytd_items = extract_sec_10q_statement(
@@ -365,6 +413,56 @@ class QuarterlyPresentationService:
             )
         return filled, discrepancies
 
+    def _fill_blank_ytd_from_sec(
+        self,
+        workbook: Workbook,
+        kind: QuarterlyStatementKind,
+        company_facts: dict[str, Any] | None,
+        fy: int | None,
+        fp: str | None,
+    ) -> list[str]:
+        """Write SEC year-to-date amounts into blank YTD cells. Do not invent zeros."""
+        filled: list[str] = []
+        if kind not in {QuarterlyStatementKind.INCOME, QuarterlyStatementKind.CASH_FLOW}:
+            return filled
+        if not company_facts:
+            return filled
+        sheet_name = STATEMENT_SHEETS[kind]
+        if sheet_name not in workbook.sheetnames:
+            return filled
+        ytd_items = [
+            item
+            for item in extract_sec_10q_statement(
+                company_facts,
+                kind,
+                fiscal_year=fy,
+                fiscal_period=fp,
+                duration_kind="ytd",
+                include_unresolved=False,
+            )
+            if item.value is not None
+        ]
+        if not ytd_items:
+            return filled
+        ws = workbook[sheet_name]
+        for row in range(BODY_START, BODY_END + 1):
+            label = ws.cell(row, LABEL_COL).value
+            cell = ws.cell(row, YTD_COL)
+            if label in (None, "") or _is_formula(cell.value):
+                continue
+            if isinstance(cell.value, (int, float)) and not isinstance(cell.value, bool):
+                continue
+            match = resolve_workbook_gap(str(label).strip(), kind, ytd_items)
+            if match.decision != "MATCHED" or match.value is None:
+                continue
+            cell.value = match.value
+            cell.number_format = _HEADER_NUMBER_FORMAT
+            filled.append(
+                f"{sheet_name}!G{row}:{label}={match.value} "
+                f"[ytd concept={match.accounting_concept} method={match.match_method}]"
+            )
+        return filled
+
     def _fill_major_gaps(
         self,
         workbook: Workbook,
@@ -384,7 +482,7 @@ class QuarterlyPresentationService:
                     workbook, kind, missing_majors, company_facts, fy, fp
                 )
             )
-        still_missing = [m for m in missing_majors if not any(m in f and "=" in f for f in filled)]
+        still_missing = [m for m in missing_majors if not self._needle_was_written(m, filled)]
         yahoo_filled = self._fill_major_gaps_from_yahoo(
             workbook, kind, still_missing, yahoo_bundle, fiscal_q, company_facts, fy, fp
         )
@@ -402,10 +500,7 @@ class QuarterlyPresentationService:
                 "statement": kind.value,
             }
             for m in missing_majors
-            if not any(
-                m in f and "=" in f and "REVIEW" not in f and "unresolved" not in f.lower()
-                for f in filled
-            )
+            if not self._needle_was_written(m, filled)
         ]
         _ = still_sec
         return filled, discrepancies, unresolved
@@ -602,37 +697,87 @@ class QuarterlyPresentationService:
         def _n(s: Any) -> str:
             return " ".join(str(s or "").lower().split())
 
+        def _component(label: Any) -> bool:
+            text = _n(label)
+            return text.startswith("+") or text.startswith("-")
+
         for needle in missing_majors:
-            target_row = None
-            workbook_label = needle
+            # Fill every blank parent row. A shorter needle such as
+            # "investing activities" also occurs inside component labels;
+            # those rows are not the section total.
             for r in range(BODY_START, BODY_END + 1):
                 label = ws.cell(row=r, column=LABEL_COL).value
                 value = ws.cell(row=r, column=VALUE_COL).value
-                if label is None:
+                if label is None or _component(label):
                     continue
                 if needle not in _n(label):
                     continue
                 if _is_formula(value) or isinstance(value, (int, float)):
                     continue
-                target_row = r
                 workbook_label = str(label).strip()
-                break
-            if target_row is None:
-                continue
-            match = resolve_workbook_gap(workbook_label, kind, items)
-            if match.decision != "MATCHED" or match.value is None:
+                match = resolve_workbook_gap(workbook_label, kind, items)
+                if match.decision != "MATCHED" or match.value is None:
+                    filled.append(
+                        f"{sheet_name}!C{r}:{workbook_label} "
+                        f"[{match.decision}] {match.reason}"
+                    )
+                    continue
+                ws.cell(row=r, column=VALUE_COL).value = match.value
                 filled.append(
-                    f"{sheet_name}!C{target_row}:{workbook_label} "
-                    f"[{match.decision}] {match.reason}"
+                    f"{sheet_name}!C{r}:{workbook_label}={match.value} "
+                    f"[concept={match.accounting_concept} xbrl={match.sec_xbrl_concept} "
+                    f"method={match.match_method} conf={match.confidence}]"
                 )
-                continue
-            ws.cell(row=target_row, column=VALUE_COL).value = match.value
-            filled.append(
-                f"{sheet_name}!C{target_row}:{workbook_label}={match.value} "
-                f"[concept={match.accounting_concept} xbrl={match.sec_xbrl_concept} "
-                f"method={match.match_method} conf={match.confidence}]"
-            )
         return filled
+
+    @staticmethod
+    def _needle_was_written(needle: str, filled: list[str]) -> bool:
+        token = " ".join(needle.lower().split())
+        for row in filled:
+            text = " ".join(str(row).lower().split())
+            if (
+                token in text
+                and "=" in text
+                and "review" not in text
+                and "unresolved" not in text
+                and "[blocked]" not in text
+            ):
+                return True
+        return False
+
+    def _record_sec_provenance(
+        self,
+        entry: QuarterlyStatementPresentation,
+        company_facts: dict[str, Any] | None,
+        fy: int | None,
+        fp: str | None,
+    ) -> None:
+        """Cite the filing used for gap fill without changing written values."""
+        if not company_facts or entry.statement not in {
+            QuarterlyStatementKind.INCOME,
+            QuarterlyStatementKind.CASH_FLOW,
+        }:
+            return
+        items = [
+            item
+            for item in extract_sec_10q_statement(
+                company_facts,
+                entry.statement,
+                fiscal_year=fy,
+                fiscal_period=fp,
+                include_unresolved=False,
+            )
+            if item.value is not None
+        ]
+        cited = next((item for item in items if item.accession_number), None)
+        if cited is None:
+            return
+        entry.sec_accession = cited.accession_number
+        entry.sec_filing_form = cited.form
+        entry.sec_filing_period = cited.fiscal_period
+        entry.derivation_notes = [
+            f"{item.label}: {item.derivation}" for item in items if item.derivation
+        ]
 
     def _apply_sec_layout(
         self,
@@ -756,6 +901,115 @@ class QuarterlyPresentationService:
             write_row += 1
 
         return result
+
+    def _reconcile_populated_with_sec(
+        self,
+        workbook: Workbook,
+        entry: QuarterlyStatementPresentation,
+        company_facts: dict[str, Any] | None,
+        fy: int | None,
+        fp: str | None,
+    ) -> None:
+        """Replace populated IS/CF values that conflict with SEC. Never invent zeros."""
+        kind = entry.statement
+        if kind not in {QuarterlyStatementKind.INCOME, QuarterlyStatementKind.CASH_FLOW}:
+            return
+        if not company_facts or entry.sheet not in workbook.sheetnames:
+            return
+        sec_items = [
+            item
+            for item in extract_sec_10q_statement(
+                company_facts,
+                kind,
+                fiscal_year=fy,
+                fiscal_period=fp,
+                include_unresolved=False,
+            )
+            if item.value is not None
+        ]
+        if not sec_items:
+            return
+        ws = workbook[entry.sheet]
+        for row in range(BODY_START, BODY_END + 1):
+            label = ws.cell(row, LABEL_COL).value
+            cell = ws.cell(row, VALUE_COL)
+            if label in (None, "") or _is_formula(cell.value):
+                continue
+            if not isinstance(cell.value, (int, float)) or isinstance(cell.value, bool):
+                continue
+            match = resolve_workbook_gap(str(label).strip(), kind, sec_items)
+            if match.decision != "MATCHED" or match.value is None:
+                continue
+            current = float(cell.value)
+            target = float(match.value)
+            if abs(target) <= 1e-12 and abs(current) <= 1e-12:
+                continue
+            relative = abs(current - target) / max(abs(target), abs(current), 1e-9)
+            if relative <= _CONFLICT_TOLERANCE:
+                continue
+            entry.source_discrepancies.append(
+                {
+                    "label": str(label),
+                    "cell": f"{entry.sheet}!{cell.coordinate}",
+                    "workbook_value": current,
+                    "sec_value": target,
+                    "authority": "sec",
+                    "relative_difference": round(relative, 4),
+                    "extraction_method": match.match_method,
+                    "fiscal_year": fy,
+                    "fiscal_period": fp,
+                }
+            )
+            cell.value = target
+            entry.rows_filled.append(
+                f"{entry.sheet}!{cell.coordinate}:{label}={target} "
+                f"[sec_reconcile was={current} method={match.match_method}]"
+            )
+
+    def _write_statement_notes(
+        self,
+        workbook: Workbook,
+        statements: list[QuarterlyStatementPresentation],
+        fy: int | None,
+        fp: str | None,
+    ) -> None:
+        layout = HapAnalysisLayoutService()
+        for entry in statements:
+            if entry.statement not in {
+                QuarterlyStatementKind.INCOME,
+                QuarterlyStatementKind.CASH_FLOW,
+            }:
+                continue
+            if entry.sheet not in workbook.sheetnames:
+                continue
+            if entry.decision == PresentationDecision.BLOCKED and not entry.derivation_notes:
+                continue
+            rows: list[tuple[str, Any]] = [
+                ("Reporting period", f"FY{fy} {fp}" if fy and fp else (fp or "latest filed quarter")),
+                ("Presentation decision", entry.decision.value),
+                ("Primary source", entry.data_source_primary or "bloomberg"),
+            ]
+            if entry.sec_accession:
+                rows.append(("SEC accession", entry.sec_accession))
+            if entry.derivation_notes:
+                rows.append(("Derivation", "; ".join(entry.derivation_notes[:4])))
+            if entry.source_discrepancies:
+                rows.append(
+                    (
+                        "SEC reconciliation",
+                        f"{len(entry.source_discrepancies)} populated value(s) replaced because SEC disagreed.",
+                    )
+                )
+            if entry.unresolved_facts:
+                rows.append(
+                    (
+                        "Unresolved",
+                        "; ".join(
+                            f"{u.get('label')}: {u.get('reason')}" for u in entry.unresolved_facts[:4]
+                        ),
+                    )
+                )
+            layout.write_notes_section(workbook[entry.sheet], rows)
 
     @staticmethod
     def _write_header_if_free(ws, row: int, text: str) -> None:

@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from openpyxl import load_workbook
+
 from models.analysis import Analysis
 from models.completion import CompletionReport
 from models.custom_run import CustomRunData
@@ -118,6 +120,7 @@ class FillWorkbookStage:
                 destination_workbook_path=completed_workbook_path,
                 company_facts=company_facts,
                 already_copied=True,
+                defer_notes=True,
             )
             self.output_service.write_json(
                 analysis.analysis_id,
@@ -129,6 +132,19 @@ class FillWorkbookStage:
                 ticker=analysis.ticker,
                 workbook_path=completed_workbook_path,
             )
+            notes_book = load_workbook(completed_workbook_path)
+            try:
+                # Margins occupy the first rows below the income-statement body.
+                # Notes are written after that block so they are not overwritten.
+                self.quarterly_presentation._write_statement_notes(
+                    notes_book,
+                    q_report.statements,
+                    q_report.fiscal_year,
+                    q_report.fiscal_period,
+                )
+                notes_book.save(completed_workbook_path)
+            finally:
+                notes_book.close()
             self.output_service.write_json(
                 analysis.analysis_id,
                 "quarterly_margin_report.json",

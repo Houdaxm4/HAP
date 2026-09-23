@@ -1,4 +1,4 @@
-"""Primary quarterly deliverables: FA.xlsx + Quarterly Update.docx."""
+"""Primary quarterly deliverables: period-named Excel + Quarterly Update.docx."""
 
 from __future__ import annotations
 
@@ -18,8 +18,15 @@ from models.quarterly_update import (
 
 
 def deliverable_stems(fiscal_year: int, fiscal_quarter: int, ticker: str) -> tuple[str, str]:
+    from services.deliverable_naming import excel_deliverable_name
+
     t = ticker.upper()
-    excel = f"{fiscal_year} Q{fiscal_quarter} {t} FA.xlsx"
+    excel = excel_deliverable_name(
+        fiscal_year=fiscal_year,
+        ticker=t,
+        analysis_type="Quarterly Update",
+        fiscal_quarter=fiscal_quarter,
+    )
     word = f"{fiscal_year} Q{fiscal_quarter} {t} Quarterly Update.docx"
     return excel, word
 
@@ -68,6 +75,7 @@ class QuarterlyDeliverablesService:
         research: QuarterlyResearchReport | None = None,
         valuation: QuarterlyValuationReport | None = None,
         judgment: Any = None,
+        authorize_word: bool = True,
     ) -> QuarterlyDeliverablesReport:
         fy = fiscal_year or (projection.fiscal_year if projection else None) or 0
         q = fiscal_quarter or (projection.fiscal_quarter if projection else None) or 0
@@ -79,6 +87,18 @@ class QuarterlyDeliverablesService:
         word_path = output_dir / word_name
 
         shutil.copy2(completed_workbook_path, excel_path)
+        if not authorize_word:
+            return QuarterlyDeliverablesReport(
+                analysis_id=analysis_id,
+                ticker=ticker,
+                fiscal_year=fy,
+                fiscal_quarter=q,
+                excel_filename=excel_name,
+                excel_path=str(excel_path),
+                word_filename=None,
+                word_path=None,
+                summary=f"Deliverables: {excel_name}; Word withheld pending dependency gate.",
+            )
         self._write_word(
             word_path,
             ticker=ticker,

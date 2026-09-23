@@ -187,8 +187,13 @@ def assess_statement_health(
         if has_ytd_axis and fq_populated >= 1 and ytd_populated == 0:
             missing_cumulative = True
 
-    # Primary anchors: first two needles are required for coherence
+    # Primary anchors: first two needles are required for coherence.
+    # A labeled Bloomberg taxonomy with blank values is incomplete data, not an
+    # unusable layout. Those rows stay in place and are filled from SEC.
     primary = majors[:2]
+    taxonomy_intact = expected >= MIN_EXPECTED_ROWS and all(
+        any(needle in _norm(r["label"]) for r in rows) for needle in primary
+    )
     primary_ok = all(
         any(needle in _norm(r["label"]) and (r["populated"] or r["formula"]) for r in rows)
         for needle in primary
@@ -201,12 +206,14 @@ def assess_statement_health(
     if not expected or expected < MIN_EXPECTED_ROWS:
         structural = True
         notes.append(f"too_few_labeled_rows:{expected}")
-    if missing_ratio >= STRUCTURAL_MISSING_RATIO:
+    if missing_ratio >= STRUCTURAL_MISSING_RATIO and not taxonomy_intact:
         structural = True
         notes.append(f"high_missing_ratio:{missing_ratio:.2%}")
-    if not primary_ok and expected >= MIN_EXPECTED_ROWS:
+    if not primary_ok and expected >= MIN_EXPECTED_ROWS and not taxonomy_intact:
         structural = True
         notes.append(f"primary_totals_missing:{primary}")
+    if taxonomy_intact:
+        notes.append("taxonomy_intact")
     if expected == 0:
         structural = True
         notes.append("empty_statement_body")
@@ -219,9 +226,11 @@ def assess_statement_health(
     if isolated:
         notes.append("isolated_gaps_only")
 
-    if missing_cumulative:
+    if missing_cumulative and not taxonomy_intact:
         structural = True
         notes.append("sec_required_for_missing_ytd")
+    elif missing_cumulative:
+        notes.append("ytd_column_incomplete")
 
     if structural:
         reason = (
@@ -278,6 +287,8 @@ def decide_presentation(health: BloombergHealthAssessment) -> PresentationDecisi
     if health.major_totals_present and health.missing_ratio <= ISOLATED_GAP_RATIO:
         return PresentationDecision.BLOOMBERG_PRESERVE
     if health.missing_ratio < STRUCTURAL_MISSING_RATIO and health.major_totals_present:
+        return PresentationDecision.BLOOMBERG_FILL_GAPS
+    if "taxonomy_intact" in (health.coherence_notes or []):
         return PresentationDecision.BLOOMBERG_FILL_GAPS
     return PresentationDecision.SEC_10Q_PRESENTATION_REQUIRED
 

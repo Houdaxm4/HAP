@@ -1016,6 +1016,15 @@ class PipelineOrchestrator:
             )
         )
 
+        authorize_word = True
+        try:
+            presentation = self.output_service.read_json(
+                analysis_id, "quarterly_presentation_report.json"
+            )
+        except (OSError, ValueError):
+            presentation = None
+        if isinstance(presentation, dict) and presentation.get("unresolved_dependencies"):
+            authorize_word = False
         deliverables = _time(
             "quarterly_deliverables",
             lambda: self.quarterly_deliverables.produce(
@@ -1030,6 +1039,7 @@ class PipelineOrchestrator:
                 research=research,
                 valuation=val_report,
                 judgment=judge,
+                authorize_word=authorize_word,
             ),
         )
         deliv_path = self.output_service.write_json(

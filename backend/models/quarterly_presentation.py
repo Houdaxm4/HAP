@@ -103,4 +103,8 @@ class QuarterlyPresentationReport(BaseModel):
     schema_version: str = "1.1.0"
     milestone: str = "quarterly_sec_10q_presentation_authority"
     statements: list[QuarterlyStatementPresentation] = Field(default_factory=list)
+    dependency_diff: list[dict[str, Any]] = Field(default_factory=list)
+    unresolved_dependencies: list[dict[str, Any]] = Field(default_factory=list)
+    fiscal_year: int | None = None
+    fiscal_period: str | None = None
     summary: str = ""
