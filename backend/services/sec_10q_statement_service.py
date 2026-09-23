@@ -38,6 +38,7 @@ _IS_LINES: list[tuple[str, str, list[str]]] = [
     ("Provision for income taxes", "standalone_quarter", ["IncomeTaxExpenseBenefit"]),
     ("Net income", "standalone_quarter", ["NetIncomeLoss"]),
     ("Diluted earnings per share", "standalone_quarter", ["EarningsPerShareDiluted"]),
+    ("Basic earnings per share", "standalone_quarter", ["EarningsPerShareBasic"]),
 ]
 
 _IS_YTD_LINES: list[tuple[str, str, list[str]]] = [
@@ -305,7 +306,11 @@ def _pick_entry(
         scored.append((score, entry))
     if not scored:
         return None
-    scored.sort(key=lambda x: x[0], reverse=True)
+    # Companyfacts tags every column in a filing with that filing's fy/fp,
+    # including prior-year and prior-quarter comparatives. Those facts tie on
+    # form, fiscal period, and filing date. The later period-end date is the
+    # current column; do not let an earlier comparative win the tie.
+    scored.sort(key=lambda item: (item[0], str(item[1].get("end") or "")), reverse=True)
     return scored[0][1]
 
 

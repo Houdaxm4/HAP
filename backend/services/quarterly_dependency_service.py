@@ -44,7 +44,10 @@ def semantic_field(label: Any) -> str | None:
         return None
     if text.startswith("+") or text.startswith("-"):
         return "label:" + text
+    adjusted_eps = "adjusted" in text or "non-gaap" in text or "non gaap" in text
     for field, needles in _FIELD_NEEDLES:
+        if adjusted_eps and field in {"basic_eps", "diluted_eps"}:
+            continue
         if any(needle in text for needle in needles):
             return field
     return "label:" + text

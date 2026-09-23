@@ -35,6 +35,18 @@ CONCEPT_ALIASES: dict[str, tuple[str, ...]] = {
         "operating profit",
     ),
     "net_income": ("net income", "net earnings", "net income, gaap", "profit for the period"),
+    # GAAP per-share lines only. "diluted eps" alone also matches adjusted and
+    # continuing-operations rows, so those labels are not aliases.
+    "basic_eps": (
+        "basic eps, gaap",
+        "earnings per share, basic",
+        "basic earnings per share",
+    ),
+    "diluted_eps": (
+        "diluted eps, gaap",
+        "earnings per share, diluted",
+        "diluted earnings per share",
+    ),
     "cash": (
         "cash and cash equivalents",
         "cash & cash equivalents",
@@ -103,6 +115,8 @@ CONCEPT_XBRL: dict[str, tuple[str, ...]] = {
     "gross_profit": ("GrossProfit",),
     "operating_income": ("OperatingIncomeLoss",),
     "net_income": ("NetIncomeLoss",),
+    "basic_eps": ("EarningsPerShareBasic",),
+    "diluted_eps": ("EarningsPerShareDiluted",),
     "cash": ("CashAndCashEquivalentsAtCarryingValue",),
     "short_term_investments": (
         "MarketableSecuritiesCurrent",
@@ -136,7 +150,7 @@ CONCEPT_XBRL: dict[str, tuple[str, ...]] = {
 
 STATEMENT_CONCEPTS: dict[QuarterlyStatementKind, frozenset[str]] = {
     QuarterlyStatementKind.INCOME: frozenset(
-        {"revenue", "gross_profit", "operating_income", "net_income"}
+        {"revenue", "gross_profit", "operating_income", "net_income", "basic_eps", "diluted_eps"}
     ),
     QuarterlyStatementKind.BALANCE_SHEET: frozenset(
         {
@@ -193,13 +207,23 @@ def interpret_workbook_label(
     # parent total. Matching them would write the total into the detail line.
     if n.startswith("+") or n.startswith("-"):
         return []
+    # Adjusted EPS is not GAAP diluted or basic EPS.
+    gaap_eps_only = "adjusted" not in n and "non-gaap" not in n and "non gaap" not in n
     allowed = STATEMENT_CONCEPTS[kind]
     hits: list[tuple[int, str]] = []
     for concept, aliases in CONCEPT_ALIASES.items():
         if concept not in allowed:
             continue
+        if concept in {"basic_eps", "diluted_eps"} and not gaap_eps_only:
+            continue
         for alias in aliases:
-            if alias in n or n in alias:
+            # EPS aliases must occur in the label. The reverse test would
+            # treat a short label such as "eps" as both basic and diluted.
+            if concept in {"basic_eps", "diluted_eps"}:
+                matched = alias in n
+            else:
+                matched = alias in n or n in alias
+            if matched:
                 # Prefer longer alias matches
                 hits.append((len(alias), concept))
                 break

@@ -34,6 +34,9 @@ from services.sec_10q_statement_service import (
     select_latest_10q_period,
 )
 
+# Same-period differences at or below this relative gap are treated as
+# rounding or presentation precision. A different reporting period is not
+# a tolerance question; period selection has to be right before this applies.
 _CONFLICT_TOLERANCE = 0.05
 _NOTES_COL = 10
 _HEADER_NUMBER_FORMAT = "#,##0.00;(#,##0.00)"

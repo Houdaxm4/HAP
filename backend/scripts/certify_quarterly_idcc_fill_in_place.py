@@ -56,6 +56,40 @@ def _git_sha() -> str:
         return "unknown"
 
 
+def _close(value, expected: float, tolerance: float) -> bool:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return False
+    return abs(float(value) - expected) <= tolerance
+
+
+def _current_period_values(path: Path) -> dict:
+    """FY2026 Q2 current-column amounts, not prior-year comparatives."""
+    book = load_workbook(path, data_only=False)
+    try:
+        ws = book["Last Quarter IS Standardized"]
+        actual = {coord: ws[coord].value for coord in (
+            "C11", "C12", "C32", "C60", "C67", "C71", "C73",
+            "G11", "G32", "G60", "G67", "G71",
+        )}
+    finally:
+        book.close()
+    checks = {
+        "revenue_standalone_not_prior_year": _close(actual["C11"], 260.17, 0.02) and not _close(actual["C11"], 300.596, 0.05),
+        "sales_component_preserved": _close(actual["C12"], 110, 0.02),
+        "operating_income_not_prior_year": _close(actual["C32"], 139.24, 0.02) and not _close(actual["C32"], 205.427, 0.05),
+        "net_income_current_quarter": _close(actual["C60"], 116.37, 0.02) and not _close(actual["C60"], 115.602, 0.05),
+        "basic_eps_gaap": _close(actual["C67"], 4.51, 0.001),
+        "diluted_eps_gaap_not_prior_year": _close(actual["C71"], 3.4, 0.001) and not _close(actual["C71"], 5.35, 0.001),
+        "adjusted_diluted_eps_preserved": _close(actual["C73"], 3.38, 0.001),
+        "revenue_ytd": _close(actual["G11"], 465.586, 0.02),
+        "operating_income_ytd": _close(actual["G32"], 221.5, 0.02),
+        "net_income_ytd": _close(actual["G60"], 191.701, 0.02),
+        "basic_eps_ytd": _close(actual["G67"], 7.44, 0.001),
+        "diluted_eps_ytd": _close(actual["G71"], 5.51, 0.001),
+    }
+    return {"actual": actual, "checks": checks, "ok": all(checks.values())}
+
+
 def _num(value) -> float | None:
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         return None
@@ -387,6 +421,7 @@ def main() -> int:
     )
     word_path = Path(str(deliverables.get("word_path") or ""))
     word_ok = bool(deliverables.get("word_path") and word_path.is_file() and not unresolved)
+    period_values = _current_period_values(completed) if completed.exists() else {"ok": False, "actual": {}, "checks": {}}
     gates = {
         "pre_run_taxonomy": _gate(True, "preflight fingerprint"),
         "income_fill_gaps": _gate(str(income.get("decision")) == "BLOOMBERG_FILL_GAPS", str(out_dir / "quarterly_presentation_report.json"), decision=income.get("decision")),
@@ -411,6 +446,12 @@ def main() -> int:
         "notes": _gate(notes.get("Last Quarter IS Standardized") and notes.get("Last Quarter CF Standardized"), str(completed), sheets=notes),
         "excel_name": _gate(bool(expected_excel) and excel_name == expected_excel, str(out_dir / "quarterly_deliverables_report.json"), actual=excel_name, expected=expected_excel),
         "word": _gate(word_ok, deliverables.get("word_path") or str(out_dir / "quarterly_deliverables_report.json")),
+        "current_period_eps_and_net_income": _gate(
+            bool(period_values.get("ok")),
+            str(completed),
+            checks=period_values.get("checks"),
+            actual=period_values.get("actual"),
+        ),
     }
     results = [gate["result"] for gate in gates.values()]
     status = "READY_FOR_PRODUCTION" if results and all(item == "PASS" for item in results) else "NOT_READY"
@@ -436,6 +477,7 @@ def main() -> int:
         "sec_filing_form": income.get("sec_filing_form") or cash_flow.get("sec_filing_form"),
         "sec_filing_period": income.get("sec_filing_period") or cash_flow.get("sec_filing_period"),
         "sec_accession": income.get("sec_accession") or cash_flow.get("sec_accession"),
+        "current_period_values": period_values,
         "income_rows_filled": income.get("rows_filled") or [],
         "cash_flow_rows_filled": cash_flow.get("rows_filled") or [],
         "income_discrepancies": income.get("source_discrepancies") or [],
@@ -488,6 +530,7 @@ def main() -> int:
         f"SEC: {report['sec_filing_form']} {report['sec_filing_period']} {report['sec_accession']}",
         "",
         "This certification is fill-in-place. It is separate from the reconstruction certification, which cleared the statement bodies before the pipeline ran.",
+        "The prior fill-in-place certification e6aef478-1fa4-4839-af1d-4cb8a8fcc64c is preserved.",
         "",
     ]
     for name, gate in gates.items():

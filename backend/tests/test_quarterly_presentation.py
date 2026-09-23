@@ -663,3 +663,141 @@ def test_labeled_blank_cash_flow_fills_original_cells(tmp_path: Path, monkeypatc
         assert sheet["E11"].value == '=IF(C11="","",C11)'
     finally:
         out.close()
+
+
+def _idcc_comparative_facts() -> dict:
+    """FY2026 Q2 filing columns, including prior-year facts tagged with the same fy/fp."""
+    def series(unit, rows):
+        return {"units": {unit: [
+            {
+                "val": value,
+                "fy": 2026,
+                "fp": fp,
+                "form": "10-Q",
+                "filed": "2026-07-30",
+                "accn": "0001405495-26-000066",
+                "start": start,
+                "end": end,
+            }
+            for value, start, end, fp in rows
+        ]}}
+
+    return {"facts": {"us-gaap": {
+        "EarningsPerShareDiluted": series("USD/shares", [
+            (5.35, "2025-04-01", "2025-06-30", "Q2"),
+            (8.81, "2025-01-01", "2025-06-30", "Q2"),
+            (5.51, "2026-01-01", "2026-06-30", "Q2"),
+            (3.4, "2026-04-01", "2026-06-30", "Q2"),
+        ]),
+        "EarningsPerShareBasic": series("USD/shares", [
+            (6.97, "2025-04-01", "2025-06-30", "Q2"),
+            (7.44, "2026-01-01", "2026-06-30", "Q2"),
+            (4.51, "2026-04-01", "2026-06-30", "Q2"),
+        ]),
+        "NetIncomeLoss": series("USD", [
+            (115_602_000, "2025-01-01", "2025-03-31", "Q2"),
+            (296_170_000, "2025-01-01", "2025-06-30", "Q2"),
+            (191_701_000, "2026-01-01", "2026-06-30", "Q2"),
+            (116_372_000, "2026-04-01", "2026-06-30", "Q2"),
+        ]),
+        "RevenueFromContractWithCustomerExcludingAssessedTax": series("USD", [
+            (300_596_000, "2025-04-01", "2025-06-30", "Q2"),
+            (260_170_000, "2026-04-01", "2026-06-30", "Q2"),
+        ]),
+    }}}
+
+
+def test_current_quarter_eps_and_net_income_are_not_prior_period_columns():
+    from services.accounting_concept_matcher import interpret_workbook_label
+
+    items = extract_sec_10q_statement(
+        _idcc_comparative_facts(),
+        QuarterlyStatementKind.INCOME,
+        fiscal_year=2026,
+        fiscal_period="Q2",
+        include_unresolved=False,
+    )
+    diluted = next(item for item in items if item.xbrl_concept == "EarningsPerShareDiluted")
+    basic = next(item for item in items if item.xbrl_concept == "EarningsPerShareBasic")
+    net_income = next(item for item in items if item.xbrl_concept == "NetIncomeLoss")
+    assert diluted.value == pytest.approx(3.4)
+    assert diluted.period_start == "2026-04-01"
+    assert diluted.period_end == "2026-06-30"
+    assert diluted.extraction_method == "reported_standalone"
+    assert diluted.ytd_value == pytest.approx(5.51)
+    assert basic.value == pytest.approx(4.51)
+    assert basic.value != pytest.approx(diluted.value)
+    assert net_income.value == pytest.approx(116.372)
+    assert net_income.period_end == "2026-06-30"
+    ytd_items = extract_sec_10q_statement(
+        _idcc_comparative_facts(),
+        QuarterlyStatementKind.INCOME,
+        fiscal_year=2026,
+        fiscal_period="Q2",
+        duration_kind="ytd",
+        include_unresolved=False,
+    )
+    diluted_ytd = next(item for item in ytd_items if item.xbrl_concept == "EarningsPerShareDiluted")
+    assert diluted_ytd.duration_kind == "ytd"
+    assert diluted_ytd.value == pytest.approx(5.51)
+    assert interpret_workbook_label("Diluted EPS, GAAP", QuarterlyStatementKind.INCOME) == ["diluted_eps"]
+    assert interpret_workbook_label("Basic EPS, GAAP", QuarterlyStatementKind.INCOME) == ["basic_eps"]
+    assert interpret_workbook_label("Diluted EPS from Cont Ops, Adjusted", QuarterlyStatementKind.INCOME) == []
+    assert interpret_workbook_label("Basic EPS from Cont Ops, Adjusted", QuarterlyStatementKind.INCOME) == []
+    assert interpret_workbook_label("EPS", QuarterlyStatementKind.INCOME) == []
+
+
+def test_gaap_diluted_eps_conflict_keeps_adjusted_rows_and_formulas():
+    from models.quarterly_presentation import BloombergHealthAssessment, QuarterlyStatementPresentation
+    from services.quarterly_dependency_service import QuarterlyDependencyService
+
+    facts = _idcc_comparative_facts()
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Last Quarter IS Standardized"
+    ws["A11"] = "Revenue"
+    ws["C11"] = 260.17
+    ws["A12"] = "    + Sales & Services Revenue"
+    ws["C12"] = 110
+    ws["A60"] = "Net Income, GAAP"
+    ws["C60"] = 116.37
+    ws["A67"] = "Basic EPS, GAAP"
+    ws["C67"] = 4.51
+    ws["A71"] = "Diluted EPS, GAAP"
+    ws["C71"] = 1.11
+    ws["A73"] = "Diluted EPS from Cont Ops, Adjusted"
+    ws["C73"] = 3.38
+    inputs = wb.create_sheet("Inputs")
+    inputs["B5"] = "='Last Quarter IS Standardized'!C71"
+    inputs["B6"] = "='Last Quarter IS Standardized'!C73"
+    health = BloombergHealthAssessment(
+        statement=QuarterlyStatementKind.INCOME,
+        sheet=ws.title,
+        present=True,
+        reason="test",
+    )
+    entry = QuarterlyStatementPresentation(
+        statement=QuarterlyStatementKind.INCOME,
+        sheet=ws.title,
+        health=health,
+        decision=PresentationDecision.BLOOMBERG_FILL_GAPS,
+        reason="test",
+    )
+    before = QuarterlyDependencyService().snapshot(wb)
+    service = QuarterlyPresentationService()
+    service._reconcile_populated_with_sec(wb, entry, facts, 2026, "Q2")
+    service._fill_blank_ytd_from_sec(wb, QuarterlyStatementKind.INCOME, facts, 2026, "Q2")
+    after = QuarterlyDependencyService().reconnect(wb, before)
+    assert ws["C71"].value == pytest.approx(3.4)
+    assert ws["G71"].value == pytest.approx(5.51)
+    assert ws["C67"].value == pytest.approx(4.51)
+    assert ws["G67"].value == pytest.approx(7.44)
+    assert ws["C73"].value == pytest.approx(3.38)
+    assert ws["C12"].value == pytest.approx(110)
+    assert ws["C60"].value == pytest.approx(116.37)
+    assert ws["C11"].value == pytest.approx(260.17)
+    assert inputs["B5"].value == "='Last Quarter IS Standardized'!C71"
+    assert inputs["B6"].value == "='Last Quarter IS Standardized'!C73"
+    assert after["changed_formulas"] == []
+    assert after["unresolved_dependencies"] == []
+
