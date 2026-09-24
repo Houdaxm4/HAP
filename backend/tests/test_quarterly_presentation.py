@@ -724,11 +724,23 @@ def test_current_quarter_eps_and_net_income_are_not_prior_period_columns():
     assert diluted.period_start == "2026-04-01"
     assert diluted.period_end == "2026-06-30"
     assert diluted.extraction_method == "reported_standalone"
+    assert diluted.unit == "USD/shares"
     assert diluted.ytd_value == pytest.approx(5.51)
+    assert diluted.extraction_method != "derived_ytd_subtract"
     assert basic.value == pytest.approx(4.51)
+    assert basic.period_start == "2026-04-01"
+    assert basic.period_end == "2026-06-30"
+    assert basic.unit == "USD/shares"
     assert basic.value != pytest.approx(diluted.value)
     assert net_income.value == pytest.approx(116.372)
+    assert net_income.period_start == "2026-04-01"
     assert net_income.period_end == "2026-06-30"
+    assert net_income.unit == "USD_millions"
+    revenue = next(item for item in items if item.xbrl_concept == "RevenueFromContractWithCustomerExcludingAssessedTax")
+    assert revenue.value == pytest.approx(260.17)
+    assert revenue.period_start == "2026-04-01"
+    assert revenue.period_end == "2026-06-30"
+    assert revenue.unit == "USD_millions"
     ytd_items = extract_sec_10q_statement(
         _idcc_comparative_facts(),
         QuarterlyStatementKind.INCOME,
@@ -739,7 +751,11 @@ def test_current_quarter_eps_and_net_income_are_not_prior_period_columns():
     )
     diluted_ytd = next(item for item in ytd_items if item.xbrl_concept == "EarningsPerShareDiluted")
     assert diluted_ytd.duration_kind == "ytd"
+    assert diluted_ytd.extraction_method == "reported_ytd"
+    assert diluted_ytd.period_start == "2026-01-01"
+    assert diluted_ytd.period_end == "2026-06-30"
     assert diluted_ytd.value == pytest.approx(5.51)
+    assert diluted_ytd.value != pytest.approx(diluted.value)
     assert interpret_workbook_label("Diluted EPS, GAAP", QuarterlyStatementKind.INCOME) == ["diluted_eps"]
     assert interpret_workbook_label("Basic EPS, GAAP", QuarterlyStatementKind.INCOME) == ["basic_eps"]
     assert interpret_workbook_label("Diluted EPS from Cont Ops, Adjusted", QuarterlyStatementKind.INCOME) == []
@@ -800,4 +816,60 @@ def test_gaap_diluted_eps_conflict_keeps_adjusted_rows_and_formulas():
     assert inputs["B6"].value == "='Last Quarter IS Standardized'!C73"
     assert after["changed_formulas"] == []
     assert after["unresolved_dependencies"] == []
+
+
+def test_cash_flow_q2_uses_current_ytd_not_prior_year_columns():
+    """Prior-year comparatives share fy/fp. Q2 cash flow is current 6-month minus current Q1."""
+    def entry(value, start, end, fp):
+        return {
+            "val": value,
+            "fy": 2026,
+            "fp": fp,
+            "form": "10-Q",
+            "filed": "2026-07-30",
+            "accn": "0001405495-26-000066",
+            "start": start,
+            "end": end,
+        }
+
+    facts = {"facts": {"us-gaap": {
+        "NetCashProvidedByUsedInOperatingActivities": {"units": {"USD": [
+            entry(99_000_000, "2025-01-01", "2025-03-31", "Q1"),
+            entry(16_081_000, "2026-01-01", "2026-03-31", "Q1"),
+            entry(200_000_000, "2025-01-01", "2025-06-30", "Q2"),
+            entry(98_617_000, "2026-01-01", "2026-06-30", "Q2"),
+            entry(999_000_000, "2026-04-01", "2026-06-30", "Q2"),
+        ]}},
+        "RevenueFromContractWithCustomerExcludingAssessedTax": {"units": {"USD": [
+            entry(260_170_000, "2026-04-01", "2026-06-30", "Q2"),
+        ]}},
+    }}}
+    items = extract_sec_10q_statement(
+        facts,
+        QuarterlyStatementKind.CASH_FLOW,
+        fiscal_year=2026,
+        fiscal_period="Q2",
+        include_unresolved=False,
+    )
+    cfo = next(item for item in items if item.xbrl_concept == "NetCashProvidedByUsedInOperatingActivities")
+    assert cfo.extraction_method == "derived_ytd_subtract"
+    assert cfo.duration_kind == "standalone_quarter"
+    assert cfo.value == pytest.approx(82.536)
+    assert cfo.ytd_value == pytest.approx(98.617)
+    assert cfo.period_end == "2026-06-30"
+    assert "Q1 YTD 16.081" in (cfo.derivation or "")
+    assert "Q2 YTD 98.617" in (cfo.derivation or "")
+    ytd_items = extract_sec_10q_statement(
+        facts,
+        QuarterlyStatementKind.CASH_FLOW,
+        fiscal_year=2026,
+        fiscal_period="Q2",
+        duration_kind="ytd",
+        include_unresolved=False,
+    )
+    cfo_ytd = next(item for item in ytd_items if item.xbrl_concept == "NetCashProvidedByUsedInOperatingActivities")
+    assert cfo_ytd.extraction_method == "reported_ytd"
+    assert cfo_ytd.period_start == "2026-01-01"
+    assert cfo_ytd.period_end == "2026-06-30"
+    assert cfo_ytd.value == pytest.approx(98.617)
 
