@@ -55,6 +55,10 @@ _TICKER_STOP = {
 _LQ_BS_DEST_ROWS = range(27, 33)
 _LQ_BS_VALUE_COL = 9  # I
 _LQ_BS_KEY_COL = 8  # H
+_PERIOD_RE = re.compile(
+    r"(?P<year>20\d{2})\s*Q\s*(?P<q>[1-4])|Q\s*(?P<q2>[1-4])\s*(?P<year2>20\d{2})",
+    re.IGNORECASE,
+)
 
 
 def _cell_type(value: Any) -> str:
@@ -562,9 +566,8 @@ class QuarterlyCarryForwardService:
                 )
             return entries
 
-        prev_ws = prev_wb[_LQ_BS_SHEET]
-        prev_by_key = self._inputs_key_index(prev_ws)
-        if not prev_by_key:
+        period_reason = self._preceding_quarter_reason(prev_wb, new_wb)
+        if period_reason:
             for row in _LQ_BS_DEST_ROWS:
                 addr = f"I{row}"
                 entries.append(
@@ -576,126 +579,174 @@ class QuarterlyCarryForwardService:
                         new_v=dest_ws[addr].value,
                         new_t=_cell_type(dest_ws[addr].value),
                         action=CarryForwardDecision.REVIEW_REQUIRED,
-                        reason="Previous-quarter BS layout has no Inputs!Bxx keys in column H; incompatible.",
+                        reason=period_reason,
                         source=source,
                         final_cell=dest_ws[addr],
                     )
                 )
             return entries
 
-        for row in _LQ_BS_DEST_ROWS:
-            addr = f"I{row}"
-            dest_cell = dest_ws.cell(row=row, column=_LQ_BS_VALUE_COL)
-            dest_key_cell = dest_ws.cell(row=row, column=_LQ_BS_KEY_COL)
-            dest_t = _cell_type(dest_cell.value)
-            key = self._inputs_ref_key(dest_key_cell.value)
-            if dest_t == "formula":
+        if "Inputs" not in prev_wb.sheetnames:
+            for row in _LQ_BS_DEST_ROWS:
+                addr = f"I{row}"
                 entries.append(
                     self._entry(
                         sheet=_LQ_BS_SHEET,
                         addr=addr,
                         prev_v=None,
                         prev_t="blank",
-                        new_v=dest_cell.value,
-                        new_t="formula",
-                        action=CarryForwardDecision.KEEP_NEW_FORMULA,
-                        reason="Current-quarter I-column formula preserved; prior snapshot not applied.",
-                        source=source,
-                        final_cell=dest_cell,
-                    )
-                )
-                continue
-            if dest_t == "value":
-                entries.append(
-                    self._entry(
-                        sheet=_LQ_BS_SHEET,
-                        addr=addr,
-                        prev_v=None,
-                        prev_t="blank",
-                        new_v=dest_cell.value,
-                        new_t="value",
-                        action=CarryForwardDecision.LEAVE_AS_IS,
-                        reason="Existing I-column value treated as analyst override; not replaced.",
-                        source=source,
-                        final_cell=dest_cell,
-                    )
-                )
-                continue
-            if not key:
-                entries.append(
-                    self._entry(
-                        sheet=_LQ_BS_SHEET,
-                        addr=addr,
-                        prev_v=None,
-                        prev_t="blank",
-                        new_v=dest_cell.value,
-                        new_t=dest_t,
+                        new_v=dest_ws[addr].value,
+                        new_t=_cell_type(dest_ws[addr].value),
                         action=CarryForwardDecision.REVIEW_REQUIRED,
-                        reason=f"{addr} H-column has no Inputs!Bxx mapping; skipped.",
+                        reason="Previous workbook has no Inputs sheet; prior analytical outputs unavailable.",
                         source=source,
-                        final_cell=dest_cell,
+                        final_cell=dest_ws[addr],
                     )
                 )
-                continue
-            prev_row = prev_by_key.get(key)
-            if prev_row is None:
+            return entries
+
+        cached = load_workbook(source, data_only=True)
+        try:
+            cached_inputs = cached["Inputs"] if "Inputs" in cached.sheetnames else None
+            for row in _LQ_BS_DEST_ROWS:
+                addr = f"I{row}"
+                dest_cell = dest_ws.cell(row=row, column=_LQ_BS_VALUE_COL)
+                dest_key_cell = dest_ws.cell(row=row, column=_LQ_BS_KEY_COL)
+                dest_t = _cell_type(dest_cell.value)
+                key = self._inputs_ref_key(dest_key_cell.value)
+                if dest_t == "formula":
+                    entries.append(
+                        self._entry(
+                            sheet=_LQ_BS_SHEET,
+                            addr=addr,
+                            prev_v=None,
+                            prev_t="blank",
+                            new_v=dest_cell.value,
+                            new_t="formula",
+                            action=CarryForwardDecision.KEEP_NEW_FORMULA,
+                            reason="Current-quarter I-column formula preserved; prior output not applied.",
+                            source=source,
+                            final_cell=dest_cell,
+                        )
+                    )
+                    continue
+                if dest_t == "value":
+                    entries.append(
+                        self._entry(
+                            sheet=_LQ_BS_SHEET,
+                            addr=addr,
+                            prev_v=None,
+                            prev_t="blank",
+                            new_v=dest_cell.value,
+                            new_t="value",
+                            action=CarryForwardDecision.LEAVE_AS_IS,
+                            reason="Existing I-column value treated as analyst override; not replaced.",
+                            source=source,
+                            final_cell=dest_cell,
+                        )
+                    )
+                    continue
+                if not key or cached_inputs is None:
+                    entries.append(
+                        self._entry(
+                            sheet=_LQ_BS_SHEET,
+                            addr=addr,
+                            prev_v=None,
+                            prev_t="blank",
+                            new_v=dest_cell.value,
+                            new_t=dest_t,
+                            action=CarryForwardDecision.REVIEW_REQUIRED,
+                            reason=f"{addr} has no Inputs!Bxx mapping; prior output not copied.",
+                            source=source,
+                            final_cell=dest_cell,
+                        )
+                    )
+                    continue
+                prev_formula = prev_wb["Inputs"][key].value
+                prev_cell = cached_inputs[key]
+                prev_v = prev_cell.value
+                prev_t = _cell_type(prev_v)
+                if prev_t != "value" or (isinstance(prev_formula, str) and prev_formula.startswith("=") and prev_v in (None, "")):
+                    entries.append(
+                        self._entry(
+                            sheet=_LQ_BS_SHEET,
+                            addr=addr,
+                            prev_v=prev_v,
+                            prev_t=prev_t,
+                            new_v=None,
+                            new_t="blank",
+                            action=CarryForwardDecision.REVIEW_REQUIRED,
+                            reason=(
+                                f"Cached calculated value for previous Inputs!{key} is unavailable. "
+                                "HAP did not recompute the prior-quarter output."
+                            ),
+                            source=f"{source} Inputs!{key}",
+                            final_cell=dest_cell,
+                        )
+                    )
+                    continue
+                dest_cell.value = prev_v
+                if prev_cell.number_format and prev_cell.number_format != "General":
+                    dest_cell.number_format = prev_cell.number_format
                 entries.append(
                     self._entry(
                         sheet=_LQ_BS_SHEET,
                         addr=addr,
-                        prev_v=None,
-                        prev_t="blank",
+                        prev_v=prev_v,
+                        prev_t="value",
                         new_v=None,
                         new_t="blank",
-                        action=CarryForwardDecision.REVIEW_REQUIRED,
-                        reason=f"No previous-quarter H formula matching Inputs!{key} for {addr}.",
-                        source=source,
-                        final_cell=dest_cell,
-                    )
-                )
-                continue
-            prev_cell = prev_ws.cell(row=prev_row, column=_LQ_BS_VALUE_COL)
-            prev_t = _cell_type(prev_cell.value)
-            if prev_t != "value":
-                entries.append(
-                    self._entry(
-                        sheet=_LQ_BS_SHEET,
-                        addr=addr,
-                        prev_v=prev_cell.value,
-                        prev_t=prev_t,
-                        new_v=None,
-                        new_t="blank",
-                        action=CarryForwardDecision.REVIEW_REQUIRED,
+                        action=CarryForwardDecision.CARRY_FORWARD,
                         reason=(
-                            f"Previous mapped source { _LQ_BS_SHEET }!I{prev_row} "
-                            f"(Inputs!{key}) is {prev_t}; not substituted."
+                            f"Prior-quarter analytical output Inputs!{key}={prev_v} "
+                            f"copied to {addr}. Source workbook: {source}."
                         ),
-                        source=source,
+                        source=f"{source} Inputs!{key}",
                         final_cell=dest_cell,
                     )
                 )
-                continue
-            dest_cell.value = prev_cell.value
-            if prev_cell.number_format:
-                dest_cell.number_format = prev_cell.number_format
-            entries.append(
-                self._entry(
-                    sheet=_LQ_BS_SHEET,
-                    addr=addr,
-                    prev_v=prev_cell.value,
-                    prev_t="value",
-                    new_v=None,
-                    new_t="blank",
-                    action=CarryForwardDecision.CARRY_FORWARD,
-                    reason=(
-                        f"Prior-quarter snapshot for Inputs!{key} copied from "
-                        f"I{prev_row} to {addr} with number format preserved."
-                    ),
-                    source=source,
-                    final_cell=dest_cell,
-                )
-            )
+        finally:
+            cached.close()
         return entries
+
+    @staticmethod
+    def _fiscal_period(wb) -> tuple[int, int] | None:
+        for sheet_name in ("Last Quarter IS Standardized", "Last Quarter BS Standardized"):
+            if sheet_name not in wb.sheetnames:
+                continue
+            ws = wb[sheet_name]
+            for row in ws.iter_rows(min_row=1, max_row=8, max_col=8):
+                for cell in row:
+                    match = _PERIOD_RE.search(str(cell.value or ""))
+                    if not match:
+                        continue
+                    year = int(match.group("year") or match.group("year2"))
+                    quarter = int(match.group("q") or match.group("q2"))
+                    return year, quarter
+        return None
+
+    @staticmethod
+    def _immediately_preceding(previous: tuple[int, int], current: tuple[int, int]) -> bool:
+        prev_year, prev_q = previous
+        year, quarter = current
+        if quarter == 1:
+            return prev_q == 4 and prev_year == year - 1
+        return prev_q == quarter - 1 and prev_year == year
+
+    def _preceding_quarter_reason(self, prev_wb, new_wb) -> str | None:
+        previous = self._fiscal_period(prev_wb)
+        current = self._fiscal_period(new_wb)
+        if previous is None or current is None:
+            return (
+                "REVIEW_REQUIRED: could not validate that the supplied workbook is the "
+                "immediately preceding fiscal quarter."
+            )
+        if not self._immediately_preceding(previous, current):
+            return (
+                f"REVIEW_REQUIRED: previous period {previous[0]} Q{previous[1]} is not the "
+                f"quarter immediately before {current[0]} Q{current[1]}."
+            )
+        return None
 
     @staticmethod
     def _inputs_ref_key(value: Any) -> str | None:

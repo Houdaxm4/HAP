@@ -712,7 +712,7 @@ class AnnualJudgmentService:
                             ("HAP rationale", er_reason),
                         ]
                     )
-                written.extend(layout.write_block(ws, rows=rows))
+                written.extend(layout.place_analysis_notes(ws, rows))
                 if ws["B5"].value != orig_b5 or [ws[f"D{r}"].value for r in range(17, 27)] != orig_d17:
                     ws["B5"].value = orig_b5
                     for i, val in enumerate(orig_d17):
@@ -759,7 +759,7 @@ class AnnualJudgmentService:
                         ]
                     )
                 rows.extend(self._oe_base_disclosure_rows(oe_base_disclosure))
-                written.extend(layout.write_block(ws, rows=rows))
+                written.extend(layout.place_analysis_notes(ws, rows))
                 if oe_change not in {"ACCEPTED", "INSUFFICIENT_EVIDENCE"} and oe_hap is not None:
                     written.extend(self._clone_ev_projections(ws, float(oe_hap)))
                 ws["B6"].value = orig_b6
@@ -768,10 +768,12 @@ class AnnualJudgmentService:
                 ws["B27"].value = orig_b27
 
                 graham_rows = [
-                    ("GRAHAM — ORIGINAL", ""),
+                    ("GRAHAM — BASE MODEL", "rows 38:48 preserved"),
                     ("Original relevant growth assumption", eps_original),
-                    ("Original Graham Entry Price", ws["B32"].value),
+                    ("Original Graham entry target (B48)", ws["B48"].value),
                 ]
+                if eps_change not in {"ACCEPTED", "INSUFFICIENT_EVIDENCE"} and eps_hap is not None:
+                    written.extend(self._write_graham_alternative(ws, float(eps_hap)))
                 if eps_change in {"ACCEPTED", "INSUFFICIENT_EVIDENCE"} or eps_hap is None:
                     hap_g = (
                         "No adjustment recommended"
@@ -790,18 +792,149 @@ class AnnualJudgmentService:
                         [
                             ("HAP-adjusted Graham growth", float(eps_hap)),
                             (
-                                "HAP-adjusted Graham Entry Price",
-                                f"=(B51+({float(eps_hap)}*100*B52))*B40",
+                                "HAP alternative entry target",
+                                "Enterprise Value!F48 uses the B48 identity on the HAP growth rate",
                             ),
                             ("HAP rationale", eps_reason),
                         ]
                     )
-                written.extend(layout.write_block(ws, rows=graham_rows, start_col=10))
+                written.extend(layout.place_analysis_notes(ws, graham_rows, live_start_col=10))
 
             wb.save(path)
         finally:
             wb.close()
         return written, preserved, er_parallel
+
+    @staticmethod
+    def _write_graham_alternative(ws, hap_rate: float) -> list[str]:
+        """Side-by-side Graham alternative in E/F rows 38:48. Entry target uses the B48 identity."""
+        from services.hap_analysis_layout_service import cell_is_occupied_or_formula
+        from services.workbook_flag_service import style_hap_analysis_cell
+
+        pairs: list[tuple[str, Any, str | None]] = [
+            ("E38", "HAP Alternative / Conservative Scenario", None),
+            ("E39", "HAP EPS growth", None),
+            ("F39", float(hap_rate), "0.0%"),
+            ("E42", "HAP Graham intrinsic value", None),
+            ("F42", "=(B51+(F39*100*B52))*B40", None),
+            ("E43", "HAP growth used in the year-7 multiple", None),
+            ("F43", "=MIN(F39,0.07)", "0.0%"),
+            ("E44", "HAP EPS in year 7", None),
+            ("F44", '=IF(1+F39<0,"invalid growth",B40*(1+F39)^7)', None),
+            ("E45", "HAP Graham multiple in year 7", None),
+            ("F45", "=(F43*100)*B52+B51", None),
+            ("E46", "HAP Graham value in year 7", None),
+            ("F46", '=IF(OR(NOT(ISNUMBER(F44)),NOT(ISNUMBER(F45))),"invalid",F44*F45)', None),
+            ("E47", "HAP expected annualized return", None),
+            (
+                "F47",
+                '=IF(OR(B39="",B39=0,NOT(ISNUMBER(F46))),"base model limitation",(F46/B39)^(1/7)-1)',
+                "0.00%",
+            ),
+            ("E48", "HAP entry target price", None),
+            (
+                "F48",
+                '=IF(OR(1+B53<=0,NOT(ISNUMBER(F46))),"invalid target",F46/(1+B53)^7)',
+                '"$"#,##0.00',
+            ),
+        ]
+        written: list[str] = []
+        for addr, value, fmt in pairs:
+            if cell_is_occupied_or_formula(ws, addr):
+                continue
+            cell = ws[addr]
+            cell.value = value
+            if fmt:
+                cell.number_format = fmt
+            style_hap_analysis_cell(cell)
+            written.append(f"{ws.title}!{addr}")
+        return written
+
+    @staticmethod
+    def _anchor_er_alternative(ws, hap_rate: float, methodology: str) -> dict[str, Any] | None:
+        """Write the HAP EPS path in F17:F26 and the price-plus-dividends return in H14.
+
+        Returns None when those cells are already used, so the caller can choose another free block.
+        F14 remains the base model's price-plus-dividends return.
+        """
+        from services.hap_analysis_layout_service import cell_is_occupied_or_formula
+        from services.workbook_flag_service import style_hap_analysis_cell
+
+        needed = ["E15", "F15", "F16", "G16", "H13", "H14"]
+        needed.extend(f"F{row}" for row in range(17, 27))
+        needed.extend(f"G{row}" for row in range(17, 27))
+        if any(cell_is_occupied_or_formula(ws, addr) for addr in needed):
+            return None
+        written: list[str] = []
+
+        def put(addr: str, value: Any) -> str:
+            cell = ws[addr]
+            cell.value = value
+            style_hap_analysis_cell(cell)
+            written.append(f"{ws.title}!{addr}")
+            return f"{ws.title}!{addr}"
+
+        put("E15", "HAP prospective growth")
+        rate_cell = ws["F15"]
+        rate_cell.value = float(hap_rate)
+        rate_cell.number_format = "0.0%"
+        style_hap_analysis_cell(rate_cell)
+        written.append(f"{ws.title}!F15")
+        put("F16", "HAP Alternative EPS")
+        put("G16", "HAP Alternative Dividend")
+        put("H13", "HAP Alternative Expected Return Price + Dividends")
+        for row in range(17, 27):
+            if methodology == "bv_x_roe":
+                eps = (
+                    f'=IF(OR($B$8="",$A$14="",1+$F$15<0),"invalid growth",'
+                    f"$B$8*(1+$F$15)^B{row}*$A$14)"
+                )
+            else:
+                eps = (
+                    f'=IF(OR(\'Final Metrics\'!$L$29="",1+$F$15<0),"invalid growth",'
+                    f"'Final Metrics'!$L$29*(1+$F$15)^B{row})"
+                )
+            put(f"F{row}", eps)
+            put(
+                f"G{row}",
+                (
+                    f'=IF(OR(NOT(ISNUMBER(F{row})),NOT(ISNUMBER(\'Final Metrics\'!$L$26))),'
+                    f'"payout unavailable",F{row}*\'Final Metrics\'!$L$26)'
+                ),
+            )
+        hap_er = put(
+            "H14",
+            (
+                '=IF(OR($A$2="",$A$2=0),"base model limitation: current price is zero",'
+                'IF(COUNT(G17:G26)<10,"dividend path unavailable",'
+                "(((F26*$E$2)+SUM(G17:G26))/$A$2)^(1/10)-1))"
+            ),
+        )
+        ws["H14"].number_format = "0.00%"
+        substitution = (
+            "HAP preserves B5, A11, D17:D26, E14, and F14. "
+            "F17:F26 is the alternative EPS path using the same book-value × ROE identity "
+            "when that is the workbook methodology. G17:G26 is the matching dividend path. "
+            "H14 is the alternative price-plus-dividends expected return and does not replace F14."
+        )
+        put("H15", substitution)
+        return {
+            "coherent": True,
+            "status": "formulas_written",
+            "failure_reason": None,
+            "written": written,
+            "hap_er_cell": hap_er,
+            "substitution": substitution,
+            "hap_mechanics": {
+                "methodology": methodology,
+                "hap_g_cell": f"{ws.title}!F15",
+                "hap_eps_path": f"{ws.title}!F17:F26",
+                "hap_dividend_path": f"{ws.title}!G17:G26",
+                "hap_expected_return_formula": hap_er,
+            },
+            "hap_g_cell": f"{ws.title}!F15",
+            "hap_roe_cell": f"{ws.title}!A14" if methodology == "bv_x_roe" else None,
+        }
 
     @staticmethod
     def _clone_er_parallel_model(
@@ -858,6 +991,10 @@ class AnnualJudgmentService:
                 return fail("ROE (A14) is missing; cannot preserve EPS = BV × ROE.")
             if isinstance(a14, (int, float)) and not isinstance(a14, bool) and a14 <= 0:
                 return fail("ROE (A14) is non-positive; EPS = BV × ROE is not a coherent parallel model.")
+
+        anchored = AnnualJudgmentService._anchor_er_alternative(ws, hap_rate, methodology)
+        if anchored is not None:
+            return anchored
 
         def _col_free(c: int) -> bool:
             for row in range(1, 31):
@@ -1022,6 +1159,14 @@ class AnnualJudgmentService:
         from services.workbook_flag_service import style_hap_analysis_cell
 
         written: list[str] = []
+        # A53 is the Graham target-return parameter on the industrial template.
+        for label_row in (54, 52):
+            title = ws.cell(label_row, 1)
+            if title.value in (None, ""):
+                title.value = "HAP Alternative / Conservative Scenario"
+                style_hap_analysis_cell(title)
+                written.append(f"{ws.title}!A{label_row}")
+                break
         col = discover_unused_column(ws, start_col=16, end_col=24, scan_rows=20)
         letter = get_column_letter(col)
         rate = ws.cell(5, col)

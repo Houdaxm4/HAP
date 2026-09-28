@@ -1,4 +1,4 @@
-"""Annual Update primary deliverables: {YEAR} {TICKER} FA.xlsx and Annual Update.docx."""
+"""Annual Update primary deliverables: fiscal-year Excel name and Annual Update.docx."""
 
 from __future__ import annotations
 
@@ -23,11 +23,15 @@ from models.annual_update import (
 )
 from services.annual_period_service import detect_year_columns
 from services.annual_valuation_extract_service import AnnualValuationExtractService
+from services.deliverable_naming import excel_deliverable_name
 
 
 def excel_word_names(year: int, ticker: str) -> tuple[str, str]:
     t = ticker.upper()
-    return f"{year} {t} FA.xlsx", f"{year} {t} Annual Update.docx"
+    excel = excel_deliverable_name(
+        fiscal_year=year, ticker=t, analysis_type="Annual Update"
+    )
+    return excel, f"{year} {t} Annual Update.docx"
 
 
 def _fmt(v, *, pct: bool = False) -> str:

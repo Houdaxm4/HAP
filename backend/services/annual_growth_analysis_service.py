@@ -561,13 +561,17 @@ class AnnualGrowthAnalysisService:
         historical_existing = None
         if driver == "B5" and _same_observation(existing, eps_w.get("full")):
             historical_existing = eps_w.get("full")
-        dec = self._decide(
+        dec = self._conservative_policy(
+            self._decide(
+                existing,
+                usable,
+                extra_blockers=[],
+                existing_excluded_keys=(),
+                historical_existing=historical_existing,
+                mechanism_unusable=mechanism_unusable,
+            ),
             existing,
             usable,
-            extra_blockers=[],
-            existing_excluded_keys=(),
-            historical_existing=historical_existing,
-            mechanism_unusable=mechanism_unusable,
         )
         rationale = self._er_rationale(existing, driver, hist, distortions, dec)
         return ValuationAssumptionAnalysis(
@@ -756,6 +760,7 @@ class AnnualGrowthAnalysisService:
                 "The OE forecast base is distorted; HAP does not invent a replacement rate "
                 "and does not treat the prospective range as a decision boundary."
             )
+        dec = self._conservative_policy(dec, existing, usable)
         rationale = self._oe_rationale(existing, driver_cell, hist, distortions, dec)
         return ValuationAssumptionAnalysis(
             metric="owner_earnings_growth",
@@ -898,11 +903,15 @@ class AnnualGrowthAnalysisService:
         }
         recent = {"eps_recent": ev.eps[-4:], "eps_5y_cagr": eps_w["5y"], "oi_5y_cagr": oi_w["5y"]}
         historical_existing = eps_w.get("full") if _same_observation(existing, eps_w.get("full")) else None
-        dec = self._decide(
+        dec = self._conservative_policy(
+            self._decide(
+                existing,
+                usable,
+                extra_blockers=[],
+                historical_existing=historical_existing,
+            ),
             existing,
             usable,
-            extra_blockers=[],
-            historical_existing=historical_existing,
         )
         rationale = (
             f"Graham uses {source or 'an unidentified growth input'} ({_pct(existing)}) in the existing "
@@ -943,6 +952,49 @@ class AnnualGrowthAnalysisService:
         )
 
     # ------------------------------------------------------------------ decision
+    def _conservative_policy(self, dec: _Decision, existing: float | None, usable: dict) -> _Decision:
+        """Keep statistical evidence as one input. Do not adopt a CAGR, or a more optimistic rate, as the alternative."""
+        note = (
+            " Historical CAGR is evidence, not an automatic prospective growth assumption."
+            " Management guidance is evidence and is not adopted automatically."
+            " When an alternative is justified it is the more conservative supportable rate."
+        )
+        if dec.decision == INSUFFICIENT:
+            dec.decision_basis = ((dec.decision_basis or "") + " HAP did not manufacture an alternative." + note).strip()
+            return dec
+        if dec.decision != ADJUST or dec.selected is None:
+            dec.decision_basis = ((dec.decision_basis or "") + note).strip()
+            return dec
+        recent = [
+            float(v)
+            for key, v in usable.items()
+            if ("3y" in key or "5y" in key) and isinstance(v, (int, float)) and not isinstance(v, bool)
+        ]
+        if existing is not None and dec.selected > existing + 0.005:
+            lower = [v for v in recent if v < existing]
+            if not lower:
+                dec.decision = INSUFFICIENT
+                dec.selected = None
+                dec.method = "insufficient_evidence_no_conservative_alternative"
+                dec.conf = min(dec.conf, 0.4)
+                dec.decision_basis = (
+                    "Independent evidence is more optimistic than the base model, and no lower recent "
+                    "observation supports a conservative alternative. The base model is preserved."
+                    + note
+                )
+                return dec
+            dec.selected = _round_rate(min(lower))
+            dec.method = "conservative_recent_evidence"
+        elif recent and existing is not None:
+            conservative = min(recent)
+            if conservative + 0.01 < float(dec.selected) and conservative < existing:
+                dec.selected = _round_rate(conservative)
+                dec.method = "conservative_recent_evidence"
+        dec.decision_basis = ((dec.decision_basis or "") + note).strip()
+        if dec.method == "conservative_recent_evidence":
+            dec.decision_basis += f" Selected conservative rate {_pct(dec.selected)}."
+        return dec
+
     def _decide(
         self,
         existing: float | None,

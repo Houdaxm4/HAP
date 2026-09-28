@@ -463,7 +463,7 @@ class NewCompanyRdService:
             ),
             ("Override", override),
         ]
-        notes = HapAnalysisLayoutService().write_block(wb["R&D"], rows=rows, start_col=16)
+        notes = HapAnalysisLayoutService().write_notes_section(wb["R&D"], rows)
         written.extend(notes)
         return notes
 

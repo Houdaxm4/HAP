@@ -188,8 +188,8 @@ def assess_statement_health(
             missing_cumulative = True
 
     # Primary anchors: first two needles are required for coherence.
-    # A labeled Bloomberg taxonomy with blank values is incomplete data, not an
-    # unusable layout. Those rows stay in place and are filled from SEC.
+    # A labeled taxonomy with blank values is incomplete supplied data.
+    # Those rows stay in place. HAP does not fill them.
     primary = majors[:2]
     taxonomy_intact = expected >= MIN_EXPECTED_ROWS and all(
         any(needle in _norm(r["label"]) for r in rows) for needle in primary
@@ -228,7 +228,7 @@ def assess_statement_health(
 
     if missing_cumulative and not taxonomy_intact:
         structural = True
-        notes.append("sec_required_for_missing_ytd")
+        notes.append("statement_incomplete_missing_ytd")
     elif missing_cumulative:
         notes.append("ytd_column_incomplete")
 
@@ -241,8 +241,8 @@ def assess_statement_health(
         )
     elif isolated:
         reason = (
-            f"{sheet}: Bloomberg usable with isolated gaps "
-            f"(missing={missing}/{expected}, majors present)"
+            f"{sheet}: supplied statement incomplete "
+            f"(isolated gaps missing={missing}/{expected}, majors present)"
         )
     elif missing == 0 and major_totals_present:
         reason = f"{sheet}: Bloomberg substantially complete (populated={populated}/{expected})"
@@ -271,26 +271,19 @@ def assess_statement_health(
 
 
 def decide_presentation(health: BloombergHealthAssessment) -> PresentationDecision:
+    """Classify supplied-statement completeness.
+
+    A complete statement is preserved. Missing statement data, including an
+    absent sheet, is STATEMENT_INCOMPLETE. This never requests a HAP fill,
+    Yahoo template, or SEC layout rebuild.
+    """
     if not health.present:
-        return PresentationDecision.BLOCKED
-    if health.structural_failure:
-        if health.statement in (
-            QuarterlyStatementKind.INCOME,
-            QuarterlyStatementKind.CASH_FLOW,
-        ):
-            # SEC EDGAR is authoritative; Yahoo is a supplementary fallback only.
-            return PresentationDecision.SEC_10Q_PRESENTATION_REQUIRED
-        # BS structural gaps: fill from SEC/Yahoo without manufacturing via subtraction
-        return PresentationDecision.BLOOMBERG_FILL_GAPS
-    if health.isolated_gaps:
-        return PresentationDecision.BLOOMBERG_FILL_GAPS
+        return PresentationDecision.STATEMENT_INCOMPLETE
+    if health.structural_failure or health.isolated_gaps:
+        return PresentationDecision.STATEMENT_INCOMPLETE
     if health.major_totals_present and health.missing_ratio <= ISOLATED_GAP_RATIO:
         return PresentationDecision.BLOOMBERG_PRESERVE
-    if health.missing_ratio < STRUCTURAL_MISSING_RATIO and health.major_totals_present:
-        return PresentationDecision.BLOOMBERG_FILL_GAPS
-    if "taxonomy_intact" in (health.coherence_notes or []):
-        return PresentationDecision.BLOOMBERG_FILL_GAPS
-    return PresentationDecision.SEC_10Q_PRESENTATION_REQUIRED
+    return PresentationDecision.STATEMENT_INCOMPLETE
 
 
 def assess_all_quarterly_statements(workbook: Workbook) -> list[tuple[BloombergHealthAssessment, PresentationDecision]]:

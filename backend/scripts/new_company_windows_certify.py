@@ -439,9 +439,9 @@ def _emit_frozen(output_service, analysis_id: str, payload: dict) -> None:
         encoding="utf-8",
     )
     _write_frozen_markdown(out_dir / "NEW_COMPANY_AUTONOMOUS_DECISION_CERTIFICATION.md", payload, gate_rows)
-    lnn_copy = out_dir / "NEW_COMPANY_LNN_CERTIFICATION.md"
+    lnn_copy = out_dir / "NEW_COMPANY_HARDENING_CERTIFICATION.md"
     shutil.copy2(out_dir / "NEW_COMPANY_AUTONOMOUS_DECISION_CERTIFICATION.md", lnn_copy)
-    repo_copy = BACKEND_ROOT / "NEW_COMPANY_LNN_CERTIFICATION.md"
+    repo_copy = BACKEND_ROOT / "NEW_COMPANY_HARDENING_CERTIFICATION.md"
     shutil.copy2(lnn_copy, repo_copy)
 
 

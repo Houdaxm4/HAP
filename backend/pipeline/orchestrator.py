@@ -1023,7 +1023,9 @@ class PipelineOrchestrator:
             )
         except (OSError, ValueError):
             presentation = None
-        if isinstance(presentation, dict) and presentation.get("unresolved_dependencies"):
+        if isinstance(presentation, dict) and (
+            presentation.get("unresolved_dependencies") or presentation.get("input_blockers")
+        ):
             authorize_word = False
         deliverables = _time(
             "quarterly_deliverables",

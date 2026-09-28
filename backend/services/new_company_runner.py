@@ -25,6 +25,10 @@ from services.new_company_lease_service import NewCompanyLeaseService
 from services.new_company_output_gate_service import NewCompanyOutputGateService
 from services.new_company_pe10_service import NewCompanyPe10Service
 from services.new_company_period_service import NewCompanyPeriodService
+from services.quarterly_presentation_service import (
+    QuarterlyPresentationService,
+    quarter_incorporated,
+)
 from services.new_company_projection_service import (
     NewCompanyProjectionService,
     resolve_workbook_wacc,
@@ -87,6 +91,7 @@ class NewCompanyRunner:
         self.excel_recalc = ExcelRecalcService()
         self.guard = AnnualFormulaGuardService()
         self.current = CurrentDataRefreshService()
+        self.quarterly_presentation = QuarterlyPresentationService()
 
     def run(
         self,
@@ -290,6 +295,19 @@ class NewCompanyRunner:
             current.warnings.append("CURRENT_DATA_AS_OF_DATE_MISMATCH")
 
         mapped_wacc, mapped_wacc_src = (wacc, "custom_run.assumptions.wacc") if wacc is not None else resolve_workbook_wacc(working_path)
+        quarterly_presentation = None
+        if periods.latest_quarter:
+            quarterly_presentation = timed(
+                "quarterly_statement_completion",
+                lambda: self.quarterly_presentation.plan_and_apply(
+                    analysis_id=analysis_id,
+                    ticker=ticker,
+                    source_workbook_path=working_path,
+                    destination_workbook_path=working_path,
+                    company_facts=company_facts,
+                    already_copied=True,
+                ),
+            )
         seasonality = timed(
             "seasonality",
             lambda: self.seasonality.project(
@@ -424,6 +442,16 @@ class NewCompanyRunner:
                     recalc=recalc,
                     valuation=valuation,
                     valuation_judgment=val_report,
+                    quarterly_unresolved_dependencies=(
+                        quarterly_presentation.unresolved_dependencies
+                        if quarterly_presentation is not None
+                        else None
+                    ),
+                    quarterly_statement_blockers=(
+                        list(quarterly_presentation.input_blockers)
+                        if quarterly_presentation is not None
+                        else None
+                    ),
                 ),
             )
             authorized = gate.report_authorized
@@ -433,7 +461,11 @@ class NewCompanyRunner:
                     analysis_id=analysis_id,
                     ticker=ticker,
                     company=company,
-                    fiscal_year=fy_int,
+                    fiscal_year=(
+                        int("".join(ch for ch in str(periods.latest_quarter_fiscal_year) if ch.isdigit()) or fy_int)
+                        if quarter_incorporated(quarterly_presentation) and periods.latest_quarter_fiscal_year
+                        else fy_int
+                    ),
                     completed_workbook_path=working_path,
                     output_dir=self.output_service.analysis_output_dir(analysis_id),
                     periods=periods,
@@ -452,6 +484,11 @@ class NewCompanyRunner:
                     statement_summary=statements.summary,
                     judgment=judgment,
                     valuation_report=val_report,
+                    fiscal_quarter=(
+                        periods.latest_quarter
+                        if quarter_incorporated(quarterly_presentation)
+                        else None
+                    ),
                 ),
             )
             if authorized and genuine_excel_com_recalc(recalc):
@@ -483,6 +520,8 @@ class NewCompanyRunner:
             "new_company_current_data_report.json": current,
             "new_company_projection_report.json": projection,
         }
+        if quarterly_presentation is not None:
+            artifacts["quarterly_presentation_report.json"] = quarterly_presentation
         if gate is not None:
             artifacts["new_company_output_gate_report.json"] = gate
         if valuation is not None:

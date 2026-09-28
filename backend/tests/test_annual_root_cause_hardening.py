@@ -689,12 +689,12 @@ def test_unrealistic_assumptions_write_hap_analysis_beside_originals(tmp_path: P
     assert wb["Enterprise Value"]["B6"].value == pytest.approx(0.70)
     hap_text = " ".join(
         str(c.value)
-        for col in wb["Expected Returns & Buybacks"].iter_cols(min_col=7, max_col=14, max_row=20)
-        for c in col
+        for row in wb["Expected Returns & Buybacks"].iter_rows()
+        for c in row
         if c.value
     )
+    assert "HAP ANALYSIS — NOTES" in hap_text
     assert "HAP" in hap_text
-    assert "HAP-adjusted" in hap_text or "HAP ANALYSIS" in hap_text
     wb.close()
     assert judge.hap_analysis_cells
     assert er.selected_methodology == "EPS_GROWTH"

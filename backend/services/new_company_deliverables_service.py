@@ -64,11 +64,19 @@ class NewCompanyDeliverablesService:
         gate: NewCompanyOutputGateReport | None,
         authorized: bool,
         statement_summary: str | None = None,
+        fiscal_quarter: int | None = None,
         judgment: Any = None,
         valuation_report: NewCompanyValuationReport | None = None,
     ) -> NewCompanyDeliverablesReport:
+        from services.deliverable_naming import excel_deliverable_name
+
         output_dir.mkdir(parents=True, exist_ok=True)
-        excel_name = f"{fiscal_year} {ticker.upper()} FA.xlsx"
+        excel_name = excel_deliverable_name(
+            fiscal_year=fiscal_year,
+            ticker=ticker,
+            analysis_type="New Company",
+            fiscal_quarter=fiscal_quarter,
+        )
         word_name = f"{fiscal_year} {ticker.upper()} New Company.docx"
         excel_path = output_dir / excel_name
         word_path = output_dir / word_name

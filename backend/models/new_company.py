@@ -375,6 +375,11 @@ class BuybackYearResult(BaseModel):
     absence_class: BuybackAbsenceClass | None = None
     confidence: float = 0.0
     warnings: list[str] = Field(default_factory=list)
+    dollars_cell: str | None = None
+    shares_cell: str | None = None
+    workbook_dollars: float | None = None
+    workbook_shares: float | None = None
+    write_action: str | None = None
 
 
 class BuybackAnalysis(BaseModel):
@@ -395,6 +400,9 @@ class NewCompanyBuybackReport(BaseModel):
     analysis: BuybackAnalysis | None = None
     complete: bool = False
     warnings: list[str] = Field(default_factory=list)
+    write_policy: str = "new_company"
+    cells_written: list[str] = Field(default_factory=list)
+    discrepancies: list[dict[str, Any]] = Field(default_factory=list)
     summary: str = ""
 
 

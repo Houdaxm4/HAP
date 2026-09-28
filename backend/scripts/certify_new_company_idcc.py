@@ -290,8 +290,9 @@ def run() -> dict:
             shutil.copy2(src, cert_dir / name)
 
     # Completed FA copy if named differently
-    for p in analysis_dir.glob("*FA.xlsx"):
-        shutil.copy2(p, cert_dir / p.name)
+    for pattern in ("*FA.xlsx", "*New Company.xlsx", "*Annual Update.xlsx", "*Quarterly Update.xlsx"):
+        for p in analysis_dir.glob(pattern):
+            shutil.copy2(p, cert_dir / p.name)
     for p in analysis_dir.glob("*New Company.docx"):
         shutil.copy2(p, cert_dir / p.name)
 
@@ -300,6 +301,9 @@ def run() -> dict:
         analysis_dir / "completed_workbook.xlsx",
         analysis_dir / "annual_working_workbook.xlsx",
         *analysis_dir.glob("*FA.xlsx"),
+        *analysis_dir.glob("*New Company.xlsx"),
+        *analysis_dir.glob("*Annual Update.xlsx"),
+        *analysis_dir.glob("*Quarterly Update.xlsx"),
     ):
         if candidate.exists():
             completed = candidate

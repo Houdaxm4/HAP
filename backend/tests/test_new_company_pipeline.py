@@ -871,7 +871,8 @@ def test_recalc_unavailable_needs_review(tmp_path: Path, out_svc: OutputService,
     assert result["lease_review"].decision_class == "AUTONOMOUS_AGENT_DECISION"
     assert "WORKBOOK_RECALCULATION_INCOMPLETE" in result["output_gate"].blockers
     assert result["deliverables"] is None or result["deliverables"].authorized is False
-    assert result["certification_status"] == CLOUD_PENDING_WINDOWS_CERTIFICATION
+    assert "STATEMENT_INCOMPLETE" in result["output_gate"].blockers
+    assert result["certification_status"] == NewCompanyWorkflowState.NEEDS_REVIEW.value
     assert result["workflow_state"] != NewCompanyWorkflowState.COMPLETE
 
 
@@ -924,7 +925,8 @@ def test_runner_pauses_for_lease_review_then_blocks_without_com(tmp_path: Path, 
         assert "WORKBOOK_RECALCULATION_INCOMPLETE" in gate.blockers
         assert done["workflow_state"] == NewCompanyWorkflowState.NEEDS_REVIEW
         assert done["workflow_state"] != NewCompanyWorkflowState.COMPLETE
-        assert done["certification_status"] == CLOUD_PENDING_WINDOWS_CERTIFICATION
+        assert "STATEMENT_INCOMPLETE" in gate.blockers
+        assert done["certification_status"] == NewCompanyWorkflowState.NEEDS_REVIEW.value
         assert done["deliverables"] is None or done["deliverables"].authorized is False
 
 
@@ -1035,7 +1037,8 @@ def test_cross_company_runner_suite(tmp_path: Path, out_svc: OutputService, monk
                 done["output_gate"].blockers if done["output_gate"] else []
             )
             assert done["workflow_state"] != NewCompanyWorkflowState.COMPLETE
-            assert done["certification_status"] == CLOUD_PENDING_WINDOWS_CERTIFICATION
+            assert "STATEMENT_INCOMPLETE" in done["output_gate"].blockers
+            assert done["certification_status"] == NewCompanyWorkflowState.NEEDS_REVIEW.value
             assert "WORKBOOK_RECALCULATION_INCOMPLETE" in done["output_gate"].blockers
             assert done["periods"].latest_quarter == q
             assert len(done["tax"].years) == 10
@@ -2151,7 +2154,7 @@ def test_lease_disclosed_rate_does_not_overwrite_long_term_formulas(tmp_path: Pa
     wb = load_workbook(path)
     try:
         assert str(wb["Leases"]["C18"].value).startswith("=Inputs!")
-        blob = " ".join(str(c.value or "") for row in wb["Leases"].iter_rows(min_row=1, max_row=20, max_col=20) for c in row)
+        blob = " ".join(str(c.value or "") for row in wb["Leases"].iter_rows() for c in row)
         assert "ASC 842" in blob
         assert "Interest Expense / Total Debt" in blob
         assert report.review.selected_rate == pytest.approx(0.045)
@@ -2203,7 +2206,7 @@ def test_rd_selected_life_rewrites_three_year_schedule_formulas(tmp_path: Path):
         assert e4.replace(" ", "").endswith("/5,0)") or "/5)" in e4.replace(" ", "")
         assert isinstance(wb["R&D"]["B2"].value, (int, float))
         assert wb["R&D"]["B20"].value is not None
-        blob = " ".join(str(c.value or "") for row in wb["R&D"].iter_rows(min_row=1, max_row=20, max_col=22) for c in row)
+        blob = " ".join(str(c.value or "") for row in wb["R&D"].iter_rows() for c in row)
         assert "R&D!B8" in blob
     finally:
         wb.close()
@@ -2549,7 +2552,7 @@ def test_lease_notes_and_rate_cell_are_written(tmp_path: Path):
     try:
         blob = " ".join(
             str(cell.value or "")
-            for row in wb["Leases"].iter_rows(min_row=1, max_row=20, max_col=22)
+            for row in wb["Leases"].iter_rows()
             for cell in row
         )
         assert "HAP ANALYSIS" in blob

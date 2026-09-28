@@ -347,7 +347,6 @@ def assess_quarterly_bloomberg_health(
     assessments = assess_all_quarterly_statements(workbook)
     per_sheet: dict[str, dict[str, Any]] = {}
     ratios: list[float] = []
-    any_sec = False
     all_preserve = True
     reasons: list[str] = []
     for health, decision in assessments:
@@ -364,20 +363,15 @@ def assess_quarterly_bloomberg_health(
             "major_totals_present": health.major_totals_present,
         }
         reasons.append(f"{decision.value}: {health.reason}")
-        if decision == PresentationDecision.SEC_10Q_PRESENTATION_REQUIRED:
-            any_sec = True
-            all_preserve = False
-        elif decision == PresentationDecision.YAHOO_BASIC_TEMPLATE_REQUIRED:
-            any_sec = True  # may still use SEC as secondary
-            all_preserve = False
-        elif decision != PresentationDecision.BLOOMBERG_PRESERVE:
+        # Missing statements are incomplete input. They are not an SEC fill request.
+        if decision != PresentationDecision.BLOOMBERG_PRESERVE:
             all_preserve = False
 
     min_ratio = min(ratios) if ratios else 0.0
     avg_ratio = (sum(ratios) / len(ratios)) if ratios else 0.0
     return {
-        "sec_quarterly_fallback_required": any_sec,
-        "substantially_populated": all_preserve and not any_sec,
+        "sec_quarterly_fallback_required": False,
+        "substantially_populated": all_preserve,
         "min_fill_ratio": round(min_ratio, 4),
         "avg_fill_ratio": round(avg_ratio, 4),
         "per_sheet": per_sheet,

@@ -134,15 +134,13 @@ def test_1_missing_bloomberg_is_sec_retrieval(tmp_path: Path):
         company_facts=facts,
     )
     is_stmt = next(s for s in report.statements if s.statement == QuarterlyStatementKind.INCOME)
-    assert is_stmt.decision == PresentationDecision.SEC_10Q_PRESENTATION_REQUIRED
-    assert is_stmt.data_source_primary == "sec"
+    assert is_stmt.decision == PresentationDecision.STATEMENT_INCOMPLETE
+    assert "STATEMENT_INCOMPLETE" in is_stmt.reason
+    assert report.input_blockers
     wb = load_workbook(dest)
     try:
         ws = wb["Last Quarter IS Standardized"]
-        assert ws["A11"].value == "Revenue"
-        assert ws["C11"].value == pytest.approx(94930.0)
-        assert ws["C11"].value != 0
-        assert "accn=" in str(ws["J11"].value)
+        assert ws["C11"].value != pytest.approx(94930.0)
     finally:
         wb.close()
 
@@ -179,12 +177,13 @@ def test_3_missing_is_and_cf_rebuild_tabs(tmp_path: Path):
         company_facts=facts,
     )
     kinds = {s.statement: s for s in report.statements}
-    assert kinds[QuarterlyStatementKind.INCOME].decision == PresentationDecision.SEC_10Q_PRESENTATION_REQUIRED
-    assert kinds[QuarterlyStatementKind.CASH_FLOW].decision == PresentationDecision.SEC_10Q_PRESENTATION_REQUIRED
+    assert kinds[QuarterlyStatementKind.INCOME].decision == PresentationDecision.STATEMENT_INCOMPLETE
+    assert kinds[QuarterlyStatementKind.CASH_FLOW].decision == PresentationDecision.STATEMENT_INCOMPLETE
+    assert report.input_blockers
     wb = load_workbook(dest)
     try:
-        assert wb["Last Quarter IS Standardized"]["A11"].value == "Revenue"
-        assert wb["Last Quarter CF Standardized"]["C11"].value == pytest.approx(60.0)
+        assert wb["Last Quarter IS Standardized"]["A11"].value != "Revenue"
+        assert wb["Last Quarter CF Standardized"]["C11"].value != pytest.approx(60.0)
     finally:
         wb.close()
 
@@ -216,17 +215,7 @@ def test_4_absent_from_both_sources_unresolved_not_zero(tmp_path: Path):
         wb.close()
 
 
-def test_5_yahoo_conflict_sec_authority(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
-    from services.yahoo_quarterly_statement_service import YahooQuarterSnapshot, YahooQuarterlyBundle
-
-    def _mock_fetch(_ticker: str) -> YahooQuarterlyBundle:
-        snap = YahooQuarterSnapshot(end_date="2024-06-30", fields={"totalRevenue": 1.0, "operatingIncome": 1.0})
-        return YahooQuarterlyBundle(income_quarters=[snap])
-
-    monkeypatch.setattr(
-        "services.quarterly_presentation_service.YahooQuarterlyStatementService.fetch",
-        lambda self, ticker: _mock_fetch(ticker),
-    )
+def test_5_sec_conflict_does_not_overwrite_blank_statement(tmp_path: Path):
     src = _blank_stmt_wb(tmp_path / "src.xlsx")
     dest = tmp_path / "out.xlsx"
     facts = _facts({
@@ -243,10 +232,11 @@ def test_5_yahoo_conflict_sec_authority(tmp_path: Path, monkeypatch: pytest.Monk
         company_facts=facts,
     )
     is_stmt = next(s for s in report.statements if s.statement == QuarterlyStatementKind.INCOME)
-    assert is_stmt.data_source_primary == "sec"
+    assert is_stmt.decision == PresentationDecision.STATEMENT_INCOMPLETE
+    assert is_stmt.data_source_primary == "workbook"
     wb = load_workbook(dest)
     try:
-        assert wb["Last Quarter IS Standardized"]["C11"].value == pytest.approx(80.0)
+        assert wb["Last Quarter IS Standardized"]["C11"].value != pytest.approx(80.0)
     finally:
         wb.close()
 
@@ -284,13 +274,22 @@ def _bs_pair(tmp_path: Path) -> tuple[Path, Path]:
     prev = tmp_path / "prev.xlsx"
     dest_tmpl = tmp_path / "new.xlsx"
 
-    def _build(path: Path, *, ticker: str, i_values: dict[str, object] | None, h_shift: int):
+    def _build(
+        path: Path,
+        *,
+        ticker: str,
+        i_values: dict[str, object] | None,
+        h_shift: int,
+        period: str,
+        outputs: dict[str, object] | None = None,
+    ):
         wb = Workbook()
         wb.remove(wb.active)
         inp = wb.create_sheet("Inputs")
         bs = wb.create_sheet("Last Quarter BS Standardized")
         inc = wb.create_sheet("Last Quarter IS Standardized")
         inc["A1"] = f"{ticker} Quarterly Income"
+        inc["C5"] = period
         mapping = [
             (26 - h_shift, "B63"),
             (27 - h_shift, "B67"),
@@ -313,24 +312,39 @@ def _bs_pair(tmp_path: Path) -> tuple[Path, Path]:
                 elif isinstance(val, (int, float)) and val > 10:
                     cell.number_format = '"$"#,##0.00'
         bs["I22"] = "=H22"
-        inp["B67"] = 1
+        for addr, val in (outputs or {}).items():
+            cell = inp[addr]
+            cell.value = val
+            if isinstance(val, float) and abs(val) < 2:
+                cell.number_format = "0.00%"
+            elif isinstance(val, (int, float)) and val > 10:
+                cell.number_format = '"$"#,##0.00'
         wb.save(path)
         wb.close()
 
     _build(
         prev,
         ticker="AAPL",
+        period="2026 Q1",
         i_values={
-            "I26": 95.01,
-            "I27": 1.0377,
-            "I28": "P",
-            "I29": 0.4952,
-            "I30": 0.0218,
-            "I31": 0.1709,
+            "I26": 1.0,
+            "I27": 2.0,
+            "I28": 3.0,
+            "I29": 4.0,
+            "I30": 5.0,
+            "I31": 6.0,
+        },
+        outputs={
+            "B67": 95.01,
+            "B73": 1.0377,
+            "B74": "P",
+            "B75": 0.4952,
+            "B70": 0.0218,
+            "B71": 0.1709,
         },
         h_shift=1,
     )
-    _build(dest_tmpl, ticker="AAPL", i_values=None, h_shift=0)
+    _build(dest_tmpl, ticker="AAPL", period="2026 Q2", i_values=None, h_shift=0)
     return prev, dest_tmpl
 
 
@@ -362,8 +376,50 @@ def test_7_i27_i32_carry_by_inputs_mapping(tmp_path: Path):
         assert bs["I27"].value == pytest.approx(95.01)
         assert "%" in str(bs["I28"].number_format)
         assert bs["I22"].value == "=H22"
+        assert bs["I27"].value != 2.0
     finally:
         wb.close()
+
+
+def test_7b_wrong_quarter_and_uncached_formula_are_review(tmp_path: Path):
+    prev, tmpl = _bs_pair(tmp_path)
+    pwb = load_workbook(prev)
+    pwb["Last Quarter IS Standardized"]["C5"] = "2025 Q4"
+    pwb.save(prev)
+    pwb.close()
+    report = QuarterlyCarryForwardService().apply(
+        analysis_id="c7b",
+        ticker="AAPL",
+        new_template_path=tmpl,
+        previous_workbook_path=prev,
+        destination_path=tmp_path / "wrong.xlsx",
+    )
+    i_entries = [
+        e for e in report.entries
+        if e.sheet == "Last Quarter BS Standardized" and e.cell == "I27"
+    ]
+    assert i_entries[0].final_action == CarryForwardDecision.REVIEW_REQUIRED
+    assert "immediately before" in i_entries[0].reason
+
+    (tmp_path / "cache").mkdir()
+    prev2, tmpl2 = _bs_pair(tmp_path / "cache")
+    pwb = load_workbook(prev2)
+    pwb["Inputs"]["B67"] = "=1+1"
+    pwb.save(prev2)
+    pwb.close()
+    report2 = QuarterlyCarryForwardService().apply(
+        analysis_id="c7c",
+        ticker="AAPL",
+        new_template_path=tmpl2,
+        previous_workbook_path=prev2,
+        destination_path=tmp_path / "cache" / "out.xlsx",
+    )
+    missing = next(
+        e for e in report2.entries
+        if e.sheet == "Last Quarter BS Standardized" and e.cell == "I27"
+    )
+    assert missing.final_action == CarryForwardDecision.REVIEW_REQUIRED
+    assert "Cached calculated value" in missing.reason
 
 
 def test_8_missing_previous_workbook_no_substitution(tmp_path: Path):
@@ -537,20 +593,7 @@ def test_12_no_hap_introduced_circular_on_projection(tmp_path: Path):
         wb.close()
 
 
-def test_yahoo_fallback_when_sec_empty(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
-    from services.yahoo_quarterly_statement_service import YahooQuarterSnapshot, YahooQuarterlyBundle
-
-    def _mock_fetch(_ticker: str) -> YahooQuarterlyBundle:
-        snap = YahooQuarterSnapshot(
-            end_date="2024-06-30",
-            fields={"totalRevenue": 12.0, "operatingIncome": 4.0, "netIncome": 2.0},
-        )
-        return YahooQuarterlyBundle(income_quarters=[snap, snap, snap, snap, snap])
-
-    monkeypatch.setattr(
-        "services.quarterly_presentation_service.YahooQuarterlyStatementService.fetch",
-        lambda self, ticker: _mock_fetch(ticker),
-    )
+def test_empty_sec_does_not_fill_statement(tmp_path: Path):
     src = _blank_stmt_wb(tmp_path / "src.xlsx")
     dest = tmp_path / "out.xlsx"
     report = QuarterlyPresentationService().plan_and_apply(
@@ -561,11 +604,12 @@ def test_yahoo_fallback_when_sec_empty(tmp_path: Path, monkeypatch: pytest.Monke
         company_facts=None,
     )
     is_stmt = next(s for s in report.statements if s.statement == QuarterlyStatementKind.INCOME)
-    assert is_stmt.decision == PresentationDecision.YAHOO_BASIC_TEMPLATE_REQUIRED
-    assert is_stmt.data_source_primary == "yahoo"
+    assert is_stmt.decision == PresentationDecision.STATEMENT_INCOMPLETE
+    assert is_stmt.data_source_primary == "workbook"
+    assert report.input_blockers
     wb = load_workbook(dest)
     try:
-        assert wb["Last Quarter IS Standardized"]["A11"].value == "Total Revenues"
-        assert wb["Last Quarter IS Standardized"]["C11"].value == pytest.approx(12.0)
+        assert wb["Last Quarter IS Standardized"]["A11"].value != "Total Revenues"
+        assert wb["Last Quarter IS Standardized"]["C11"].value != pytest.approx(12.0)
     finally:
         wb.close()

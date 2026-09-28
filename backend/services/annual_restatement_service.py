@@ -40,7 +40,7 @@ _SHEET_FOR_CONCEPT = {
 
 
 class AnnualRestatementService:
-    """Apply historical changes only with explicit revised comparative figures."""
+    """Detect explicit comparative restatements and flag them for upstream correction."""
 
     def apply(
         self,
@@ -97,11 +97,8 @@ class AnnualRestatementService:
                             )
                         )
                         continue
-                    change = self._write_revision(wb, concept, fy, new_val, rev)
-                    if change.automatic_change:
-                        automatic.append(change)
-                    else:
-                        review.append(change)
+                    change = self._flag_revision(wb, concept, fy, new_val, rev)
+                    review.append(change)
                 wb.save(workbook_path)
             finally:
                 wb.close()
@@ -118,12 +115,12 @@ class AnnualRestatementService:
             review_required=review,
             status=status,
             summary=(
-                f"Restatement: {len(automatic)} automatic explicit revision(s), "
-                f"{len(review)} REVIEW_REQUIRED."
+                f"Restatement: {len(review)} comparative restatement(s) flagged for upstream "
+                f"correction; {len(automatic)} automatic rewrite(s). Workbook values were not replaced."
             ),
         )
 
-    def _write_revision(self, wb, concept: str, fy: str, new_val: float, rev: dict) -> RestatementChange:
+    def _flag_revision(self, wb, concept: str, fy: str, new_val: float, rev: dict) -> RestatementChange:
         sheet_name = str(rev.get("sheet") or _SHEET_FOR_CONCEPT.get(concept) or "")
         if sheet_name not in wb.sheetnames:
             return RestatementChange(
@@ -161,21 +158,20 @@ class AnnualRestatementService:
         addr = f"{get_column_letter(int(col))}{int(row)}"
         cell = ws[addr]
         old = cell.value
-        if isinstance(old, str) and old.startswith("="):
-            return RestatementChange(
-                sheet=sheet_name,
-                cell=addr,
-                fiscal_year=token,
-                old_workbook_value=old,
-                revised_reported_value=new_val,
-                accounting_concept=concept,
-                annual_report_source=rev.get("source"),
-                page_or_section=rev.get("section"),
-                reason="Target historical cell is a formula — blocked; REVIEW_REQUIRED.",
-                automatic_change=False,
-                action=ContinuityAction.BLOCKED,
+        from services.workbook_flag_service import flag_discrepancy
+
+        if not (isinstance(old, str) and old.startswith("=")):
+            flag_discrepancy(
+                ws,
+                addr,
+                workbook_value=old,
+                source_value=new_val,
+                provenance=str(rev.get("source") or "SEC comparative restatement"),
+                issue=(
+                    "Later filing presents a revised comparative. "
+                    "Workbook value preserved for upstream correction."
+                ),
             )
-        cell.value = new_val
         return RestatementChange(
             sheet=sheet_name,
             cell=addr,
@@ -185,10 +181,13 @@ class AnnualRestatementService:
             accounting_concept=concept,
             annual_report_source=rev.get("source"),
             page_or_section=rev.get("section"),
-            reason=str(rev.get("reason") or "Annual filing explicitly presents revised comparatives."),
+            reason=(
+                str(rev.get("reason") or "Annual filing explicitly presents revised comparatives.")
+                + " Workbook value preserved; flagged for upstream correction."
+            ),
             confidence=float(rev.get("confidence") or 0.9),
-            automatic_change=True,
-            action=ContinuityAction.EXPLICIT_RESTATEMENT_UPDATE,
+            automatic_change=False,
+            action=ContinuityAction.RESTATEMENT_REVIEW_REQUIRED,
         )
 
     @staticmethod

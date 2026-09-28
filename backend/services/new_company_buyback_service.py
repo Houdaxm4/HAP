@@ -75,6 +75,58 @@ def _num(v: Any) -> float | None:
     return None
 
 
+_MATERIAL_BUYBACK = 0.05
+
+
+def _fy_token(raw: str | None) -> str | None:
+    if not raw:
+        return None
+    digits = "".join(ch for ch in str(raw) if ch.isdigit())
+    return f"FY{digits}" if digits else None
+
+
+def _is_share_label(label: str) -> bool:
+    return any(
+        token in label
+        for token in (
+            "shares repurchased",
+            "share repurchased",
+            "shares buyback",
+            "buyback shares",
+            "number of shares repurchased",
+        )
+    )
+
+
+def _is_dollar_label(label: str) -> bool:
+    if _is_share_label(label):
+        return False
+    return any(
+        token in label
+        for token in (
+            "amount paid",
+            "paid for shares",
+            "$ paid",
+            "buybacks",
+            "share repurchases",
+            "repurchase of common stock",
+            "payments for repurchase",
+            "dollars spent",
+        )
+    )
+
+
+def _prefer_template_rows(ws, shares: int | None, dollars: int | None) -> tuple[int | None, int | None]:
+    """Use rows 87–88 only when their labels are the share and dollar fields."""
+    label_87 = str(ws.cell(87, 1).value or "").strip().lower()
+    label_88 = str(ws.cell(88, 1).value or "").strip().lower()
+    if _is_share_label(label_87):
+        shares = 87
+    if _is_dollar_label(label_88):
+        dollars = 88
+    return shares, dollars
+
+
 def _fy_int(token: str) -> int:
     digits = "".join(ch for ch in str(token) if ch.isdigit())
     return int(digits) if digits else 0
@@ -236,6 +288,8 @@ class NewCompanyBuybackService:
         sec_manifest: dict[str, Any] | None = None,
         cache_dir: Path | None = None,
         filings_text: dict[str, str] | None = None,
+        write_policy: str = "new_company",
+        new_fiscal_year: str | None = None,
     ) -> NewCompanyBuybackReport:
         sec = SecService(cache_dir=cache_dir)
         years: list[BuybackYearResult] = []
@@ -330,6 +384,15 @@ class NewCompanyBuybackService:
                 absence = BuybackAbsenceClass.NOT_DISCLOSED
                 warnings.append(f"BUYBACK_DOLLARS_COVERAGE_INCOMPLETE: {fy}")
                 warnings.append(f"BUYBACK_SHARES_COVERAGE_INCOMPLETE: {fy}")
+                year_warnings.append(
+                    "Attempted SEC company facts "
+                    "(PaymentsForRepurchaseOfCommonStock, PaymentsForRepurchaseOfEquity, "
+                    "TreasuryStockValueAcquiredCostMethod, StockRepurchasedDuringPeriodValue, "
+                    "StockRepurchasedDuringPeriodShares, TreasuryStockSharesAcquired) "
+                    "and the 10-K repurchase table, explicit no-repurchase narrative, "
+                    "and cash-flow dash. No annual repurchase fact was found. "
+                    "A blank or workbook zero was not treated as a reported zero."
+                )
             elif dollars == 0 and (shares is None or shares == 0):
                 absence = BuybackAbsenceClass.REPORTED_ZERO
             if dollars is None and shares is not None:
@@ -429,7 +492,12 @@ class NewCompanyBuybackService:
             ]
             + (["Stock-based compensation materially offset share reduction."] if sbc_offset else []),
         )
-        self._write_inputs(workbook_path, years)
+        cells_written, discrepancies = self._write_buyback_schedule(
+            workbook_path,
+            years,
+            write_policy=write_policy,
+            new_fiscal_year=new_fiscal_year,
+        )
         complete = all(
             y.absence_class in {BuybackAbsenceClass.REPORTED_ZERO, BuybackAbsenceClass.NOT_APPLICABLE}
             or (y.dollars is not None and (y.shares is not None or y.shares_derived))
@@ -443,9 +511,12 @@ class NewCompanyBuybackService:
             analysis=analysis,
             complete=complete,
             warnings=warnings,
+            write_policy=write_policy,
+            cells_written=cells_written,
+            discrepancies=discrepancies,
             summary=(
                 f"Buybacks: cumulative_dollars={dollars_total}; cumulative_shares={cum_shares}; "
-                f"sbc_offset={sbc_offset}; funded_by={funded}."
+                f"sbc_offset={sbc_offset}; funded_by={funded}; policy={write_policy}."
             ),
         )
 
@@ -603,35 +674,217 @@ class NewCompanyBuybackService:
             return val, f"sec_xbrl:{tag}"
         return None, None
 
-    @staticmethod
-    def _write_inputs(path: Path, years: list[BuybackYearResult]) -> None:
+    def _write_buyback_schedule(
+        self,
+        path: Path,
+        years: list[BuybackYearResult],
+        *,
+        write_policy: str,
+        new_fiscal_year: str | None,
+    ) -> tuple[list[str], list[dict[str, Any]]]:
+        written: list[str] = []
+        discrepancies: list[dict[str, Any]] = []
+        new_token = _fy_token(new_fiscal_year) if new_fiscal_year else None
         wb = load_workbook(path, data_only=False)
         try:
-            if "Inputs" not in wb.sheetnames:
-                return
-            ws = wb["Inputs"]
-            cols = detect_year_columns(ws, wb)
-            d_row = s_row = None
-            for row in range(1, min(ws.max_row or 1, 130) + 1):
-                lab = str(ws.cell(row, 1).value or "").strip().lower()
-                if lab in {"buybacks", "share repurchases", "repurchase of common stock"}:
-                    d_row = row
-                if lab in {"shares repurchased", "buyback shares"}:
-                    s_row = row
-            for y in years:
-                col = cols.get(y.fiscal_year)
-                if not col:
-                    continue
-                if d_row and y.dollars is not None:
-                    cell = ws.cell(d_row, col)
-                    if not (isinstance(cell.value, str) and cell.value.startswith("=")):
-                        if cell.value in (None, ""):
-                            cell.value = y.dollars
-                if s_row and y.shares is not None:
-                    cell = ws.cell(s_row, col)
-                    if not (isinstance(cell.value, str) and cell.value.startswith("=")):
-                        if cell.value in (None, ""):
-                            cell.value = y.shares
+            targets = self._schedule_targets(wb)
+            notes_sheet = None
+            for sheet_name, d_row, s_row in targets:
+                ws = wb[sheet_name]
+                cols = detect_year_columns(ws, wb)
+                if d_row or s_row:
+                    notes_sheet = notes_sheet or sheet_name
+                for year in years:
+                    col = cols.get(year.fiscal_year)
+                    if not col:
+                        continue
+                    annual_new_year = write_policy == "annual_update" and (
+                        new_token is None or year.fiscal_year == new_token
+                    )
+                    historical = write_policy == "annual_update" and year.fiscal_year != new_token
+                    allow_fill = write_policy != "annual_update" or annual_new_year
+                    correct_material = write_policy != "annual_update"
+                    if d_row:
+                        year.dollars_cell = f"{sheet_name}!{ws.cell(d_row, col).coordinate}"
+                        current = ws.cell(d_row, col).value
+                        if isinstance(current, (int, float)) and not isinstance(current, bool):
+                            year.workbook_dollars = float(current)
+                    if s_row:
+                        year.shares_cell = f"{sheet_name}!{ws.cell(s_row, col).coordinate}"
+                        current = ws.cell(s_row, col).value
+                        if isinstance(current, (int, float)) and not isinstance(current, bool):
+                            year.workbook_shares = float(current)
+                    if year.dollars is None and year.shares is None:
+                        year.write_action = "not_written_evidence_missing"
+                        continue
+                    if d_row and year.dollars is not None:
+                        action = self._write_metric(
+                            ws,
+                            d_row,
+                            col,
+                            year.dollars,
+                            metric="dollars",
+                            year=year,
+                            allow_fill=allow_fill,
+                            historical=historical,
+                            correct_material=correct_material,
+                            written=written,
+                            discrepancies=discrepancies,
+                        )
+                        year.dollars_cell = f"{sheet_name}!{ws.cell(d_row, col).coordinate}"
+                        year.write_action = action
+                    if s_row and year.shares is not None:
+                        action = self._write_metric(
+                            ws,
+                            s_row,
+                            col,
+                            year.shares,
+                            metric="shares",
+                            year=year,
+                            allow_fill=allow_fill,
+                            historical=historical,
+                            correct_material=correct_material,
+                            written=written,
+                            discrepancies=discrepancies,
+                        )
+                        year.shares_cell = f"{sheet_name}!{ws.cell(s_row, col).coordinate}"
+                        year.write_action = action
+            if notes_sheet:
+                self._write_buyback_notes(wb[notes_sheet], years, write_policy)
             wb.save(path)
         finally:
             wb.close()
+        return written, discrepancies
+
+    @staticmethod
+    def _schedule_targets(wb) -> list[tuple[str, int | None, int | None]]:
+        """Locate dollar and share rows. Prefer verified Income Statement rows 87–88."""
+        preferred = ("Income Statement", "Income - GAAP", "Inputs")
+        found: list[tuple[str, int | None, int | None]] = []
+        names = [name for name in preferred if name in wb.sheetnames]
+        names.extend(name for name in wb.sheetnames if name not in names and "income" in name.lower())
+        seen: set[str] = set()
+        for name in names:
+            if name in seen:
+                continue
+            seen.add(name)
+            ws = wb[name]
+            dollars = shares = None
+            limit = min(ws.max_row or 1, 160)
+            for row in range(1, limit + 1):
+                label = str(ws.cell(row, 1).value or ws.cell(row, 2).value or "").strip().lower()
+                if not label:
+                    continue
+                if _is_share_label(label) and shares is None:
+                    shares = row
+                elif _is_dollar_label(label) and dollars is None:
+                    dollars = row
+            if name == "Income Statement":
+                shares, dollars = _prefer_template_rows(ws, shares, dollars)
+            if dollars or shares:
+                found.append((name, dollars, shares))
+                if name in {"Income Statement", "Income - GAAP"}:
+                    break
+        return found
+
+    def _write_metric(
+        self,
+        ws,
+        row: int,
+        col: int,
+        evidence: float,
+        *,
+        metric: str,
+        year: BuybackYearResult,
+        allow_fill: bool,
+        historical: bool,
+        correct_material: bool,
+        written: list[str],
+        discrepancies: list[dict[str, Any]],
+    ) -> str:
+        from services.workbook_flag_service import flag_discrepancy
+
+        cell = ws.cell(row, col)
+        current = cell.value
+        ref = f"{ws.title}!{cell.coordinate}"
+        if isinstance(current, str) and current.startswith("="):
+            return "formula_protected"
+        numeric = current if isinstance(current, (int, float)) and not isinstance(current, bool) else None
+        if metric == "dollars":
+            year.workbook_dollars = float(numeric) if numeric is not None else None
+        else:
+            year.workbook_shares = float(numeric) if numeric is not None else None
+        if current not in (None, ""):
+            if numeric is None:
+                return "preserved_non_numeric"
+            relative = abs(float(numeric) - evidence) / max(abs(evidence), abs(float(numeric)), 1e-9)
+            if relative <= _MATERIAL_BUYBACK:
+                return "preserved"
+            record = {
+                "fiscal_year": year.fiscal_year,
+                "metric": metric,
+                "cell": ref,
+                "workbook_value": float(numeric),
+                "sec_value": evidence,
+                "source": year.dollars_source if metric == "dollars" else year.shares_source,
+                "relative_difference": round(relative, 4),
+            }
+            discrepancies.append(record)
+            if historical or not correct_material:
+                flag_discrepancy(
+                    ws,
+                    cell.coordinate,
+                    workbook_value=numeric,
+                    source_value=evidence,
+                    provenance=record["source"] or "sec",
+                    issue=(
+                        "Buyback figure differs from SEC evidence. "
+                        "Annual history was not overwritten."
+                        if historical or not correct_material
+                        else "Buyback figure differs from SEC evidence."
+                    ),
+                )
+                cell.value = current
+                return "discrepancy_flagged"
+            cell.value = evidence
+            written.append(ref)
+            return "corrected_from_sec"
+        if not allow_fill:
+            return "historical_blank_preserved"
+        if year.absence_class == BuybackAbsenceClass.NOT_DISCLOSED:
+            return "missing_not_zero"
+        cell.value = evidence
+        written.append(ref)
+        return "filled"
+
+    @staticmethod
+    def _write_buyback_notes(ws, years: list[BuybackYearResult], write_policy: str) -> None:
+        from services.hap_analysis_layout_service import HapAnalysisLayoutService
+
+        lines = []
+        for year in years:
+            kind = (
+                "reported_zero"
+                if year.absence_class == BuybackAbsenceClass.REPORTED_ZERO
+                else "derived"
+                if year.shares_derived
+                else "explicit"
+                if year.dollars is not None or year.shares is not None
+                else "missing"
+            )
+            lines.append(
+                f"{year.fiscal_year}: dollars={year.dollars} shares={year.shares} ({kind})"
+            )
+        HapAnalysisLayoutService().write_notes_section(
+            ws,
+            [
+                ("Buyback definition", NewCompanyBuybackService.DOLLARS_DEFINITION),
+                ("Write policy", write_policy),
+                ("Source hierarchy", "SEC 10-K cash flow, repurchase table, and annual XBRL. Yahoo is not gross repurchase dollars."),
+                ("Year coverage", "; ".join(lines[:12])),
+                (
+                    "Not used as buybacks",
+                    "Share-count changes, treasury balances, program-to-date cumulative counts, and withholding.",
+                ),
+            ],
+        )

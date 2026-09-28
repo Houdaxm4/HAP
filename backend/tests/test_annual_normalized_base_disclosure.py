@@ -279,7 +279,7 @@ def test_original_ev_cells_untouched_when_disclosure_written(tmp_path: Path):
     try:
         ev = wb["Enterprise Value"]
         found = False
-        for row in ev.iter_rows(max_row=40, max_col=20):
+        for row in ev.iter_rows():
             for cell in row:
                 if cell.value == "OE BASE — HAP ANALYTICAL OBSERVATION":
                     found = True

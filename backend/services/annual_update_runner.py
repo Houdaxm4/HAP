@@ -10,6 +10,7 @@ from typing import Any
 
 from models.annual_update import AnnualPerformanceTimingReport, StageTiming
 from services.annual_continuity_service import AnnualContinuityService
+from services.annual_period_service import detect_workbook_years
 from services.annual_deliverables_service import AnnualDeliverablesService
 from services.annual_formula_guard_service import AnnualFormulaGuardService
 from services.annual_inputs_service import AnnualInputsService
@@ -26,6 +27,7 @@ from services.annual_analyst_intelligence_service import AnnualAnalystIntelligen
 from services.annual_valuation_extract_service import AnnualValuationExtractService
 from services.circular_reference_service import CircularReferenceService
 from services.excel_recalc_service import ExcelRecalcService
+from services.new_company_buyback_service import NewCompanyBuybackService
 from services.output_service import OutputService
 from services.workbook_flag_service import flag_structural
 
@@ -57,6 +59,7 @@ class AnnualUpdateRunner:
         self.valuation_extract = AnnualValuationExtractService()
         self.output_gates = AnnualOutputGateService()
         self.excel_recalc = ExcelRecalcService()
+        self.buybacks = NewCompanyBuybackService()
 
     def run_workbook_phases(
         self,
@@ -339,6 +342,29 @@ class AnnualUpdateRunner:
             finally:
                 _cwb.close()
         out_dir = self.output_service.analysis_output_dir(analysis_id)
+        buyback_years = [
+            key
+            for key in detect_workbook_years(working_path)
+            if str(key).startswith("FY")
+        ]
+        if new_fy and new_fy not in buyback_years:
+            token = new_fy if str(new_fy).startswith("FY") else f"FY{new_fy}"
+            if token not in buyback_years:
+                buyback_years.append(token)
+        buybacks = timed(
+            "buybacks_ten_year",
+            lambda: self.buybacks.apply(
+                analysis_id=analysis_id,
+                ticker=ticker,
+                workbook_path=working_path,
+                fiscal_years=sorted(buyback_years),
+                company_facts=company_facts,
+                sec_manifest=sec_manifest,
+                cache_dir=out_dir / "sec_cache",
+                write_policy="annual_update",
+                new_fiscal_year=new_fy,
+            ),
+        )
         recalc = timed(
             "excel_recalculation",
             lambda: self.excel_recalc.recalculate(
@@ -395,6 +421,9 @@ class AnnualUpdateRunner:
                 valuation=valuation,
                 recalc=recalc,
                 circular=circular,
+                buybacks=buybacks,
+                statements=stmt,
+                restatement=rest,
             ),
         )
         # Final investment Word only when gates authorize; otherwise diagnostic Word.
@@ -458,6 +487,7 @@ class AnnualUpdateRunner:
             "annual_deliverables_report.json": deliv,
             "annual_valuation_extract_report.json": valuation,
             "annual_output_gate_report.json": gate,
+            "annual_buyback_report.json": buybacks,
             "annual_circular_reference_report.json": circular,
             "annual_excel_recalc_report.json": {
                 "analysis_id": recalc.analysis_id,
@@ -530,7 +560,7 @@ class AnnualUpdateRunner:
     ) -> float | None:
         """Prefer Income-statement R&D already in the workbook; else SEC ResearchAndDevelopmentExpense."""
         from openpyxl import load_workbook
-        from services.annual_period_service import detect_year_columns
+        from services.annual_period_service import detect_workbook_years, detect_year_columns
 
         if fiscal_year:
             wb = load_workbook(workbook_path, data_only=False)

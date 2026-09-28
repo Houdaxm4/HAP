@@ -63,7 +63,7 @@ def _scale_usd(value: float, *, scale: bool) -> float:
 
 
 class NewCompanyStatementValidationService:
-    """SEC is authoritative. Fill missing values; correct only with filing evidence."""
+    """SEC validates supplied statements. Missing values and material conflicts are flagged, not written."""
 
     def validate(
         self,
@@ -122,28 +122,26 @@ class NewCompanyStatementValidationService:
                     if formula:
                         status = "formula_preserved"
                     elif bb is None and filing is not None and row and col and sheet in wb.sheetnames:
-                        ws = wb[sheet]
-                        cell = ws.cell(row, col)
-                        if not _is_formula(cell.value):
-                            cell.value = filing
-                            action = "fill_missing"
-                            status = "filled_from_sec"
-                            rec = StatementDiscrepancy(
-                                fiscal_year=fy,
-                                statement=sheet,
-                                concept=concept,
-                                sheet=sheet,
-                                cell=cell_addr,
-                                old_value=None,
-                                new_value=filing,
-                                source=source,
-                                reason="Missing Bloomberg value filled from SEC filing.",
-                                impact="Enables downstream formulas that require this concept.",
-                                action=action,
-                                material=True,
-                            )
-                            filled.append(rec)
-                            bb = filing
+                        status = "missing_workbook"
+                        action = "flag_for_upstream"
+                        rec = StatementDiscrepancy(
+                            fiscal_year=fy,
+                            statement=sheet,
+                            concept=concept,
+                            sheet=sheet,
+                            cell=cell_addr,
+                            old_value=None,
+                            new_value=filing,
+                            source=source,
+                            reason="Required statement value is missing. SEC has a figure; HAP did not fill it.",
+                            impact="Upstream must supply the statement cell before certification.",
+                            action=action,
+                            material=True,
+                        )
+                        filled.append(rec)
+                        unresolved.append(
+                            f"{fy}:{concept}:{cell_addr}: missing supplied value; SEC reports {filing} ({source})"
+                        )
                     elif bb is not None and filing is not None:
                         if not self._close(bb, filing):
                             material = abs(bb - filing) / max(abs(filing), 1.0) > _MATERIAL_REL
@@ -163,17 +161,25 @@ class NewCompanyStatementValidationService:
                             )
                             discrepancies.append(rec)
                             if material and row and col and sheet in wb.sheetnames:
+                                from services.workbook_flag_service import flag_discrepancy
+
                                 ws = wb[sheet]
                                 cell = ws.cell(row, col)
+                                rec.action = "flag_for_upstream"
+                                corrections.append(rec)
+                                status = "flagged_material_discrepancy"
+                                unresolved.append(
+                                    f"{fy}:{concept}:{cell_addr}: workbook={bb} sec={filing} ({source})"
+                                )
                                 if not _is_formula(cell.value):
-                                    cell.value = filing
-                                    rec.action = "correct"
-                                    corrections.append(rec)
-                                    bb = filing
-                                    status = "corrected_from_sec"
-                                else:
-                                    unresolved.append(f"{fy}:{concept}")
-                                    status = "formula_blocked_correction"
+                                    flag_discrepancy(
+                                        ws,
+                                        cell.coordinate,
+                                        workbook_value=bb,
+                                        source_value=filing,
+                                        provenance=source or "SEC",
+                                        issue="Material statement discrepancy. Supplied value preserved.",
+                                    )
                             else:
                                 rec.action = "preserve"
                                 status = "immaterial_difference"
@@ -218,9 +224,9 @@ class NewCompanyStatementValidationService:
             formulas_preserved=formulas_ok,
             status=status,
             summary=(
-                f"Statements: {len(items)} checks; filled={len(filled)}; "
-                f"corrections={len(corrections)}; discrepancies={len(discrepancies)}; "
-                f"unresolved={len(unresolved)}."
+                f"Statements: {len(items)} checks; missing_flagged={len(filled)}; "
+                f"material_flagged={len(corrections)}; discrepancies={len(discrepancies)}; "
+                f"unresolved={len(unresolved)}. Supplied values were not rewritten."
             ),
         )
 

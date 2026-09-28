@@ -1,4 +1,4 @@
-"""Quarterly Bloomberg vs SEC 10-Q presentation authority models."""
+"""Quarterly statement completeness and SEC validation models."""
 
 from __future__ import annotations
 
@@ -9,11 +9,16 @@ from pydantic import BaseModel, Field
 
 
 class PresentationDecision(str, Enum):
+    """Supplied-statement completeness. HAP does not fill gaps or rebuild layouts."""
+
     BLOOMBERG_PRESERVE = "BLOOMBERG_PRESERVE"
+    STATEMENT_INCOMPLETE = "STATEMENT_INCOMPLETE"
+    BLOCKED = "BLOCKED"
+    # Legacy labels kept so historical presentation reports still parse.
+    # decide_presentation does not return them, and no HAP mode acts on them.
     BLOOMBERG_FILL_GAPS = "BLOOMBERG_FILL_GAPS"
     YAHOO_BASIC_TEMPLATE_REQUIRED = "YAHOO_BASIC_TEMPLATE_REQUIRED"
     SEC_10Q_PRESENTATION_REQUIRED = "SEC_10Q_PRESENTATION_REQUIRED"
-    BLOCKED = "BLOCKED"
 
 
 class QuarterlyStatementKind(str, Enum):
@@ -47,7 +52,7 @@ class BloombergHealthAssessment(BaseModel):
 
 
 class SecLineItem(BaseModel):
-    """One SEC-presented line for quarterly reconstruction."""
+    """One SEC line used to validate a supplied statement or support research extraction."""
 
     statement: str
     label: str
@@ -107,4 +112,5 @@ class QuarterlyPresentationReport(BaseModel):
     unresolved_dependencies: list[dict[str, Any]] = Field(default_factory=list)
     fiscal_year: int | None = None
     fiscal_period: str | None = None
+    input_blockers: list[str] = Field(default_factory=list)
     summary: str = ""

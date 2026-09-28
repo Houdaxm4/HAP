@@ -14,6 +14,7 @@ class CompletionDecision(str, Enum):
     OUT_OF_SCOPE = "OUT_OF_SCOPE"
     MISSING_SOURCE = "MISSING_SOURCE"
     BLOCKED = "BLOCKED"
+    # Legacy. Completion no longer emits these. Kept so older reports still parse.
     SEC_QUARTERLY_FALLBACK_REQUIRED = "SEC_QUARTERLY_FALLBACK_REQUIRED"
     YAHOO_QUARTERLY_FALLBACK_REQUIRED = "YAHOO_QUARTERLY_FALLBACK_REQUIRED"
 

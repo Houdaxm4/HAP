@@ -842,7 +842,7 @@ class NewCompanyLeaseService:
                     ),
                 ),
             ]
-            written = HapAnalysisLayoutService().write_block(ws, rows=rows, start_col=12)
+            written = HapAnalysisLayoutService().write_notes_section(ws, rows)
             wb.save(path)
             return written
         finally:

@@ -1,7 +1,8 @@
-"""Accounting-concept-aware matching for quarterly SEC gap fills.
+"""Accounting-concept matching for SEC validation and research extraction.
 
 Hierarchy: canonical XBRL → aliases → statement context → period type →
 parent/subtotal → SEC label → semantic fallback. Ambiguous → REVIEW_REQUIRED.
+Matching does not write workbook cells.
 """
 
 from __future__ import annotations
@@ -344,7 +345,7 @@ def resolve_workbook_gap(
     kind: QuarterlyStatementKind,
     sec_items: list[SecLineItem],
 ) -> ConceptMatchResult:
-    """Full hierarchy entry point for one blank workbook row."""
+    """Match one workbook label to an SEC fact. Does not write the workbook."""
     concepts = interpret_workbook_label(workbook_label, kind)
     if not concepts:
         return ConceptMatchResult(

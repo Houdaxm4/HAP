@@ -48,6 +48,8 @@ class NewCompanyOutputGateService:
         valuation: AnnualValuationOutputs | None,
         valuation_judgment: NewCompanyValuationReport | None = None,
         word_authorized_attempt: bool = False,
+        quarterly_unresolved_dependencies: list | None = None,
+        quarterly_statement_blockers: list[str] | None = None,
     ) -> NewCompanyOutputGateReport:
         blockers: list[str] = []
         warnings: list[str] = []
@@ -208,6 +210,18 @@ class NewCompanyOutputGateService:
                     warnings.append(w)
                 elif "RECONCILIATION" in w:
                     warnings.append("BUYBACK_RECONCILIATION_FAILED")
+
+        if quarterly_statement_blockers:
+            blockers.append("STATEMENT_INCOMPLETE")
+            blockers.extend(quarterly_statement_blockers[:8])
+            gates["quarterly_statements"] = "fail"
+        elif periods is not None and periods.latest_quarter:
+            gates["quarterly_statements"] = "pass"
+        if quarterly_unresolved_dependencies:
+            blockers.append("QUARTERLY_DEPENDENCY_UNRESOLVED")
+            gates["quarterly_dependencies"] = "fail"
+        elif periods is not None and periods.latest_quarter:
+            gates["quarterly_dependencies"] = "pass"
 
         # Gate H — current data
         if current is not None and current.as_of_mismatch:
