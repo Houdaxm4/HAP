@@ -105,6 +105,18 @@ def health_report(output_dir: Path, *, quarterly: bool = False) -> dict[str, Any
         return {"available": False, "findings": [], "notes": []}
     report = scan_errors(workbook, quarterly=quarterly)
     findings = list(report["findings"])
+    try:
+        from services.margin_history import noncomparable_years, read_history
+
+        bad_years = noncomparable_years(read_history(workbook))
+    except Exception:  # noqa: BLE001 - optional check
+        bad_years = []
+    if bad_years:
+        findings.append(
+            f"Cost of revenue is blank in {', '.join(bad_years)} while other years are populated: gross margin there "
+            "(100%) is not comparable, and ratios that divide by cost of sales show #DIV/0!. Totals still reconcile; "
+            "the costs were classified as operating expenses."
+        )
     buyback_path = output_dir / "new_company_buyback_report.json"
     consistency = None
     if buyback_path.exists():

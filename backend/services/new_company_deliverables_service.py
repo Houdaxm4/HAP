@@ -10,6 +10,7 @@ from docx import Document
 from docx.shared import Pt, RGBColor
 
 from services.deliverable_text import headline_lines
+from services.margin_history import note_text, read_history, table_rows
 from models.annual_update import AnnualValuationOutputs
 from models.new_company import (
     LeaseRateReview,
@@ -103,6 +104,7 @@ class NewCompanyDeliverablesService:
                 statement_summary=statement_summary,
                 judgment=judgment,
                 valuation_report=valuation_report,
+                workbook_path=completed_workbook_path,
             )
         else:
             word_name = None
@@ -126,6 +128,7 @@ class NewCompanyDeliverablesService:
         self,
         path: Path,
         *,
+        workbook_path: Path | None = None,
         ticker: str,
         company: str,
         fiscal_year: int,
@@ -199,6 +202,22 @@ class NewCompanyDeliverablesService:
                 f"Latest NOPAT {_fmt(v.nopat)}; invested capital {_fmt(v.invested_capital)}; "
                 f"ROIC {_fmt(v.roic, pct=True)}."
             )
+        history = []
+        if workbook_path is not None:
+            try:
+                history = read_history(workbook_path)
+            except Exception:  # noqa: BLE001 - a missing table must not stop the document
+                history = []
+        if history:
+            table = doc.add_table(rows=1, cols=6)
+            for cell, text in zip(table.rows[0].cells, ("Fiscal year", "Revenue ($M)", "Growth", "Gross margin", "Operating margin", "Net margin")):
+                cell.text = text
+            for row in table_rows(history):
+                for cell, text in zip(table.add_row().cells, row):
+                    cell.text = text
+            note = note_text(history)
+            if note:
+                doc.add_paragraph(note)
 
         doc.add_heading("5. Cash generation and conversion", level=1)
         doc.add_paragraph(
