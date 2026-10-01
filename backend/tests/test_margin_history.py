@@ -1,6 +1,6 @@
 from openpyxl import Workbook
 
-from services.margin_history import noncomparable_years, note_text, read_history, table_rows
+from services.margin_history import margin_jumps, noncomparable_years, note_text, read_history, table_rows
 
 
 def build(path, costs):
@@ -35,3 +35,12 @@ def test_clean_history_has_no_note(tmp_path):
     path = tmp_path / "w.xlsx"
     build(path, [20, 40, 60, 80, 100])
     assert note_text(read_history(path)) is None
+
+
+def test_large_margin_jump_is_flagged(tmp_path):
+    path = tmp_path / "w.xlsx"
+    build(path, [60, 120, 180, 40, 50])  # cost share 60%, 60%, 60%, then 10%: gross margin jumps
+    history = read_history(path)
+    jumps = margin_jumps(history)
+    assert jumps and jumps[0][0] == "FY2022" and jumps[0][1] == "FY2023"
+    assert "classif" in note_text(history)

@@ -106,9 +106,15 @@ def health_report(output_dir: Path, *, quarterly: bool = False) -> dict[str, Any
     report = scan_errors(workbook, quarterly=quarterly)
     findings = list(report["findings"])
     try:
-        from services.margin_history import noncomparable_years, read_history
+        from services.margin_history import margin_jumps, noncomparable_years, read_history
 
-        bad_years = noncomparable_years(read_history(workbook))
+        _history = read_history(workbook)
+        bad_years = noncomparable_years(_history)
+        for start, end, change in margin_jumps(_history):
+            findings.append(
+                f"Gross margin moved {change * 100:+.0f} points between {start} and {end}: possible change in cost "
+                "classification (verify against the filings before treating it as a trend)."
+            )
     except Exception:  # noqa: BLE001 - optional check
         bad_years = []
     if bad_years:

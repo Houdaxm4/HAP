@@ -75,6 +75,21 @@ def read_history(path: Path) -> list[dict[str, Any]]:
     return history
 
 
+JUMP_POINTS = 0.20  # a gross-margin move this large in one year usually means a cost-classification change
+
+
+def margin_jumps(history: list[dict[str, Any]]) -> list[tuple[str, str, float]]:
+    """(from_year, to_year, change) for large year-over-year gross-margin moves between comparable years."""
+    out = []
+    for prev, cur in zip(history, history[1:]):
+        if not (prev.get("gross_margin_comparable", True) and cur.get("gross_margin_comparable", True)):
+            continue
+        a, b = prev.get("gross_margin"), cur.get("gross_margin")
+        if a is not None and b is not None and abs(b - a) >= JUMP_POINTS:
+            out.append((prev["fiscal_year"], cur["fiscal_year"], b - a))
+    return out
+
+
 def noncomparable_years(history: list[dict[str, Any]]) -> list[str]:
     return [h["fiscal_year"] for h in history if not h.get("gross_margin_comparable", True)]
 
@@ -97,10 +112,18 @@ def table_rows(history: list[dict[str, Any]]) -> list[list[str]]:
 
 def note_text(history: list[dict[str, Any]]) -> str | None:
     bad = noncomparable_years(history)
-    if not bad:
+    jumps = margin_jumps(history)
+    parts = []
+    if bad:
+        parts.append(
+            f"Gross margin for {', '.join(bad)} is not comparable: the data provider left cost of revenue blank and "
+            "reported all costs as operating expenses, so gross profit equals revenue."
+        )
+    for start, end, change in jumps:
+        parts.append(
+            f"Gross margin moved {change * 100:+.0f} points between {start} and {end}. That is large enough to suggest a "
+            "change in how costs are classified rather than in the business; check the filings before reading it as a trend."
+        )
+    if not parts:
         return None
-    return (
-        f"Gross margin for {', '.join(bad)} is not comparable: the data provider left cost of revenue blank and "
-        "reported all costs as operating expenses, so gross profit equals revenue. Operating and net margins are "
-        "unaffected. Revenue is in millions."
-    )
+    return " ".join(parts) + " Operating and net margins are unaffected. Revenue is in millions."
