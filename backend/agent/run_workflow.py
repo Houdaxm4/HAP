@@ -212,6 +212,9 @@ class AgentRunService:
             if fails or warns:
                 flags.append(f"{label}: {fails} failed, {warns} warnings")
 
+        health = self._workbook_health(analysis_id, analysis.analysis_type)
+        flags.extend(health.get("findings", []))
+
         outside = self._gather_outside_evidence(analysis)
         take = self._my_take(analysis_id) if with_take else None
 
@@ -225,11 +228,20 @@ class AgentRunService:
 
         dossier = {
             "analysis_id": analysis_id, "built_at": utc_now_iso(), "company": analysis.company, "ticker": analysis.ticker,
-            "headline": conflict, "flags": flags, "outside_evidence": outside, "my_take": take, "headline_text": text,
+            "headline": conflict, "flags": flags, "workbook_health": health, "outside_evidence": outside, "my_take": take, "headline_text": text,
             "note": "Rules-based scores and the final recommendation are unchanged by outside evidence or 'my take'.",
         }
         write_json_atomic(self.output_service.analysis_output_dir(analysis_id) / DOSSIER_FILE, dossier)
         return dossier
+
+    def _workbook_health(self, analysis_id: str, analysis_type: str) -> dict[str, Any]:
+        """Read-only workbook checks; a failure here must never block the dossier."""
+        try:
+            from services.workbook_health import health_report
+            quarterly = "quarter" in str(analysis_type).lower()
+            return health_report(self.output_service.analysis_output_dir(analysis_id), quarterly=quarterly)
+        except Exception as exc:  # noqa: BLE001
+            return {"available": False, "findings": [], "notes": [f"Workbook check skipped: {type(exc).__name__}"]}
 
     def _gather_outside_evidence(self, analysis: Any) -> dict[str, Any]:
         from research.policy import research_enabled
