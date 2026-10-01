@@ -38,6 +38,19 @@ def _is_template_junk(text: str) -> bool:
     return len(text.strip()) < 30
 
 
+_BOILERPLATE_MARKERS = (
+    "trademarks", "service marks", "forward-looking", "indicate by check mark", "pursuant to",
+    "securities and exchange commission", "commission file number", "washington, d.c.",
+    "exact name of registrant", "safe harbor",
+)
+
+
+def _is_boilerplate(text: str) -> bool:
+    """Cover-page and legal text from a filing is not a reported fact."""
+    tl = (text or "").lower()
+    return any(marker in tl for marker in _BOILERPLATE_MARKERS)
+
+
 def _is_transcript_narrative(text: str) -> bool:
     """True when text looks like actual earnings-call transcript content."""
     if _is_template_junk(text):
@@ -155,7 +168,7 @@ class QuarterlyResearchService:
                 )
                 if form == "8-K":
                     reported.append(
-                        sec_snippet
+                        (sec_snippet if sec_snippet and not _is_boilerplate(sec_snippet) else None)
                         or (
                             f"Form 8-K filed {filing.get('filing_date', 'n/a')} — "
                             "typically includes earnings release exhibit."
@@ -163,7 +176,7 @@ class QuarterlyResearchService:
                     )
                     official_release_used = True
                 if form == "10-Q":
-                    if sec_snippet and not _is_template_junk(sec_snippet):
+                    if sec_snippet and not _is_template_junk(sec_snippet) and not _is_boilerplate(sec_snippet):
                         reported.append(sec_snippet[:600])
                     else:
                         reported.append(

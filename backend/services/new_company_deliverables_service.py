@@ -9,6 +9,7 @@ from typing import Any
 from docx import Document
 from docx.shared import Pt, RGBColor
 
+from services.deliverable_text import headline_lines
 from models.annual_update import AnnualValuationOutputs
 from models.new_company import (
     LeaseRateReview,
@@ -162,6 +163,8 @@ class NewCompanyDeliverablesService:
         doc.add_paragraph(f"Fiscal window through FY{fiscal_year}. Industrial Template initiation.")
 
         doc.add_heading("1. Executive investment conclusion", level=1)
+        for line in headline_lines(path.parent):
+            doc.add_paragraph(line)
         doc.add_paragraph(
             f"Operating quality: {quality}. Economic value creation: {value_creation}. "
             f"Capital allocation: {capital}. Valuation attractiveness: {attractiveness}. "

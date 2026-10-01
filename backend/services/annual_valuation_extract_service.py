@@ -15,6 +15,7 @@ from openpyxl import load_workbook
 
 from models.annual_update import AnnualValuationOutputs
 from services.annual_period_service import detect_year_columns
+from services.deliverable_text import pct_text
 
 _WS = re.compile(r"\s+")
 _FORMULA_ERRORS = ("#REF!", "#DIV/0!", "#VALUE!", "#NAME?", "#N/A", "#NUM!", "#NULL!")
@@ -261,6 +262,6 @@ class AnnualValuationExtractService:
         ):
             out.warnings.append(
                 "Distinct metrics: Inputs!B69 Bloomberg Expected Return @ Current Price "
-                f"({out.bloomberg_expected_return_at_current_price:.2%}) != "
-                f"Expected Returns!E14 ({out.expected_annual_return:.2%})."
+                f"({pct_text(out.bloomberg_expected_return_at_current_price)}) != "
+                f"Expected Returns!E14 ({pct_text(out.expected_annual_return)})."
             )

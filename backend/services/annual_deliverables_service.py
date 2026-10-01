@@ -24,6 +24,7 @@ from models.annual_update import (
 from services.annual_period_service import detect_year_columns
 from services.annual_valuation_extract_service import AnnualValuationExtractService
 from services.deliverable_naming import excel_deliverable_name
+from services.deliverable_text import dedupe, headline_lines
 
 
 def excel_word_names(year: int, ticker: str) -> tuple[str, str]:
@@ -32,6 +33,11 @@ def excel_word_names(year: int, ticker: str) -> tuple[str, str]:
         fiscal_year=year, ticker=t, analysis_type="Annual Update"
     )
     return excel, f"{year} {t} Annual Update.docx"
+
+
+def _is_dated(label: Any) -> bool:
+    """A usable 'as of' label contains a date or period; template placeholders such as 'CRF as-of / current' do not."""
+    return isinstance(label, str) and any(ch.isdigit() for ch in label)
 
 
 def _fmt(v, *, pct: bool = False) -> str:
@@ -243,10 +249,10 @@ class AnnualDeliverablesService:
                 f"to {_fmt(m.current)} from {_fmt(m.prior)}."
             )
         if valuation.current_pe10 is not None:
-            asof = f" as of {valuation.current_pe10_as_of}" if valuation.current_pe10_as_of else ""
+            asof = f" as of {valuation.current_pe10_as_of}" if _is_dated(valuation.current_pe10_as_of) else ""
             highlights.append(f"Current PE10 is {_fmt(valuation.current_pe10)}x{asof}.")
         if valuation.pe10_fiscal_year is not None:
-            asof = f" as of {valuation.pe10_fiscal_as_of}" if valuation.pe10_fiscal_as_of else ""
+            asof = f" as of {valuation.pe10_fiscal_as_of}" if _is_dated(valuation.pe10_fiscal_as_of) else ""
             label = valuation.pe10_fiscal_year_label or "fiscal-year"
             highlights.append(f"{label} closing PE10 is {_fmt(valuation.pe10_fiscal_year)}x{asof}.")
         if valuation.expected_annual_return is not None:
@@ -331,9 +337,10 @@ class AnnualDeliverablesService:
                 "Final investment recommendation: NOT AUTHORIZED. "
                 "Workbook recalculation and/or output gates failed; this document is diagnostic only."
             )
+        for line in headline_lines(path.parent):
+            doc.add_paragraph(line)
+        # investment_conclusion already states quality and attractiveness; do not repeat them as separate lines.
         doc.add_paragraph(perf.investment_conclusion or "Conclusion unavailable.")
-        doc.add_paragraph(f"Company quality: {perf.company_quality or 'unavailable'}")
-        doc.add_paragraph(f"Valuation attractiveness: {perf.valuation_attractiveness or 'unavailable'}")
         if gate and gate.blockers:
             doc.add_paragraph(
                 "Status: NEEDS REVIEW. Blocking issues: " + "; ".join(gate.blockers[:5])
@@ -404,13 +411,13 @@ class AnnualDeliverablesService:
             doc.add_paragraph(
                 f"FY closing PE10 ({v.pe10_fiscal_year_label or 'fiscal'}): "
                 f"{_fmt(v.pe10_fiscal_year)}x"
-                + (f" as of {v.pe10_fiscal_as_of}" if v.pe10_fiscal_as_of else "")
+                + (f" as of {v.pe10_fiscal_as_of}" if _is_dated(v.pe10_fiscal_as_of) else "")
             )
         doc.add_paragraph(
             f"Current PE10: {_fmt(perf.current_pe10)}"
             + (
                 f" as of {v.current_pe10_as_of}"
-                if v and v.current_pe10_as_of
+                if v and _is_dated(v.current_pe10_as_of)
                 else ""
             )
         )
@@ -475,7 +482,7 @@ class AnnualDeliverablesService:
             )
             if v.warnings:
                 doc.add_paragraph("Valuation warnings:")
-                for w in v.warnings:
+                for w in dedupe(list(v.warnings)):
                     doc.add_paragraph(w, style="List Bullet")
             else:
                 doc.add_paragraph(
@@ -583,7 +590,8 @@ class AnnualDeliverablesService:
 
         doc.add_heading("9. Validation and Open Issues", level=1)
         if perf.open_issues:
-            for issue in perf.open_issues[:10]:
+            already_shown = set(v.warnings) if v else set()  # section 7 prints valuation warnings
+            for issue in [i for i in dedupe(list(perf.open_issues)) if i not in already_shown][:10]:
                 doc.add_paragraph(issue, style="List Bullet")
         else:
             doc.add_paragraph("No material blocking validation issues recorded.")

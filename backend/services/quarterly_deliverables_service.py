@@ -43,10 +43,20 @@ def _fmt_num(v: float | None, *, money: bool = False, pct: bool = False) -> str:
     if pct:
         return f"{v * 100:.2f}%"
     if money:
-        if abs(v) >= 1000:
-            return f"${v:,.1f}M"
-        return f"${v:,.2f}"
+        return f"${v:,.1f}M"  # workbook statements are in millions; always say so
     return f"{v:,.2f}"
+
+
+def _is_blank_pair(comp) -> bool:
+    """Both sides missing or both exactly zero: nothing to report."""
+    a, b = comp.compare_value, comp.baseline_value
+    return (a is None and b is None) or (a == 0 and b == 0)
+
+
+def _is_suspect_identical(comp) -> bool:
+    """A flow metric identical to the cent in both periods almost always means the prior column was not populated."""
+    a, b = comp.compare_value, comp.baseline_value
+    return a is not None and b is not None and a != 0 and a == b
 
 
 def _find_comp(review: QuarterlyReviewReport | None, statement: str, metric: str, ctype: str):
@@ -244,7 +254,13 @@ class QuarterlyDeliverablesService:
         for metric in ("Revenue", "Net Income", "Operating Income", "Gross Margin", "Operating Margin", "Net Margin"):
             ctype = "yoy_quarter"
             comp = _find_comp(review, "income_statement", metric, ctype)
-            if comp and comp.compare_value is not None:
+            if comp and comp.compare_value is not None and _is_suspect_identical(comp) and "margin" not in metric.lower():
+                doc.add_paragraph(
+                    f"Data check: {metric} is identical in both periods ({_fmt_num(comp.compare_value, money=True)}). "
+                    "The prior-year quarter was probably not populated in the workbook; verify before relying on this comparison.",
+                    style="List Bullet",
+                )
+            elif comp and comp.compare_value is not None:
                 money = "margin" not in metric.lower()
                 line = (
                     f"{metric} {_pct(comp.compare_value, comp.baseline_value)} "
@@ -260,6 +276,8 @@ class QuarterlyDeliverablesService:
             )
             for metric in ("Revenue", "Operating Income", "Net Income"):
                 comp = _find_comp(review, "income_statement", metric, "ytd")
+                if comp and comp.baseline_value is None:
+                    continue  # prior-year YTD not populated; reported once below
                 if comp and comp.compare_value is not None:
                     doc.add_paragraph(
                         f"YTD {metric} {_pct(comp.compare_value, comp.baseline_value)} "
@@ -268,18 +286,28 @@ class QuarterlyDeliverablesService:
                         style="List Bullet",
                     )
 
+        missing_ytd = [
+            m for m in ("Revenue", "Operating Income", "Net Income")
+            if (c := _find_comp(review, "income_statement", m, "ytd")) is not None and c.baseline_value is None
+        ] if fiscal_quarter in (2, 3) else []
+        if missing_ytd:
+            doc.add_paragraph(
+                "YTD comparison unavailable for " + ", ".join(missing_ytd) + ": the prior-year YTD figures are not in the workbook.",
+                style="List Bullet",
+            )
+
         cfo = _find_comp(review, "cash_flow", "CFO", "ytd")
         if cfo and cfo.compare_value is not None:
             doc.add_paragraph(
                 f"Cash from Ops {_fmt_num(cfo.compare_value, money=True)} vs. "
-                f"{_fmt_num(cfo.baseline_value, money=True)} (YTD)",
+                + (f"{_fmt_num(cfo.baseline_value, money=True)} (YTD)" if cfo.baseline_value is not None else "prior-year YTD not available"),
                 style="List Bullet",
             )
 
         doc.add_heading("Comparison Last Quarter to Quarter Right Before", level=1)
         for metric in ("Cash", "Total assets", "Equity", "Inventory", "Receivables", "Accounts payable"):
             comp = _find_comp(review, "balance_sheet", metric, "qoq")
-            if comp and comp.compare_value is not None:
+            if comp and comp.compare_value is not None and not _is_blank_pair(comp):
                 doc.add_paragraph(
                     f"{metric} {_pct(comp.compare_value, comp.baseline_value)} "
                     f"({_fmt_num(comp.compare_value, money=True)} vs. "

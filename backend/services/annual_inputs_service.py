@@ -248,7 +248,7 @@ class AnnualInputsService:
                     f"PE10_PERIOD_NOTE: {token} fiscal-year PE10="
                     f"{float(pe10_prov.source_value):.4f} as of {pe10_prov.as_of_date}; "
                     f"current PE10={float(cur_val):.4f} as of "
-                    f"{(current_prov.as_of_date if current_prov else 'current')}. "
+                    f"{(current_prov.as_of_date if current_prov and current_prov.as_of_date != 'CRF as-of / current' else 'the current CRF date')}. "
                     f"Distinct metrics — not PE10_CROSS_SHEET_MISMATCH."
                 )
 
