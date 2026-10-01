@@ -10,7 +10,9 @@ from openpyxl.utils import get_column_letter
 
 from models.new_company import NewCompanyStatementValidationReport, StatementDiscrepancy
 from services.annual_period_service import detect_year_columns
+from services.formula_dependencies import MetricDependencies
 from services.sec_service import SecService
+from services.workbook_flag_service import flag_filled, flag_missing_data
 
 # concept, sheet, label needles, xbrl tags, scale_if_large
 _CHECKS: list[tuple[str, str, tuple[str, ...], tuple[str, ...], bool]] = [
@@ -18,14 +20,14 @@ _CHECKS: list[tuple[str, str, tuple[str, ...], tuple[str, ...], bool]] = [
     ("gross_profit", "Income - GAAP", ("gross profit",), ("GrossProfit",), True),
     ("operating_income", "Income - GAAP", ("operating income", "operating income (loss)"), ("OperatingIncomeLoss",), True),
     ("pretax_income", "Income - GAAP", ("pretax income", "income before tax", "income before income taxes"), ("IncomeLossFromContinuingOperationsBeforeIncomeTaxesExtraordinaryItemsNoncontrollingInterest", "IncomeLossFromContinuingOperationsBeforeIncomeTaxes"), True),
-    ("income_tax_expense", "Income - GAAP", ("income tax expense", "provision for income taxes"), ("IncomeTaxExpenseBenefit",), True),
+    ("income_tax_expense", "Income - GAAP", ("income tax expense", "income tax expense (benefit)", "provision for income taxes"), ("IncomeTaxExpenseBenefit",), True),
     ("net_income", "Income - GAAP", ("net income", "net income (loss)"), ("NetIncomeLoss",), True),
     ("diluted_eps", "Income - GAAP", ("diluted eps", "earnings per share diluted", "eps - diluted"), ("EarningsPerShareDiluted",), False),
     ("cfo", "Cash Flow - Standardized", ("cash from operating", "operating activities"), ("NetCashProvidedByUsedInOperatingActivities",), True),
     ("capex", "Cash Flow - Standardized", ("capital expenditure", "capex", "acq of fixed", "purchase of ppe"), ("PaymentsToAcquirePropertyPlantAndEquipment",), True),
     ("cfi", "Cash Flow - Standardized", ("cash from investing", "investing activities"), ("NetCashProvidedByUsedInInvestingActivities",), True),
     ("cff", "Cash Flow - Standardized", ("cash from financing", "financing activities"), ("NetCashProvidedByUsedInFinancingActivities",), True),
-    ("cash", "Balance Sheet - Standardized", ("cash and cash equivalents", "cash"), ("CashAndCashEquivalentsAtCarryingValue",), True),
+    ("cash", "Balance Sheet - Standardized", ("cash and cash equivalents", "cash & cash equivalents", "cash"), ("CashAndCashEquivalentsAtCarryingValue",), True),
     ("total_assets", "Balance Sheet - Standardized", ("total assets",), ("Assets",), True),
     ("current_liabilities", "Balance Sheet - Standardized", ("total current liabilities", "current liabilities"), ("LiabilitiesCurrent",), True),
     ("total_liabilities", "Balance Sheet - Standardized", ("total liabilities",), ("Liabilities",), True),
@@ -63,7 +65,11 @@ def _scale_usd(value: float, *, scale: bool) -> float:
 
 
 class NewCompanyStatementValidationService:
-    """SEC validates supplied statements. Missing values and material conflicts are flagged, not written."""
+    """SEC is authoritative for blanks: a blank statement cell is filled from SEC (shaded, source in the comment).
+
+    A blank that no filing can fill is flagged only when a reported metric depends on it. Supplied (non-blank)
+    values are never overwritten; material differences are flagged for the analyst.
+    """
 
     def validate(
         self,
@@ -82,8 +88,10 @@ class NewCompanyStatementValidationService:
         filled: list[StatementDiscrepancy] = []
         corrections: list[StatementDiscrepancy] = []
         unresolved: list[str] = []
+        flagged_missing: list[str] = []
         formulas_ok = True
         try:
+            dependencies = MetricDependencies(wb)
             for fy in fiscal_years:
                 for concept, sheet, needles, tags, scale in _CHECKS:
                     bb = None
@@ -122,26 +130,31 @@ class NewCompanyStatementValidationService:
                     if formula:
                         status = "formula_preserved"
                     elif bb is None and filing is not None and row and col and sheet in wb.sheetnames:
-                        status = "missing_workbook"
-                        action = "flag_for_upstream"
-                        rec = StatementDiscrepancy(
-                            fiscal_year=fy,
-                            statement=sheet,
-                            concept=concept,
-                            sheet=sheet,
-                            cell=cell_addr,
-                            old_value=None,
-                            new_value=filing,
-                            source=source,
-                            reason="Required statement value is missing. SEC has a figure; HAP did not fill it.",
-                            impact="Upstream must supply the statement cell before certification.",
-                            action=action,
-                            material=True,
+                        cell = wb[sheet].cell(row, col)
+                        cell.value = filing
+                        flag_filled(
+                            wb[sheet], cell.coordinate, value=filing, source=source or "SEC",
+                            reason="The supplied workbook left this statement cell blank; the filing reports the figure.",
                         )
-                        filled.append(rec)
-                        unresolved.append(
-                            f"{fy}:{concept}:{cell_addr}: missing supplied value; SEC reports {filing} ({source})"
+                        action = "fill_missing"
+                        status = "filled_from_sec"
+                        filled.append(
+                            StatementDiscrepancy(
+                                fiscal_year=fy,
+                                statement=sheet,
+                                concept=concept,
+                                sheet=sheet,
+                                cell=cell_addr,
+                                old_value=None,
+                                new_value=filing,
+                                source=source,
+                                reason="Blank in the supplied workbook; filled from the SEC filing.",
+                                impact="Enables downstream formulas that require this concept.",
+                                action=action,
+                                material=True,
+                            )
                         )
+                        bb = filing
                     elif bb is not None and filing is not None:
                         if not self._close(bb, filing):
                             material = abs(bb - filing) / max(abs(filing), 1.0) > _MATERIAL_REL
@@ -187,6 +200,13 @@ class NewCompanyStatementValidationService:
                             status = "validated"
                     elif bb is None and filing is None:
                         status = "missing_both"
+                        if row and col and sheet in wb.sheetnames and dependencies.feeds_metrics(sheet, row, col):
+                            status = "missing_important"
+                            flagged_missing.append(f"{fy}:{concept}:{cell_addr}")
+                            flag_missing_data(
+                                wb[sheet], wb[sheet].cell(row, col).coordinate, concept=concept,
+                                reason="Blank in the supplied workbook and not found in the SEC filings.",
+                            )
                     elif bb is None:
                         status = "missing_workbook"
                     else:
@@ -221,24 +241,41 @@ class NewCompanyStatementValidationService:
             filled_missing=filled,
             corrections=corrections,
             unresolved_material=unresolved,
+            flagged_missing=flagged_missing,
             formulas_preserved=formulas_ok,
             status=status,
             summary=(
-                f"Statements: {len(items)} checks; missing_flagged={len(filled)}; "
+                f"Statements: {len(items)} checks; filled_from_sec={len(filled)}; "
                 f"material_flagged={len(corrections)}; discrepancies={len(discrepancies)}; "
-                f"unresolved={len(unresolved)}. Supplied values were not rewritten."
+                f"unresolved={len(unresolved)}; important_data_unavailable={len(flagged_missing)}. "
+                "Supplied values were not overwritten."
             ),
         )
 
+    # Labels that look like an amount line but are rates, ratios or checks ("Cost of Debt", "Debt / Equity").
+    _NOT_AN_AMOUNT = ("cost of", "ratio", "/", "%", "check", "per share", "rate", "yield")
+
     @staticmethod
     def _find_row(ws, needles: tuple[str, ...]) -> int | None:
+        """Row whose label is the statement line. Bloomberg marks sub-lines with a leading '+' or '-'.
+
+        Priority: exact label (with or without the marker) beats a substring match, and a substring match is only
+        allowed on unmarked rows, so a sub-line can never be mistaken for the total it feeds.
+        """
+        substring_hit = None
         for row in range(1, min(ws.max_row or 1, 160) + 1):
-            lab = str(ws.cell(row, 1).value or "").strip().lower()
-            if not lab or lab.startswith("+") or lab.startswith("-"):
+            raw = str(ws.cell(row, 1).value or "").strip().lower()
+            if not raw:
                 continue
-            if any(n == lab or n in lab for n in needles):
+            marked = raw[0] in "+-"
+            lab = raw.lstrip("+- ").strip()
+            if any(word in lab for word in NewCompanyStatementValidationService._NOT_AN_AMOUNT):
+                continue
+            if any(n == lab for n in needles):
                 return row
-        return None
+            if not marked and substring_hit is None and any(n in lab for n in needles):
+                substring_hit = row
+        return substring_hit
 
     @staticmethod
     def _close(a: float, b: float) -> bool:

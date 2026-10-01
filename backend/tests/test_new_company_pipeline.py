@@ -871,7 +871,7 @@ def test_recalc_unavailable_needs_review(tmp_path: Path, out_svc: OutputService,
     assert result["lease_review"].decision_class == "AUTONOMOUS_AGENT_DECISION"
     assert "WORKBOOK_RECALCULATION_INCOMPLETE" in result["output_gate"].blockers
     assert result["deliverables"] is None or result["deliverables"].authorized is False
-    assert "STATEMENT_INCOMPLETE" in result["output_gate"].blockers
+    assert "STATEMENT_INCOMPLETE" in result["output_gate"].blockers  # fixture statements lack their major totals
     assert result["certification_status"] == NewCompanyWorkflowState.NEEDS_REVIEW.value
     assert result["workflow_state"] != NewCompanyWorkflowState.COMPLETE
 
@@ -1037,7 +1037,8 @@ def test_cross_company_runner_suite(tmp_path: Path, out_svc: OutputService, monk
                 done["output_gate"].blockers if done["output_gate"] else []
             )
             assert done["workflow_state"] != NewCompanyWorkflowState.COMPLETE
-            assert "STATEMENT_INCOMPLETE" in done["output_gate"].blockers
+            # Last-quarter statements are required only for an interim quarter (Q1-Q3); Q4 is the fiscal year itself.
+            assert ("STATEMENT_INCOMPLETE" in done["output_gate"].blockers) == (q in (1, 2, 3))
             assert done["certification_status"] == NewCompanyWorkflowState.NEEDS_REVIEW.value
             assert "WORKBOOK_RECALCULATION_INCOMPLETE" in done["output_gate"].blockers
             assert done["periods"].latest_quarter == q

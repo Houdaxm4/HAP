@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import shutil
 from pathlib import Path
 from typing import Any
@@ -17,6 +18,7 @@ from models.quarterly_presentation import (
     QuarterlyStatementPresentation,
 )
 from services.accounting_concept_matcher import resolve_workbook_gap
+from services.formula_dependencies import MetricDependencies
 from services.hap_analysis_layout_service import HapAnalysisLayoutService
 from services.quarterly_dependency_service import QuarterlyDependencyService
 from services.quarterly_health_service import (
@@ -81,12 +83,18 @@ def quarter_incorporated(report: QuarterlyPresentationReport | None) -> bool:
     return True
 
 
+# "Liabilities & Shareholders' Equity" is liabilities PLUS equity (it must equal total assets). A SEC "Liabilities" figure
+# is not that amount, so a row with this label is never filled from a liabilities fact.
+_LIABILITIES_AND_EQUITY = re.compile(r"liabilit\w*\s*(?:&|and)\s*(?:(?:share|stock)?holders?\W*s?\W*)?equity", re.IGNORECASE)
+
+
 class QuarterlyPresentationService:
     """
     Validate supplied quarterly statements against SEC.
 
-    HAP does not reconstruct missing layouts or fill blank statement cells.
-    A material SEC conflict is flagged and blocks certification; the supplied value stays.
+    Blank statement cells are filled from the SEC 10-Q (shaded, source in the comment). A blank that no filing
+    can fill is flagged only when a reported metric depends on it; unused blanks are ignored. HAP does not
+    rebuild layouts. A material SEC conflict on a supplied value is flagged for the analyst; the value stays.
     """
 
 
@@ -102,8 +110,8 @@ class QuarterlyPresentationService:
         defer_notes: bool = False,
     ) -> QuarterlyPresentationReport:
         """
-        Copy source→destination (unless already_copied) and validate each statement.
-        Does not fill blanks or rebuild layouts. Leaves the source unchanged.
+        Copy source→destination (unless already_copied), fill blank cells from the SEC 10-Q, flag the important
+        ones no filing can fill, and validate each statement. Does not rebuild layouts. Leaves the source unchanged.
         """
         if not already_copied:
             destination_workbook_path.parent.mkdir(parents=True, exist_ok=True)
@@ -116,8 +124,21 @@ class QuarterlyPresentationService:
                 fy, fp = select_latest_10q_period(company_facts)
             dependency_snapshot = QuarterlyDependencyService().snapshot(wb)
 
+            filled_from_sec: list[dict[str, Any]] = []
+            flagged_missing: list[str] = []
+            if company_facts:
+                metric_deps = MetricDependencies(wb)
+                for kind, sheet_name in STATEMENT_SHEETS.items():
+                    if sheet_name in wb.sheetnames:
+                        filled, missing = self._fill_blanks_from_sec(wb, kind, sheet_name, company_facts, fy, fp, metric_deps)
+                        filled_from_sec.extend(filled)
+                        flagged_missing.extend(missing)
+
             statements: list[QuarterlyStatementPresentation] = []
             for health, decision in assess_all_quarterly_statements(wb):
+                if health.present and health.major_totals_present:
+                    # The statement has its major totals; remaining gaps are filled, unused, or flagged individually.
+                    decision = PresentationDecision.BLOOMBERG_PRESERVE
                 entry = QuarterlyStatementPresentation(
                     statement=health.statement,
                     sheet=health.sheet,
@@ -165,8 +186,8 @@ class QuarterlyPresentationService:
                     )
             summary = (
                 f"Quarterly statement validation: PRESERVE={preserve}, "
-                f"INCOMPLETE={incomplete}. "
-                "HAP did not reconstruct statements."
+                f"INCOMPLETE={incomplete}; filled_from_sec={len(filled_from_sec)}; "
+                f"important_data_unavailable={len(flagged_missing)}. HAP did not rebuild layouts."
             )
             if input_blockers:
                 summary += f"; input_blockers={len(input_blockers)}"
@@ -185,10 +206,60 @@ class QuarterlyPresentationService:
                 fiscal_year=fy,
                 fiscal_period=fp,
                 input_blockers=input_blockers,
+                filled_from_sec=filled_from_sec,
+                flagged_missing=flagged_missing,
                 summary=summary,
             )
         finally:
             wb.close()
+
+    @staticmethod
+    def _fill_blanks_from_sec(
+        wb: Workbook,
+        kind: QuarterlyStatementKind,
+        sheet_name: str,
+        company_facts: dict[str, Any],
+        fy: int | None,
+        fp: str | None,
+        deps: MetricDependencies,
+    ) -> tuple[list[dict[str, Any]], list[str]]:
+        """Fill blank latest-quarter cells from the 10-Q; flag the blanks that feed a metric and cannot be filled."""
+        from services.workbook_flag_service import flag_filled, flag_missing_data
+
+        ws = wb[sheet_name]
+        sec_items = [
+            item
+            for item in extract_sec_10q_statement(
+                company_facts, kind, fiscal_year=fy, fiscal_period=fp, include_unresolved=False
+            )
+            if item.value is not None
+        ]
+        filled: list[dict[str, Any]] = []
+        missing: list[str] = []
+        for row in iter_statement_rows(ws):
+            if row["populated"] or row["formula"]:
+                continue
+            cell = ws.cell(row["row"], VALUE_COL)
+            if cell.value not in (None, ""):
+                continue
+            if _LIABILITIES_AND_EQUITY.search(row["label"]):
+                continue
+            match = resolve_workbook_gap(row["label"], kind, sec_items) if sec_items else None
+            if match is not None and match.decision == "MATCHED" and match.value is not None:
+                source = f"SEC {fp or ''} FY{fy or ''} {match.match_method or ''}".strip()
+                cell.value = float(match.value)
+                flag_filled(
+                    ws, cell.coordinate, value=float(match.value), source=source,
+                    reason="The supplied workbook left this quarterly cell blank; the 10-Q reports the figure.",
+                )
+                filled.append({"cell": f"{sheet_name}!{cell.coordinate}", "label": row["label"], "value": float(match.value), "source": source})
+            elif any(deps.feeds_metrics(sheet_name, row["row"], col) for col in range(VALUE_COL, VALUE_COL + 6)):
+                flag_missing_data(
+                    ws, cell.coordinate, concept=row["label"],
+                    reason="Blank in the supplied workbook and not found in the SEC 10-Q.",
+                )
+                missing.append(f"{sheet_name}!{cell.coordinate}: {row['label']}")
+        return filled, missing
 
     @staticmethod
     def _mark_statement_incomplete(entry: QuarterlyStatementPresentation, health) -> None:

@@ -122,6 +122,7 @@ class NewCompanyStatementValidationReport(BaseModel):
     filled_missing: list[StatementDiscrepancy] = Field(default_factory=list)
     corrections: list[StatementDiscrepancy] = Field(default_factory=list)
     unresolved_material: list[str] = Field(default_factory=list)
+    flagged_missing: list[str] = Field(default_factory=list)  # needed by a metric, not available online
     formulas_preserved: bool = True
     status: str = "ok"
     summary: str = ""

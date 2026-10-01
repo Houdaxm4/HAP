@@ -15,6 +15,7 @@ from models.new_company import (
     NewCompanyWorkflowState,
     CurrentDataAsOf,
 )
+from services.completion_scope import quarterly_analysis_required
 from services.annual_formula_guard_service import AnnualFormulaGuardService
 from services.annual_valuation_extract_service import AnnualValuationExtractService
 from services.current_data_refresh_service import CurrentDataRefreshService
@@ -305,7 +306,7 @@ class NewCompanyRunner:
 
         mapped_wacc, mapped_wacc_src = (wacc, "custom_run.assumptions.wacc") if wacc is not None else resolve_workbook_wacc(working_path)
         quarterly_presentation = None
-        if periods.latest_quarter:
+        if quarterly_analysis_required("new_company", periods.latest_quarter):
             quarterly_presentation = timed(
                 "quarterly_statement_completion",
                 lambda: self.quarterly_presentation.plan_and_apply(
@@ -461,6 +462,8 @@ class NewCompanyRunner:
                         if quarterly_presentation is not None
                         else None
                     ),
+                    data_unavailable_flags=list(statements.flagged_missing)
+                    + (list(quarterly_presentation.flagged_missing) if quarterly_presentation is not None else []),
                 ),
             )
             authorized = gate.report_authorized

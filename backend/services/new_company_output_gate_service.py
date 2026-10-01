@@ -23,6 +23,7 @@ from models.new_company import (
     TenYearSourceCoverageReport,
 )
 from models.annual_update import AnnualValuationOutputs
+from services.completion_scope import quarterly_analysis_required
 from services.excel_recalc_service import ExcelRecalcReport, genuine_excel_com_recalc
 
 
@@ -50,6 +51,7 @@ class NewCompanyOutputGateService:
         word_authorized_attempt: bool = False,
         quarterly_unresolved_dependencies: list | None = None,
         quarterly_statement_blockers: list[str] | None = None,
+        data_unavailable_flags: list[str] | None = None,
     ) -> NewCompanyOutputGateReport:
         blockers: list[str] = []
         warnings: list[str] = []
@@ -211,16 +213,18 @@ class NewCompanyOutputGateService:
                 elif "RECONCILIATION" in w:
                     warnings.append("BUYBACK_RECONCILIATION_FAILED")
 
+        for flag in (data_unavailable_flags or [])[:20]:
+            warnings.append(f"DATA_UNAVAILABLE: {flag}")
         if quarterly_statement_blockers:
             blockers.append("STATEMENT_INCOMPLETE")
             blockers.extend(quarterly_statement_blockers[:8])
             gates["quarterly_statements"] = "fail"
-        elif periods is not None and periods.latest_quarter:
+        elif periods is not None and quarterly_analysis_required("new_company", periods.latest_quarter):
             gates["quarterly_statements"] = "pass"
         if quarterly_unresolved_dependencies:
             blockers.append("QUARTERLY_DEPENDENCY_UNRESOLVED")
             gates["quarterly_dependencies"] = "fail"
-        elif periods is not None and periods.latest_quarter:
+        elif periods is not None and quarterly_analysis_required("new_company", periods.latest_quarter):
             gates["quarterly_dependencies"] = "pass"
 
         # Gate H — current data

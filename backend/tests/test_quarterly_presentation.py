@@ -500,8 +500,8 @@ def test_preserve_does_not_rewrite_healthy(healthy_quarterly_wb: Path, tmp_path:
         after.close()
 
 
-def test_labeled_blank_cash_flow_is_not_filled(tmp_path: Path):
-    """A labeled cash-flow taxonomy with blank values stays blank."""
+def test_labeled_blank_cash_flow_is_filled_from_sec(tmp_path: Path):
+    """A labeled cash-flow line left blank is filled from the 10-Q (derived Q2) and flagged; the layout is not rebuilt."""
     wb = Workbook()
     wb.active.title = "Income - GAAP"
     _add_lq_sheets(wb)
@@ -581,14 +581,16 @@ def test_labeled_blank_cash_flow_is_not_filled(tmp_path: Path):
         company_facts=facts,
     )
     cf_stmt = next(s for s in report.statements if s.statement == QuarterlyStatementKind.CASH_FLOW)
-    assert cf_stmt.decision == PresentationDecision.STATEMENT_INCOMPLETE
-    assert report.input_blockers
+    assert cf_stmt.decision == PresentationDecision.BLOOMBERG_PRESERVE
+    assert not any("STATEMENT_INCOMPLETE" in blocker for blocker in report.input_blockers)
     assert not report.unresolved_dependencies
+    assert any(item["label"] == "Cash from Operating Activities" for item in report.filled_from_sec)
     out = load_workbook(dest)
     try:
         sheet = out["Last Quarter CF Standardized"]
         assert sheet["A11"].value == "Cash from Operating Activities"
-        assert sheet["C11"].value in (None, "")
+        assert sheet["C11"].value == pytest.approx(50.0)  # 80 YTD - 30 Q1
+        assert "HAP FILLED" in sheet["C11"].comment.text
         assert sheet["G11"].value in (None, "")
         assert sheet["E11"].value == '=IF(C11="","",C11)'
     finally:

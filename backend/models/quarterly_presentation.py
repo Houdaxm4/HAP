@@ -113,4 +113,6 @@ class QuarterlyPresentationReport(BaseModel):
     fiscal_year: int | None = None
     fiscal_period: str | None = None
     input_blockers: list[str] = Field(default_factory=list)
+    filled_from_sec: list[dict[str, Any]] = Field(default_factory=list)  # blanks HAP filled from the 10-Q
+    flagged_missing: list[str] = Field(default_factory=list)  # blanks a metric needs that no source could fill
     summary: str = ""

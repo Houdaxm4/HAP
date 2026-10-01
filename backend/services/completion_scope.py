@@ -55,6 +55,20 @@ QUARTERLY_MATERIAL_EMPTY_RATIO = 0.20
 QUARTERLY_SUBSTANTIAL_RATIO = 0.40
 
 
+# Interim fiscal quarters. A latest period of Q4 is the fiscal year itself (covered by the 10-K).
+INTERIM_QUARTERS = (1, 2, 3)
+
+
+def quarterly_analysis_required(analysis_type: str | None, latest_quarter: int | None) -> bool:
+    """Single rule for when last-quarter statements must be supplied and validated.
+
+    New Company: required when the latest period is an interim quarter (Q1-Q3).
+    Annual Update: never (it focuses on the last 10-K).
+    Quarterly Update: is itself the quarterly workflow and handles its own presentation.
+    """
+    return normalize_analysis_type(analysis_type) == AnalysisTypeMode.NEW_COMPANY and latest_quarter in INTERIM_QUARTERS
+
+
 def normalize_analysis_type(raw: str | None) -> AnalysisTypeMode:
     """Map free-form analysis_type strings to the three supported modes."""
     if not raw:

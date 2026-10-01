@@ -74,6 +74,36 @@ def style_hap_analysis_cell(cell) -> None:
     set_comment(cell, HAP_ANALYSIS_LABEL)
 
 
+def flag_filled(ws: Worksheet, addr: str, *, value: Any, source: str, reason: str) -> None:
+    """Mark a cell HAP filled because the supplied workbook left it blank and a filing has the figure."""
+    cell = ws[addr]
+    cell.fill = HAP_FILL
+    set_comment(
+        cell,
+        (
+            "HAP FILLED - blank in the supplied workbook.\n"
+            f"Value: {value}\n"
+            f"Source: {source}\n"
+            f"Reason: {reason}"
+        ),
+    )
+
+
+def flag_missing_data(ws: Worksheet, addr: str, *, concept: str, reason: str) -> None:
+    """Mark a blank cell that a reported metric needs and that no allowed online source could provide."""
+    cell = ws[addr]
+    cell.fill = RED_FILL
+    set_comment(
+        cell,
+        (
+            "DATA MISSING - needed by a reported metric.\n"
+            f"Concept: {concept}\n"
+            f"Reason: {reason}\n"
+            "Not available from SEC EDGAR or Yahoo Finance; metrics that depend on this cell are incomplete."
+        ),
+    )
+
+
 def flag_recast(ws: Worksheet, addr: str, *, old_value: Any, new_value: Any, source: str, issue: str) -> None:
     """Mark a cell HAP changed on purpose, keeping the original value in the comment (reversible by hand)."""
     cell = ws[addr]
