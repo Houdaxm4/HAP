@@ -96,6 +96,8 @@ class AnnualStatementValidationReport(BaseModel):
     items: list[StatementValidationItem] = Field(default_factory=list)
     bloomberg_preserved: bool = True
     discrepancies: int = 0
+    filled: int = 0  # blank cells filled from the 10-K
+    missing_important: int = 0  # blank, not in the filing, and a reported metric depends on it
     summary: str = ""
 
 

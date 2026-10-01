@@ -206,6 +206,12 @@ class AnnualOutputGateService:
         if statements is not None:
             items = list(getattr(statements, "items", []) or [])
             missing = [i for i in items if getattr(i, "status", "") == "REVIEW_REQUIRED"]
+            for i in items:
+                if getattr(i, "status", "") == "MISSING_IMPORTANT":
+                    warnings.append(
+                        f"DATA_UNAVAILABLE: {getattr(i, 'concept', '')}@{getattr(i, 'fiscal_year', '')} "
+                        "is blank in the workbook, not in the SEC filing, and a reported metric needs it."
+                    )
             disc = int(getattr(statements, "discrepancies", 0) or 0)
             if missing:
                 detail = ", ".join(

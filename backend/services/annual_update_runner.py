@@ -436,6 +436,18 @@ class AnnualUpdateRunner:
             valuation=valuation,
             gate=gate,
         )
+        # The Word report's Flags section reads these artifacts, so they must be saved before the report is written
+        # (the full artifact set is still written below, unchanged).
+        for _name, _report in {
+            "annual_statement_validation_report.json": stmt,
+            "annual_restatement_report.json": rest,
+            "annual_analyst_judgment_report.json": judge,
+            "annual_research_report.json": research,
+            "annual_output_gate_report.json": gate,
+            "annual_buyback_report.json": buybacks,
+        }.items():
+            if _report is not None:
+                self.output_service.write_json(analysis_id, _name, _report)
         deliv = timed(
             "annual_deliverables",
             lambda: self.deliverables.produce(

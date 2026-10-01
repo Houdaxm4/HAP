@@ -44,6 +44,18 @@ def _read(directory: Path, name: str) -> dict[str, Any] | None:
     return data if isinstance(data, dict) else None
 
 
+CONCEPT_NAMES = {
+    "cfo": "Cash from operations", "cfi": "Cash from investing", "cff": "Cash from financing",
+    "capex": "Capital expenditures", "pretax_income": "Pre-tax income", "diluted_eps": "Diluted EPS",
+    "income_tax_expense": "Income tax expense", "diluted_shares": "Diluted shares",
+}
+
+
+def _concept(raw: Any) -> str:
+    key = str(raw or "")
+    return CONCEPT_NAMES.get(key) or key.replace("_", " ").title()
+
+
 def _flag(category: str, title: str, detail: str = "", source: str = "") -> dict[str, str]:
     return {"category": category, "title": title, "detail": detail, "source": source}
 
@@ -67,7 +79,7 @@ def collect_flags(output_dir: Path, authorized: bool | None = None) -> dict[str,
     if statements:
         for item in statements.get("filled_missing", []):
             flags["filled"].append(_flag(
-                "filled", f"{item.get('concept', '').replace('_', ' ').title()} {item.get('fiscal_year', '')}",
+                "filled", f"{_concept(item.get('concept'))} {item.get('fiscal_year', '')}",
                 f"{_fmt(item.get('new_value'))} at {item.get('cell', '')}", item.get("source") or "SEC 10-K",
             ))
         for text in statements.get("flagged_missing", []):
@@ -77,7 +89,7 @@ def collect_flags(output_dir: Path, authorized: bool | None = None) -> dict[str,
             ))
         for item in statements.get("corrections", []):
             flags["attention"].append(_flag(
-                "attention", f"{item.get('concept', '').replace('_', ' ').title()} {item.get('fiscal_year', '')}: workbook differs from SEC",
+                "attention", f"{_concept(item.get('concept'))} {item.get('fiscal_year', '')}: workbook differs from SEC",
                 f"Workbook {_fmt(item.get('old_value'))} vs SEC {_fmt(item.get('new_value'))} at {item.get('cell', '')}. "
                 "The supplied value was kept and flagged.", item.get("source") or "SEC 10-K",
             ))
@@ -182,9 +194,21 @@ def _annual_and_quarterly_sources(output_dir: Path, flags: dict[str, list[dict[s
     """Artifacts of Annual and Quarterly updates. Each reader is tolerant: a missing file simply adds nothing."""
     annual = _read(output_dir, "annual_statement_validation_report.json")
     for item in (annual or {}).get("items", []):
-        if str(item.get("status", "")).upper() in {"DISCREPANCY", "REVIEW_REQUIRED"}:
+        status = str(item.get("status", "")).upper()
+        if status == "FILLED_FROM_SEC":
+            flags["filled"].append(_flag(
+                "filled", f"{_concept(item.get('concept'))} {item.get('fiscal_year', '')}",
+                f"{_fmt(item.get('filing_value'))}", "SEC 10-K",
+            ))
+        elif status == "MISSING_IMPORTANT":
             flags["attention"].append(_flag(
-                "attention", f"{str(item.get('concept', '')).replace('_', ' ').title()} {item.get('fiscal_year', '')}: workbook differs from the filing",
+                "attention", "Data not available online and needed by a metric",
+                f"{str(item.get('concept', '')).replace('_', ' ')} {item.get('fiscal_year', '')}. Metrics that depend on it are incomplete.",
+                "SEC EDGAR: not found",
+            ))
+        elif status in {"DISCREPANCY", "REVIEW_REQUIRED"}:
+            flags["attention"].append(_flag(
+                "attention", f"{_concept(item.get('concept'))} {item.get('fiscal_year', '')}: workbook differs from the filing",
                 f"Workbook {_fmt(item.get('bloomberg_value'))} vs filing {_fmt(item.get('filing_value'))}. {item.get('reason', '')}", "SEC 10-K",
             ))
     quarterly = _read(output_dir, "statement_validation_report.json")
