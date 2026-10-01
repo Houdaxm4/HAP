@@ -1403,7 +1403,7 @@ def test_pe10_current_does_not_replace_historical_fiscal_values(tmp_path: Path):
     wb.close()
 
 
-def test_word_report_withheld_until_authorized(tmp_path: Path):
+def test_word_report_is_flagged_not_withheld_until_authorized(tmp_path: Path):
     from services.new_company_deliverables_service import NewCompanyDeliverablesService
 
     wb = industrial_workbook(tmp_path / "wb.xlsx")
@@ -1429,9 +1429,15 @@ def test_word_report_withheld_until_authorized(tmp_path: Path):
         gate=None,
         authorized=False,
     )
+    # The Word report is always produced; when the gates fail its first section says it is NOT AUTHORIZED.
     assert report.authorized is False
-    assert report.word_path is None
-    assert list(out.glob("*.docx")) == []
+    assert report.word_path is not None and "NOT AUTHORIZED" in report.summary
+    docs = list(out.glob("*.docx"))
+    assert len(docs) == 1
+    from docx import Document
+
+    texts = [p.text for p in Document(str(docs[0])).paragraphs]
+    assert texts[texts.index("Flags") + 1].startswith("Status: NOT AUTHORIZED")
     assert list(out.glob("*.xlsx"))
 
 
@@ -2312,7 +2318,7 @@ def test_wacc_mapped_missing_and_independent_roic(tmp_path: Path):
     assert proj2.projected_roic_wacc == pytest.approx(proj2.seasonality_adjusted_roic - mapped)
 
 
-def test_gates_g_and_i_pass_fail_and_word_withheld(tmp_path: Path):
+def test_gates_g_and_i_pass_fail_and_word_flagged(tmp_path: Path):
     from services.new_company_deliverables_service import NewCompanyDeliverablesService
 
     passing = NewCompanyOutputGateService().evaluate(**_gate_base(tmp_path))
@@ -2385,8 +2391,8 @@ def test_gates_g_and_i_pass_fail_and_word_withheld(tmp_path: Path):
         gate=share_gap,
         authorized=False,
     )
-    assert withheld.word_path is None
-    assert list(out.glob("*.docx")) == []
+    assert withheld.authorized is False and withheld.word_path is not None  # produced, flagged NOT AUTHORIZED
+    assert len(list(out.glob("*.docx"))) == 1
 
 
 def test_period_detects_current_lq_year_not_prior_column(tmp_path: Path):

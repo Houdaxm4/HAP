@@ -10,6 +10,8 @@ from docx import Document
 from docx.shared import Pt, RGBColor
 
 from services.deliverable_text import headline_lines
+from services.report_flags import collect_flags, write_flags_section
+from services.report_opinion import write_assessment_sections
 from services.margin_history import note_text, read_history, table_rows
 from models.annual_update import AnnualValuationOutputs
 from models.new_company import (
@@ -83,7 +85,8 @@ class NewCompanyDeliverablesService:
         excel_path = output_dir / excel_name
         word_path = output_dir / word_name
         shutil.copy2(completed_workbook_path, excel_path)
-        if authorized:
+        # The Word report is always produced: its first section lists every flag, including why it is not authorized.
+        if True:
             self._write_word(
                 word_path,
                 ticker=ticker,
@@ -105,6 +108,7 @@ class NewCompanyDeliverablesService:
                 judgment=judgment,
                 valuation_report=valuation_report,
                 workbook_path=completed_workbook_path,
+                authorized=authorized,
             )
         else:
             word_name = None
@@ -120,7 +124,8 @@ class NewCompanyDeliverablesService:
             authorized=authorized,
             summary=(
                 f"Deliverables: {excel_name}"
-                + (f"; {word_name}" if authorized else "; Word withheld pending gates.")
+                + f"; {word_name}"
+                + ("" if authorized else " (NOT AUTHORIZED: see the Flags section)")
             ),
         )
 
@@ -151,6 +156,7 @@ class NewCompanyDeliverablesService:
         path: Path,
         *,
         workbook_path: Path | None = None,
+        authorized: bool = True,
         ticker: str,
         company: str,
         fiscal_year: int,
@@ -186,6 +192,9 @@ class NewCompanyDeliverablesService:
 
         doc.add_heading(f"{company} ({ticker}) — New Company Investment Analysis", level=0)
         doc.add_paragraph(f"Fiscal window through FY{fiscal_year}. Industrial Template initiation.")
+
+        # Flags come first: what was filled, corrected, decided by the agent, or is missing.
+        write_flags_section(doc, collect_flags(path.parent, authorized=authorized))
 
         doc.add_heading("1. Executive investment conclusion", level=1)
         for line in headline_lines(path.parent):
@@ -502,6 +511,8 @@ class NewCompanyDeliverablesService:
                 "Valuation judgment was not run. Final authorization requires genuine Excel COM "
                 "CalculateFullRebuild after autonomous lease-rate and R&D useful-life selection."
             )
+
+        write_assessment_sections(doc, path.parent, v, history if history else None)
 
         doc.add_heading("17. Analyst judgments and overrides", level=1)
         if rd_decision:
