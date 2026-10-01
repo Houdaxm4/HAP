@@ -5,10 +5,13 @@ import {
   answerCheckpoint,
   continueAgentRun,
   getAgentDossier,
+  generateReportOpinion,
   getAgentRun,
+  getReportOpinion,
   startAgentRun,
   type AgentDossier,
   type AgentRunState,
+  type ReportOpinion,
 } from "@/lib/api";
 
 const PHASE_TEXT: Record<AgentRunState["phase"], string> = {
@@ -27,6 +30,7 @@ export default function AgentRunPanel({ analysisId }: { analysisId: string }) {
   const [note, setNote] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [opinion, setOpinion] = useState<ReportOpinion | null>(null);
 
   const refresh = useCallback(async () => {
     try {
@@ -42,7 +46,8 @@ export default function AgentRunPanel({ analysisId }: { analysisId: string }) {
 
   useEffect(() => {
     void refresh();
-  }, [refresh]);
+    getReportOpinion(analysisId).then(setOpinion).catch(() => setOpinion(null));
+  }, [refresh, analysisId]);
 
   useEffect(() => {
     if (state?.phase !== "pipeline") return;
@@ -102,6 +107,32 @@ export default function AgentRunPanel({ analysisId }: { analysisId: string }) {
           {error}
         </p>
       )}
+
+      <div className="space-y-2 rounded border p-4">
+        <h3 className="font-semibold">Analyst opinion in the Word report</h3>
+        <p className="text-xs text-gray-600">
+          Writes the fundamentals opinion (and the cheap/not-cheap view if fundamentals are strong) into the report from online
+          sources and the workbook. Uses the paid model and counts toward the monthly cap. It is labeled as opinion and never
+          changes HAP&apos;s scores.
+        </p>
+        <button
+          className="rounded border px-3 py-1.5 disabled:opacity-50"
+          disabled={busy}
+          onClick={() => act(async () => setOpinion(await generateReportOpinion(analysisId)))}
+        >
+          {opinion ? "Regenerate opinion" : "Add opinion to the report"}
+        </button>
+        {opinion && (
+          <div className="space-y-2 rounded bg-violet-50 p-3 text-violet-950">
+            <div className="text-xs font-semibold uppercase">Opinion - {opinion.label}</div>
+            <p className="whitespace-pre-wrap">{opinion.fundamentals}</p>
+            {opinion.valuation && <p className="whitespace-pre-wrap">{opinion.valuation}</p>}
+            <p className="text-xs text-gray-600">
+              {opinion.model} - {opinion.outside_sources.length} outside source(s) - inserted into {opinion.inserted_into}
+            </p>
+          </div>
+        )}
+      </div>
 
       {dossier && (
         <div className="space-y-3 rounded border p-4">

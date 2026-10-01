@@ -10,6 +10,9 @@ import json
 from pathlib import Path
 from typing import Any
 
+OPINION_PENDING = "Analyst opinion: pending (generated on request from online sources and the workbook; needs Claude access)."
+OPINION_LABEL = "Analyst opinion (not a HAP rules-based result; based on online sources and the workbook):"
+ASSESSMENT_FILE = "report_assessment.json"
 STRONG_BQ_SCORE = 70.0  # HIGH_QUALITY_BUSINESS and above (see final_recommendation_service bands)
 HOUSE_MOS = 0.25
 
@@ -109,8 +112,13 @@ def write_assessment_sections(doc, output_dir: Path, valuation: Any = None, hist
     if fundamentals["against"]:
         doc.add_paragraph("Against: " + " ".join(fundamentals["against"]))
     if opinion and opinion.get("fundamentals"):
-        doc.add_paragraph("Analyst opinion (not a HAP rules-based result; based on online sources and the workbook):")
+        doc.add_paragraph(OPINION_LABEL)
         doc.add_paragraph(opinion["fundamentals"])
+    else:
+        doc.add_paragraph(OPINION_PENDING)
+
+    valuation_facts = valuation_assessment(output_dir, valuation)
+    _save_assessment(output_dir, fundamentals, valuation_facts)
 
     doc.add_heading("Valuation: is the company cheap?", level=1)
     if not fundamentals["strong"]:
@@ -118,14 +126,68 @@ def write_assessment_sections(doc, output_dir: Path, valuation: Any = None, hist
             "The fundamentals are not rated strong, so the price is not treated as an opportunity. "
             "Valuation figures are shown for reference only."
         )
-        valuation_facts = valuation_assessment(output_dir, valuation)
         for fact in valuation_facts["facts"]:
             doc.add_paragraph(fact, style="List Bullet")
         return
-    valuation_facts = valuation_assessment(output_dir, valuation)
     doc.add_paragraph(f"Rules-based assessment: the company looks {valuation_facts['verdict']} (house margin-of-safety threshold {HOUSE_MOS * 100:.0f}%).")
     for fact in valuation_facts["facts"]:
         doc.add_paragraph(fact, style="List Bullet")
     if opinion and opinion.get("valuation"):
-        doc.add_paragraph("Analyst opinion (not a HAP rules-based result; based on online sources and the workbook):")
+        doc.add_paragraph(OPINION_LABEL)
         doc.add_paragraph(opinion["valuation"])
+    else:
+        doc.add_paragraph(OPINION_PENDING)
+
+
+def _save_assessment(output_dir: Path, fundamentals: dict[str, Any], valuation_facts: dict[str, Any]) -> None:
+    """Keep the rules-based verdicts next to the report so the opinion step reacts to the same numbers."""
+    try:
+        with (output_dir / ASSESSMENT_FILE).open("w", encoding="utf-8") as handle:
+            json.dump({"fundamentals": fundamentals, "valuation": valuation_facts}, handle, indent=2, default=str)
+    except OSError:
+        pass  # the report must not fail because a side file could not be written
+
+
+def apply_opinion_to_docx(docx_path: Path, opinion: dict[str, str]) -> int:
+    """Put the generated opinions into an existing report. Returns how many sections were written.
+
+    A section has a slot when it holds the 'pending' marker or an earlier opinion (label + body), so the opinion can be
+    regenerated. The first slot is the fundamentals section, the second (strong fundamentals only) the valuation
+    section. Nothing else in the document is touched.
+    """
+    from docx import Document
+
+    document = Document(str(docx_path))
+    paragraphs = document.paragraphs
+    slots = []  # (marker paragraph, existing body paragraph or None)
+    for index, paragraph in enumerate(paragraphs):
+        text = paragraph.text.strip()
+        if text == OPINION_PENDING:
+            slots.append((paragraph, None))
+        elif text == OPINION_LABEL and index + 1 < len(paragraphs):
+            slots.append((paragraph, paragraphs[index + 1]))
+    filled = 0
+    for (marker, body), text in zip(slots, (opinion.get("fundamentals"), opinion.get("valuation"))):
+        if not text:
+            continue
+        marker.text = OPINION_LABEL
+        if body is not None:
+            body.text = text
+        else:
+            _insert_paragraph_after(marker, text)
+        filled += 1
+    if filled:
+        document.save(str(docx_path))
+    return filled
+
+
+def _insert_paragraph_after(paragraph, text: str):
+    from copy import deepcopy
+
+    clone = deepcopy(paragraph._p)
+    paragraph._p.addnext(clone)
+    from docx.text.paragraph import Paragraph
+
+    new = Paragraph(clone, paragraph._parent)
+    new.text = text
+    return new

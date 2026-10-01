@@ -83,3 +83,20 @@ def test_opinion_slot_is_labelled(tmp_path):
     write_assessment_sections(doc, tmp_path, SimpleNamespace(roic_wacc=0.1, enterprise_mos=0.4), opinion={"fundamentals": "Solid moat.", "valuation": "Cheap on cash flow."})
     text = "\n".join(p.text for p in doc.paragraphs)
     assert text.count("not a HAP rules-based result") == 2 and "Solid moat." in text
+
+
+def test_apply_opinion_replaces_markers_and_can_be_regenerated(tmp_path):
+    from services.report_opinion import apply_opinion_to_docx
+
+    artifacts(tmp_path, bq=75.0)
+    doc = Document()
+    write_assessment_sections(doc, tmp_path, SimpleNamespace(roic_wacc=0.1, enterprise_mos=0.4))
+    path = tmp_path / "report.docx"
+    doc.save(str(path))
+    assert apply_opinion_to_docx(path, {"fundamentals": "First view.", "valuation": "Cheap."}) == 2
+    texts = [p.text for p in Document(str(path)).paragraphs]
+    assert "First view." in texts and "Cheap." in texts and not any("pending" in t for t in texts)
+    assert apply_opinion_to_docx(path, {"fundamentals": "Updated view.", "valuation": "Not cheap."}) == 2  # regeneration
+    texts = [p.text for p in Document(str(path)).paragraphs]
+    assert "Updated view." in texts and "First view." not in texts and "Not cheap." in texts
+    assert json.loads((tmp_path / "report_assessment.json").read_text())["fundamentals"]["strong"] is True

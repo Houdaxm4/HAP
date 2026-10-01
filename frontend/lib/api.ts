@@ -430,3 +430,19 @@ export const answerCheckpoint = (id: string, checkpointId: string, decision: "ap
     `/analysis/${encodeURIComponent(id)}/agent/checkpoints/${encodeURIComponent(checkpointId)}`,
     jsonPost({ decision, note }),
   );
+
+export type ReportOpinion = {
+  generated_at: string;
+  model: string | null;
+  fundamentals: string;
+  valuation: string | null;
+  tools_used: string[];
+  outside_sources: { source: string; title: string; url: string; as_of: string }[];
+  sections_inserted: number;
+  inserted_into: string;
+  label: string;
+};
+
+export const getReportOpinion = (id: string) => requestJson<ReportOpinion>(`/analysis/${encodeURIComponent(id)}/report/opinion`);
+export const generateReportOpinion = (id: string) =>
+  requestJson<ReportOpinion>(`/analysis/${encodeURIComponent(id)}/report/opinion`, jsonPost());
