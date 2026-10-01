@@ -88,6 +88,23 @@ def quarter_incorporated(report: QuarterlyPresentationReport | None) -> bool:
 _LIABILITIES_AND_EQUITY = re.compile(r"liabilit\w*\s*(?:&|and)\s*(?:(?:share|stock)?holders?\W*s?\W*)?equity", re.IGNORECASE)
 
 
+def sheet_value_for(kind: QuarterlyStatementKind, match: Any, sec_items: list[Any], fiscal_period: str | None) -> float | None:
+    """The SEC figure in the convention of the supplied sheet.
+
+    Income and balance-sheet cells hold the latest quarter / quarter-end amount. The quarterly cash-flow sheet holds the
+    cumulative year-to-date amount, so a matched cash-flow line must use its YTD companion, never the standalone quarter
+    (writing the standalone figure there would understate every Q2/Q3 cash-flow line).
+    """
+    if match is None or match.value is None:
+        return None
+    if kind != QuarterlyStatementKind.CASH_FLOW or (fiscal_period or "").upper() == "Q1":
+        return float(match.value)  # in Q1 the quarter and the year-to-date amounts are the same
+    for item in sec_items:
+        if item.xbrl_concept == match.sec_xbrl_concept and item.ytd_value is not None:
+            return float(item.ytd_value)
+    return None
+
+
 class QuarterlyPresentationService:
     """
     Validate supplied quarterly statements against SEC.
@@ -245,14 +262,17 @@ class QuarterlyPresentationService:
             if _LIABILITIES_AND_EQUITY.search(row["label"]):
                 continue
             match = resolve_workbook_gap(row["label"], kind, sec_items) if sec_items else None
-            if match is not None and match.decision == "MATCHED" and match.value is not None:
+            value = sheet_value_for(kind, match, sec_items, fp) if match is not None and match.decision == "MATCHED" else None
+            if value is not None:
                 source = f"SEC {fp or ''} FY{fy or ''} {match.match_method or ''}".strip()
-                cell.value = float(match.value)
+                if kind == QuarterlyStatementKind.CASH_FLOW:
+                    source += " (year-to-date, as the sheet holds cumulative cash flow)"
+                cell.value = value
                 flag_filled(
-                    ws, cell.coordinate, value=float(match.value), source=source,
+                    ws, cell.coordinate, value=value, source=source,
                     reason="The supplied workbook left this quarterly cell blank; the 10-Q reports the figure.",
                 )
-                filled.append({"cell": f"{sheet_name}!{cell.coordinate}", "label": row["label"], "value": float(match.value), "source": source})
+                filled.append({"cell": f"{sheet_name}!{cell.coordinate}", "label": row["label"], "value": value, "source": source})
             elif any(deps.feeds_metrics(sheet_name, row["row"], col) for col in range(VALUE_COL, VALUE_COL + 6)):
                 flag_missing_data(
                     ws, cell.coordinate, concept=row["label"],
@@ -363,8 +383,10 @@ class QuarterlyPresentationService:
             match = resolve_workbook_gap(str(label).strip(), kind, sec_items)
             if match.decision != "MATCHED" or match.value is None:
                 continue
+            target = sheet_value_for(kind, match, sec_items, fp)
+            if target is None:
+                continue
             current = float(cell.value)
-            target = float(match.value)
             if abs(target) <= 1e-12 and abs(current) <= 1e-12:
                 continue
             relative = abs(current - target) / max(abs(target), abs(current), 1e-9)

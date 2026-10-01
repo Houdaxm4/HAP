@@ -25,6 +25,8 @@ from services.annual_period_service import detect_year_columns
 from services.annual_valuation_extract_service import AnnualValuationExtractService
 from services.deliverable_naming import excel_deliverable_name
 from services.deliverable_text import dedupe, headline_lines
+from services.report_flags import collect_flags, write_flags_section
+from services.report_opinion import write_assessment_sections
 
 
 def excel_word_names(year: int, ticker: str) -> tuple[str, str]:
@@ -331,6 +333,9 @@ class AnnualDeliverablesService:
         title = doc.add_heading(f"{year} {ticker} Annual Update", level=0)
         title.runs[0].font.color.rgb = RGBColor(0x1F, 0x3A, 0x5F)
 
+        # Flags come first: what was filled, corrected, decided by the agent, or is missing.
+        write_flags_section(doc, collect_flags(path.parent, authorized=not (gate and gate.blockers)))
+
         doc.add_heading("1. Executive Investment Conclusion", level=1)
         if gate and gate.blockers:
             doc.add_paragraph(
@@ -587,6 +592,8 @@ class AnnualDeliverablesService:
                 "HAP_ANALYSIS cells (not original analyst data): "
                 + ", ".join(judgment.hap_analysis_cells[:20])
             )
+
+        write_assessment_sections(doc, path.parent, perf.valuation)
 
         doc.add_heading("9. Validation and Open Issues", level=1)
         if perf.open_issues:

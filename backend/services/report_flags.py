@@ -147,6 +147,8 @@ def collect_flags(output_dir: Path, authorized: bool | None = None) -> dict[str,
             str(rd.get("rationale", ""))[:300], "Agent decision",
         ))
 
+    _annual_and_quarterly_sources(output_dir, flags)
+
     # ---- workbook health + gate -----------------------------------------------------------------------------------
     try:
         from services.workbook_health import health_report
@@ -174,6 +176,64 @@ def collect_flags(output_dir: Path, authorized: bool | None = None) -> dict[str,
 
     counts = {category: len(items) for category, items in flags.items()}
     return {"authorized": authorized, "gate_status": status, "flags": flags, "counts": counts}
+
+
+def _annual_and_quarterly_sources(output_dir: Path, flags: dict[str, list[dict[str, str]]]) -> None:
+    """Artifacts of Annual and Quarterly updates. Each reader is tolerant: a missing file simply adds nothing."""
+    annual = _read(output_dir, "annual_statement_validation_report.json")
+    for item in (annual or {}).get("items", []):
+        if str(item.get("status", "")).upper() in {"DISCREPANCY", "REVIEW_REQUIRED"}:
+            flags["attention"].append(_flag(
+                "attention", f"{str(item.get('concept', '')).replace('_', ' ').title()} {item.get('fiscal_year', '')}: workbook differs from the filing",
+                f"Workbook {_fmt(item.get('bloomberg_value'))} vs filing {_fmt(item.get('filing_value'))}. {item.get('reason', '')}", "SEC 10-K",
+            ))
+    quarterly = _read(output_dir, "statement_validation_report.json")
+    missing_sec = 0
+    for item in (quarterly or {}).get("entries", []):
+        status = str(item.get("status", "")).upper()
+        if status in {"DISCREPANCY", "REVIEW_REQUIRED"}:
+            flags["attention"].append(_flag(
+                "attention", f"{item.get('metric', '')} {item.get('fiscal_period', '')}: workbook differs from SEC",
+                f"Workbook {_fmt(item.get('workbook_value'))} vs SEC {_fmt(item.get('sec_value'))} at {item.get('workbook_cell', '')}.", "SEC 10-Q",
+            ))
+        elif status == "SOURCE_MISSING":
+            missing_sec += 1
+    if missing_sec:
+        flags["notes"].append(_flag("notes", f"{missing_sec} statement line(s) could not be compared with SEC", "No matching SEC figure was found.", "SEC"))
+
+    for name in ("annual_restatement_report.json", "restatement_check_report.json"):
+        report = _read(output_dir, name)
+        for item in (report or {}).get("review_required", []) or (report or {}).get("findings", []):
+            text = item if isinstance(item, str) else json.dumps(item, default=str)[:200]
+            flags["attention"].append(_flag("attention", "Possible restatement", text, "SEC filings"))
+
+    for name in ("annual_analyst_judgment_report.json", "quarterly_analyst_judgment_report.json"):
+        report = _read(output_dir, name)
+        cells = (report or {}).get("hap_analysis_cells") or []
+        if cells:
+            flags["judgments"].append(_flag(
+                "judgments", f"HAP wrote {len(cells)} cells of alternative valuation analysis beside your original assumptions",
+                "Original cells are preserved; the HAP alternative is shaded and labelled HAP ANALYSIS.", "Valuation judgment",
+            ))
+    valuation = _read(output_dir, "quarterly_valuation_report.json")
+    if valuation:
+        decisions = ", ".join(
+            f"{key.split('_')[0].upper()} {valuation[key]}" for key in ("er_decision", "oe_decision", "graham_decision") if valuation.get(key)
+        )
+        if decisions:
+            flags["judgments"].append(_flag(
+                "judgments", f"Valuation decisions: {decisions}",
+                "KEEP_EXISTING means the original assumption stood; ADJUST means a HAP alternative is shown beside it.", "Valuation judgment",
+            ))
+
+    for name in ("annual_research_report.json", "quarterly_research_report.json"):
+        report = _read(output_dir, name)
+        if not report:
+            continue
+        if str(report.get("earnings_call_status", "")).endswith("UNAVAILABLE"):
+            flags["notes"].append(_flag("notes", "Earnings-call transcript not available", "Management commentary comes from filings only.", "Research"))
+        for conflict in report.get("source_conflicts", []) or []:
+            flags["attention"].append(_flag("attention", "Sources conflict", str(conflict)[:200], "Research"))
 
 
 def write_flags_section(doc, collected: dict[str, Any], *, heading: str = "Flags") -> None:

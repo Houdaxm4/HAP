@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import shutil
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 from openpyxl import load_workbook
@@ -15,6 +16,8 @@ from models.quarterly_update import (
     QuarterlyReviewReport,
     QuarterlyValuationReport,
 )
+from services.report_flags import collect_flags, write_flags_section
+from services.report_opinion import write_assessment_sections
 
 
 def deliverable_stems(fiscal_year: int, fiscal_quarter: int, ticker: str) -> tuple[str, str]:
@@ -97,18 +100,7 @@ class QuarterlyDeliverablesService:
         word_path = output_dir / word_name
 
         shutil.copy2(completed_workbook_path, excel_path)
-        if not authorize_word:
-            return QuarterlyDeliverablesReport(
-                analysis_id=analysis_id,
-                ticker=ticker,
-                fiscal_year=fy,
-                fiscal_quarter=q,
-                excel_filename=excel_name,
-                excel_path=str(excel_path),
-                word_filename=None,
-                word_path=None,
-                summary=f"Deliverables: {excel_name}; Word withheld pending dependency gate.",
-            )
+        # The Word report is always produced; when the dependency gate failed its Flags section says so.
         self._write_word(
             word_path,
             ticker=ticker,
@@ -120,6 +112,7 @@ class QuarterlyDeliverablesService:
             research=research,
             valuation=valuation,
             judgment=judgment,
+            authorized=authorize_word,
         )
         return QuarterlyDeliverablesReport(
             analysis_id=analysis_id,
@@ -130,7 +123,8 @@ class QuarterlyDeliverablesService:
             excel_path=str(excel_path),
             word_filename=word_name,
             word_path=str(word_path),
-            summary=f"Deliverables: {excel_name}; {word_name}",
+            summary=f"Deliverables: {excel_name}; {word_name}"
+            + ("" if authorize_word else " (NOT AUTHORIZED: see the Flags section)"),
         )
 
     def _infer_fy_q(self, path: Path) -> tuple[int, int]:
@@ -167,6 +161,7 @@ class QuarterlyDeliverablesService:
         research: QuarterlyResearchReport | None = None,
         valuation: QuarterlyValuationReport | None = None,
         judgment: Any = None,
+        authorized: bool = True,
     ) -> None:
         try:
             from docx import Document
@@ -182,6 +177,9 @@ class QuarterlyDeliverablesService:
 
         title = doc.add_heading(f"{ticker.upper()} — {fiscal_year} Q{fiscal_quarter} Quarterly Update", level=0)
         _ = title
+
+        # Flags come first: what was filled, corrected, decided by the agent, or is missing.
+        write_flags_section(doc, collect_flags(path.parent, authorized=authorized))
 
         # Q2/Q3 projection section BEFORE Financial Highlights
         if fiscal_quarter in (2, 3) and projection and projection.status != "NOT_APPLICABLE":
@@ -375,6 +373,17 @@ class QuarterlyDeliverablesService:
                 doc.add_paragraph(str(word_text)[:1200])
         elif valuation:
             doc.add_paragraph(valuation.summary)
+
+        assessment_inputs = SimpleNamespace(
+            current_price=metrics.get("current_price"),
+            enterprise_mos=metrics.get("ev_mos"),
+            company_value_per_share=None,
+            current_pe10=None,
+            expected_annual_return=metrics.get("expected_return"),
+            roic_wacc=getattr(projection, "projected_roic_wacc", None) if projection else None,
+            roce=getattr(projection, "projected_roce", None) if projection else None,
+        )
+        write_assessment_sections(doc, path.parent, assessment_inputs)
 
         doc.add_heading("Sources", level=1)
         doc.add_paragraph(

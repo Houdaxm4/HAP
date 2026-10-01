@@ -80,9 +80,10 @@ class ReportOpinionService:
 
         from settings import strong_model
 
-        strong = bool(assessment.get("fundamentals", {}).get("strong"))
+        rules = assessment.get("fundamentals", {}).get("strong")  # True, False, or None (no rules-based verdict)
         verdict = {
-            "fundamentals_rules_based": "STRONG" if strong else "NOT RATED STRONG",
+            "fundamentals_rules_based": "NOT AVAILABLE (judge the fundamentals yourself; write VALUATION only if you rate them strong)"
+            if rules is None else ("STRONG" if rules else "NOT RATED STRONG"),
             "fundamentals_facts": assessment.get("fundamentals", {}).get("facts", []),
             "against": assessment.get("fundamentals", {}).get("against", []),
             "valuation_rules_based": assessment.get("valuation", {}).get("verdict"),
@@ -97,7 +98,7 @@ class ReportOpinionService:
         sections = parse_sections(getattr(reply, "reply", ""))
         if "fundamentals" not in sections:
             raise OpinionError("The model did not return a usable fundamentals opinion; nothing was changed.", 502)
-        if not strong:
+        if rules is False:
             sections.pop("valuation", None)  # the cheapness discussion only exists for strong fundamentals
 
         evidence = self._outside_sources(directory)

@@ -589,7 +589,7 @@ def test_labeled_blank_cash_flow_is_filled_from_sec(tmp_path: Path):
     try:
         sheet = out["Last Quarter CF Standardized"]
         assert sheet["A11"].value == "Cash from Operating Activities"
-        assert sheet["C11"].value == pytest.approx(50.0)  # 80 YTD - 30 Q1
+        assert sheet["C11"].value == pytest.approx(80.0)  # the cash-flow sheet is cumulative: 6M YTD, not the standalone Q2 (50)
         assert "HAP FILLED" in sheet["C11"].comment.text
         assert sheet["G11"].value in (None, "")
         assert sheet["E11"].value == '=IF(C11="","",C11)'
@@ -808,3 +808,17 @@ def test_cash_flow_q2_uses_current_ytd_not_prior_year_columns():
     assert cfo_ytd.period_end == "2026-06-30"
     assert cfo_ytd.value == pytest.approx(98.617)
 
+
+
+def test_cash_flow_fill_and_comparison_use_the_year_to_date_convention():
+    from types import SimpleNamespace
+
+    from models.quarterly_presentation import QuarterlyStatementKind
+    from services.quarterly_presentation_service import sheet_value_for
+
+    match = SimpleNamespace(value=50.0, sec_xbrl_concept="NetCashProvidedByUsedInOperatingActivities")
+    items = [SimpleNamespace(xbrl_concept="NetCashProvidedByUsedInOperatingActivities", ytd_value=80.0)]
+    assert sheet_value_for(QuarterlyStatementKind.CASH_FLOW, match, items, "Q2") == 80.0  # cumulative sheet
+    assert sheet_value_for(QuarterlyStatementKind.CASH_FLOW, match, [], "Q2") is None      # no YTD companion: never fill the standalone
+    assert sheet_value_for(QuarterlyStatementKind.CASH_FLOW, match, [], "Q1") == 50.0      # Q1: quarter == YTD
+    assert sheet_value_for(QuarterlyStatementKind.INCOME, match, items, "Q2") == 50.0      # income cells are the quarter

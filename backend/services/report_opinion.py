@@ -60,7 +60,10 @@ def fundamentals_assessment(output_dir: Path, valuation: Any = None, history: li
             facts.append(f"Revenue {first['fiscal_year']}-{last['fiscal_year']}: {_num(first['revenue'], 0)} to {_num(last['revenue'], 0)} ($M), {_pct(cagr)} a year.")
             if last.get("operating_margin") is not None and first.get("operating_margin") is not None:
                 facts.append(f"Operating margin {_pct(first['operating_margin'])} to {_pct(last['operating_margin'])}.")
-    strong = isinstance(score, (int, float)) and score >= STRONG_BQ_SCORE and (roic_wacc is None or roic_wacc > 0)
+    if not isinstance(score, (int, float)):
+        strong = None  # this report type carries no business-quality score: the rules give no verdict
+    else:
+        strong = score >= STRONG_BQ_SCORE and (roic_wacc is None or roic_wacc > 0)
     return {
         "strong": strong,
         "score": score,
@@ -101,10 +104,16 @@ def write_assessment_sections(doc, output_dir: Path, valuation: Any = None, hist
     """Fundamentals section; the valuation (enterprise value) discussion only when the fundamentals are strong."""
     fundamentals = fundamentals_assessment(output_dir, valuation, history)
     doc.add_heading("Fundamentals: how strong are they?", level=1)
-    doc.add_paragraph(
-        "Rules-based assessment: " + ("STRONG." if fundamentals["strong"] else "NOT RATED STRONG.")
-        + f" (strong means a business-quality score of {STRONG_BQ_SCORE:.0f} or more and ROIC above WACC)"
-    )
+    if fundamentals["strong"] is None:
+        doc.add_paragraph(
+            "Rules-based assessment: not available (this report type has no business-quality score). "
+            "The opinion below is based on this period's results, the workbook and online sources."
+        )
+    else:
+        doc.add_paragraph(
+            "Rules-based assessment: " + ("STRONG." if fundamentals["strong"] else "NOT RATED STRONG.")
+            + f" (strong means a business-quality score of {STRONG_BQ_SCORE:.0f} or more and ROIC above WACC)"
+        )
     for fact in fundamentals["facts"]:
         doc.add_paragraph(fact, style="List Bullet")
     if fundamentals["for"]:
@@ -121,6 +130,15 @@ def write_assessment_sections(doc, output_dir: Path, valuation: Any = None, hist
     _save_assessment(output_dir, fundamentals, valuation_facts)
 
     doc.add_heading("Valuation: is the company cheap?", level=1)
+    if fundamentals["strong"] is None:
+        for fact in valuation_facts["facts"]:
+            doc.add_paragraph(fact, style="List Bullet")
+        if opinion and opinion.get("valuation"):
+            doc.add_paragraph(OPINION_LABEL)
+            doc.add_paragraph(opinion["valuation"])
+        else:
+            doc.add_paragraph(OPINION_PENDING)
+        return
     if not fundamentals["strong"]:
         doc.add_paragraph(
             "The fundamentals are not rated strong, so the price is not treated as an opportunity. "
@@ -167,8 +185,10 @@ def apply_opinion_to_docx(docx_path: Path, opinion: dict[str, str]) -> int:
         elif text == OPINION_LABEL and index + 1 < len(paragraphs):
             slots.append((paragraph, paragraphs[index + 1]))
     filled = 0
-    for (marker, body), text in zip(slots, (opinion.get("fundamentals"), opinion.get("valuation"))):
+    for position, ((marker, body), text) in enumerate(zip(slots, (opinion.get("fundamentals"), opinion.get("valuation")))):
         if not text:
+            if position == 1 and body is None and opinion.get("fundamentals"):
+                marker.text = "Valuation opinion not written: the fundamentals were not rated strong."
             continue
         marker.text = OPINION_LABEL
         if body is not None:
