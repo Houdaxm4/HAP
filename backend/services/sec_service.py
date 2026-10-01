@@ -11,6 +11,7 @@ from typing import Any
 
 import httpx
 
+from settings import sec_user_agent
 from ssl_config import default_ssl_context
 
 SEC_TICKERS_URL = "https://www.sec.gov/files/company_tickers.json"
@@ -63,11 +64,12 @@ class SecService:
 
     def __init__(
         self,
-        user_agent: str = DEFAULT_USER_AGENT,
+        user_agent: str | None = None,
         cache_dir: Path | None = None,
         request_delay_seconds: float = 0.12,
     ) -> None:
-        self.user_agent = user_agent
+        # SEC requires a real contact in the User-Agent: set HAP_SEC_USER_AGENT.
+        self.user_agent = user_agent or sec_user_agent() or DEFAULT_USER_AGENT
         self.cache_dir = cache_dir
         self.request_delay_seconds = request_delay_seconds
         self._last_request_at = 0.0

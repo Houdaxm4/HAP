@@ -1,0 +1,170 @@
+{
+  "engine": {
+    "confidence": 0.5918,
+    "findings": [
+      "BEAR_CASE_DOES_NOT_SUPPORT_MARGIN_OF_SAFETY|warning|negative",
+      "BEAR_SCENARIO_NEGATIVE_RETURN|warning|negative",
+      "BUSINESS_QUALITY_SCORE|info|neutral",
+      "CASH-BACKED_GROWTH|info|neutral",
+      "CASH-BACKED_GROWTH|positive|positive",
+      "CONSISTENT_CASH_GENERATION|positive|positive",
+      "DETERIORATING_LIQUIDITY|warning|negative",
+      "EXCELLENT_SHAREHOLDER_RETURNS|info|neutral",
+      "EXCELLENT_SHAREHOLDER_RETURNS|positive|positive",
+      "EXCEPTIONAL_CASH_CONVERSION|positive|positive",
+      "EXCEPTIONAL_INTEREST_COVERAGE|positive|positive",
+      "GROWTH_DECELERATION|warning|negative",
+      "HEALTHY_REVENUE_GROWTH|info|neutral",
+      "HEALTHY_REVENUE_GROWTH|positive|positive",
+      "INCREASING_LEVERAGE_TREND|warning|negative",
+      "INDEX_LIKELY_SUPERIOR|warning|negative",
+      "INSUFFICIENT_OUTLOOK_DATA|info|neutral",
+      "INVESTMENT_ATTRACTIVENESS_SCORE|info|neutral",
+      "LIABILITY_GROWTH_OUTPACING_ASSETS|warning|negative",
+      "LIQUIDITY_RISK|warning|negative",
+      "LIQUIDITY_WEAKNESS|info|neutral",
+      "LIQUIDITY_WEAKNESS|info|neutral",
+      "LIQUIDITY_WEAKNESS|info|neutral",
+      "MODEST_NET_LEVERAGE|positive|positive",
+      "NEGATIVE_EXPECTED_RETURN|critical|negative",
+      "PEER_MULTIPLES_NOT_AVAILABLE|info|neutral",
+      "POOR_INVESTMENT_ATTRACTIVENESS|info|neutral",
+      "POTENTIALLY_OVERVALUED|warning|negative",
+      "PRUDENT_LEVERAGE_USE|positive|positive",
+      "QUICK_LIQUIDITY_RISK|warning|negative",
+      "UNSTABLE_GROWTH|warning|negative",
+      "VALUATION_HEADWIND|warning|negative",
+      "WORKING_CAPITAL_DEFICIT|info|neutral",
+      "WORKING_CAPITAL_DEFICIT|warning|negative",
+      "WORKING_CAPITAL_DETERIORATION|info|neutral",
+      "WORKING_CAPITAL_DETERIORATION|warning|negative"
+    ],
+    "metric_count": 117,
+    "modules": {
+      "balance_sheet": {
+        "confidence": 0.72,
+        "score": 75.3,
+        "status": "ok"
+      },
+      "business_outlook": {
+        "confidence": 0.0,
+        "score": 60.0,
+        "status": "ok"
+      },
+      "capital_allocation": {
+        "confidence": 0.5633,
+        "score": 55.87,
+        "status": "ok"
+      },
+      "cash_flow": {
+        "confidence": 0.7875,
+        "score": 93.02,
+        "status": "ok"
+      },
+      "expected_return": {
+        "confidence": 0.6892,
+        "score": 41.52,
+        "status": "ok"
+      },
+      "growth": {
+        "confidence": 0.588,
+        "score": 67.04,
+        "status": "ok"
+      },
+      "margins": {
+        "confidence": 0.0,
+        "score": null,
+        "status": "skipped"
+      },
+      "profitability": {
+        "confidence": 0.74,
+        "score": 95.32,
+        "status": "ok"
+      },
+      "recommendation": {
+        "confidence": 0.6098,
+        "score": null,
+        "status": "ok"
+      },
+      "valuation": {
+        "confidence": 0.628,
+        "score": 48.33,
+        "status": "ok"
+      }
+    },
+    "opportunities": [
+      "CASH_BACKED_GROWTH",
+      "CASH_BACKED_GROWTH",
+      "CONSISTENT_CASH_GENERATION",
+      "CONSISTENT_CASH_GENERATION",
+      "EXCELLENT_SHAREHOLDER_RETURNS",
+      "EXCELLENT_SHAREHOLDER_RETURNS",
+      "EXCEPTIONAL_CASH_CONVERSION",
+      "EXCEPTIONAL_CASH_CONVERSION",
+      "EXCEPTIONAL_INTEREST_COVERAGE",
+      "EXCEPTIONAL_INTEREST_COVERAGE",
+      "HEALTHY_REVENUE_GROWTH",
+      "HEALTHY_REVENUE_GROWTH",
+      "MODEST_NET_LEVERAGE",
+      "MODEST_NET_LEVERAGE",
+      "PRUDENT_LEVERAGE_USE",
+      "PRUDENT_LEVERAGE_USE"
+    ],
+    "recommendation": {
+      "business_quality_classification": "HIGH_QUALITY_BUSINESS",
+      "business_quality_score": 78.17,
+      "confidence": 0.6098,
+      "investment_attractiveness_classification": "HIGHLY_OVERVALUED",
+      "investment_attractiveness_score": 46.29,
+      "recommendation": "AVOID",
+      "recommendation_label": "Avoid"
+    },
+    "risks": [
+      "BEAR_CASE_BELOW_MARKET",
+      "BEAR_CASE_BELOW_MARKET",
+      "BEAR_RETURN_NEGATIVE",
+      "BEAR_RETURN_NEGATIVE",
+      "GROWTH_DECELERATION",
+      "GROWTH_DECELERATION",
+      "INCREASING_LEVERAGE",
+      "INCREASING_LEVERAGE",
+      "INDEX_SUPERIOR",
+      "INDEX_SUPERIOR",
+      "LIABILITY_GROWTH_RISK",
+      "LIABILITY_GROWTH_RISK",
+      "LIQUIDITY_WEAKNESS",
+      "LIQUIDITY_WEAKNESS",
+      "LIQUIDITY_WEAKNESS",
+      "LIQUIDITY_WEAKNESS",
+      "LIQUIDITY_WEAKNESS",
+      "LIQUIDITY_WEAKNESS",
+      "NEGATIVE_EXPECTED_RETURN",
+      "NEGATIVE_EXPECTED_RETURN",
+      "POTENTIAL_OVERVALUATION",
+      "POTENTIAL_OVERVALUATION",
+      "UNSTABLE_GROWTH",
+      "UNSTABLE_GROWTH",
+      "VALUATION_HEADWIND",
+      "VALUATION_HEADWIND",
+      "WORKING_CAPITAL_DEFICIT",
+      "WORKING_CAPITAL_DEFICIT",
+      "WORKING_CAPITAL_DETERIORATION",
+      "WORKING_CAPITAL_DETERIORATION"
+    ],
+    "summary_metrics": {
+      "business_quality_score": 78.17,
+      "divergent_metric_count": 0,
+      "error_count": 0,
+      "finding_count": 36,
+      "investment_attractiveness_score": 46.29,
+      "metric_comparison_count": 43,
+      "metric_count": 117,
+      "module_count": 10,
+      "ok_count": 9,
+      "recommendation": "AVOID",
+      "scored_module_count": 8,
+      "skipped_count": 1
+    }
+  },
+  "final_recommendation": null
+}

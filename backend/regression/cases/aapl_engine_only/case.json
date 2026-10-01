@@ -1,0 +1,14 @@
+{
+  "analysis_type": "annual",
+  "approval_note": null,
+  "approved": false,
+  "created_at": "2026-10-01T15:33:51.335288+00:00",
+  "inputs": [
+    "company_financial_model.json"
+  ],
+  "name": "aapl_engine_only",
+  "note": "Engine-only case (no final recommendation produced)",
+  "replay_reproduces_stored_outputs": true,
+  "source_analysis_id": "82a2d5ff-a0f5-4ee4-be3b-5d1145668d35",
+  "ticker": "AAPL"
+}

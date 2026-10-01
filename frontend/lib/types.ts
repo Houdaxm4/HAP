@@ -30,6 +30,7 @@ export type AnalysisSummary = {
   recommendation_label: string | null;
   business_quality_score: number | null;
   investment_attractiveness_score: number | null;
+  final_recommendation?: string | null;
 };
 
 /** Mirrors backend AnalysisDetailResponse. */
@@ -204,6 +205,7 @@ export interface AnalysisDetail {
   isComplete: boolean;
   recommendation: string | null;
   recommendationLabel: string | null;
+  finalRecommendation: string | null;
   businessQualityScore: number | null;
   investmentAttractivenessScore: number | null;
   decisionLog: {

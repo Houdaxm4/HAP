@@ -1,0 +1,19 @@
+{
+  "analysis_type": "new_company",
+  "approval_note": null,
+  "approved": false,
+  "created_at": "2026-10-01T15:33:28.687901+00:00",
+  "inputs": [
+    "company_financial_model.json",
+    "valuation_validation_report.json",
+    "roic_validation_report.json",
+    "expected_return_validation_report.json",
+    "statement_validation_report.json",
+    "analyst_review_report.json"
+  ],
+  "name": "lnn_new_company",
+  "note": "Engine says WATCH, workbook-based final says HOLD (known conflict)",
+  "replay_reproduces_stored_outputs": true,
+  "source_analysis_id": "3bc7b27e-fa52-42e2-947c-9d9d4c5aee57",
+  "ticker": "LNN"
+}

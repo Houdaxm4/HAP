@@ -1,0 +1,19 @@
+{
+  "analysis_type": "annual",
+  "approval_note": null,
+  "approved": false,
+  "created_at": "2026-10-01T15:33:30.048281+00:00",
+  "inputs": [
+    "company_financial_model.json",
+    "valuation_validation_report.json",
+    "roic_validation_report.json",
+    "expected_return_validation_report.json",
+    "statement_validation_report.json",
+    "analyst_review_report.json"
+  ],
+  "name": "idcc",
+  "note": "Complete stored analysis",
+  "replay_reproduces_stored_outputs": true,
+  "source_analysis_id": "edd8ea8f-534e-4ca9-a78a-bb908abf9692",
+  "ticker": "IDCC"
+}

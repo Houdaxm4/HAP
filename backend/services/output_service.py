@@ -8,6 +8,7 @@ from typing import Any
 
 from pydantic import BaseModel
 
+from services.safe_io import validate_analysis_id, write_json_atomic
 from settings import outputs_dir as default_outputs_dir
 
 OUTPUTS_DIR = default_outputs_dir()
@@ -22,7 +23,7 @@ class OutputService:
 
     def analysis_output_dir(self, analysis_id: str) -> Path:
         """Return (and create) the output directory for an analysis."""
-        directory = self.outputs_dir / analysis_id
+        directory = self.outputs_dir / validate_analysis_id(analysis_id)
         directory.mkdir(parents=True, exist_ok=True)
         return directory
 
@@ -31,8 +32,7 @@ class OutputService:
         directory = self.analysis_output_dir(analysis_id)
         path = directory / filename
         data = payload.model_dump() if isinstance(payload, BaseModel) else payload
-        with path.open("w", encoding="utf-8") as handle:
-            json.dump(data, handle, indent=2, default=str)
+        write_json_atomic(path, data, default=str)
         return f"outputs/{analysis_id}/{filename}"
 
     def read_json(self, analysis_id: str, filename: str) -> dict[str, Any]:

@@ -1,0 +1,192 @@
+{
+  "analysis_id": "edd8ea8f-534e-4ca9-a78a-bb908abf9692",
+  "ticker": "IDCC",
+  "schema_version": "1.0.0",
+  "milestone": "valuation_margin_of_safety_entry_price_review",
+  "workbook_path": "C:\\Users\\Soulaymane Kachani\\Downloads\\HAP2\\backend\\storage\\outputs\\edd8ea8f-534e-4ca9-a78a-bb908abf9692\\completed_workbook.xlsx",
+  "methodology": {
+    "primary_intrinsic": "Graham Growth Intrinsic Value (Final Metrics row 33 / Enterprise Value!B42)",
+    "intrinsic_formula": "EPS \u00d7 (PE_multiplier + CAGR% \u00d7 growth_multiplier)",
+    "graham_multiple_formula": "Enterprise Value!B51 + (EPS_CAGR\u00d7100)\u00d7Enterprise Value!B52",
+    "default_pe_multiplier": 8.5,
+    "default_growth_multiplier": 2.0,
+    "sample_L33": "=L32*L29",
+    "sample_B42": "=(B51+(B41*100*B52))*B40",
+    "current_price": "Inputs!B63 \u2192 Final Metrics!B51 (live market_internet; not CRF)",
+    "max_price_to_buy": "Inputs!B67 (Bloomberg CRF entry guide)",
+    "max_pe10_to_enter": "Inputs!B66 / Final Metrics!B54",
+    "mos_definition": "(intrinsic - price) / intrinsic",
+    "house_mos_threshold": 0.25,
+    "entry_price_definition": "intrinsic * (1 - 0.25)",
+    "no_parallel_dcf": true,
+    "no_workbook_formula_writes": true
+  },
+  "inputs": [
+    {
+      "name": "workbook_intrinsic_graham",
+      "value": 179.10614028248685,
+      "cell": "reconstructed_house:EPS\u00d7(8.5+2g)",
+      "status": "VALIDATED",
+      "reason": "Graham Growth Intrinsic Value (house)",
+      "source": "workbook"
+    },
+    {
+      "name": "graham_multiple",
+      "value": 15.178486464617528,
+      "cell": "Final Metrics!L32 / reconstructed 8.5+2g",
+      "status": "VALIDATED",
+      "reason": "Graham Value Multiple",
+      "source": "workbook"
+    },
+    {
+      "name": "eps",
+      "value": 11.8,
+      "cell": "Income!L71",
+      "status": "VALIDATED",
+      "reason": "Diluted EPS feeding Graham IV",
+      "source": "workbook"
+    },
+    {
+      "name": "eps_cagr",
+      "value": 0.03339243232308764,
+      "cell": "Final Metrics!L31 / EPS series",
+      "status": "VALIDATED",
+      "reason": "EPS 10y CAGR for Graham multiple",
+      "source": "workbook"
+    },
+    {
+      "name": "current_price",
+      "value": 341.88,
+      "cell": "Inputs!B63",
+      "status": "VALIDATED",
+      "reason": "Live/current price present",
+      "source": "workbook:Inputs!B63"
+    },
+    {
+      "name": "max_pe10_to_enter",
+      "value": 15.7060963353699,
+      "cell": "Inputs!B66",
+      "status": "VALIDATED",
+      "reason": "Entry multiple guide",
+      "source": "workbook/CRF"
+    },
+    {
+      "name": "max_price_to_buy",
+      "value": 103.3497962484995,
+      "cell": "Inputs!B67",
+      "status": "VALIDATED",
+      "reason": "CRF max buy price (optional cross-check vs 25% entry)",
+      "source": "bloomberg_custom_run"
+    },
+    {
+      "name": "current_e10",
+      "value": 6.580234454296405,
+      "cell": "Inputs!B64",
+      "status": "VALIDATED",
+      "reason": "E10 supporting PE10 valuation context",
+      "source": null
+    },
+    {
+      "name": "current_pe10",
+      "value": 51.95559556039492,
+      "cell": "Inputs!B65",
+      "status": "VALIDATED",
+      "reason": "Current PE10",
+      "source": null
+    },
+    {
+      "name": "wacc",
+      "value": null,
+      "cell": "Final Metrics!L7",
+      "status": "WATCH",
+      "reason": "WACC context (not primary Graham driver)",
+      "source": null
+    },
+    {
+      "name": "exit_price",
+      "value": 130.044408046724,
+      "cell": "Inputs!B68",
+      "status": "WATCH",
+      "reason": "1st exit price (PE10 percentile)",
+      "source": null
+    }
+  ],
+  "assumptions": {
+    "house_mos_threshold": 0.25,
+    "intrinsic_method": "graham_growth",
+    "pe_multiplier": 8.5,
+    "growth_multiplier": 2.0,
+    "eps_cagr": 0.03339243232308764,
+    "exit_price": 130.044408046724
+  },
+  "workbook_intrinsic_value": 179.10614028248685,
+  "independent_intrinsic_value": 179.10614028248685,
+  "intrinsic_difference": 0.0,
+  "intrinsic_decision": "VALIDATED",
+  "current_price": 341.88,
+  "current_price_source": "workbook:Inputs!B63",
+  "current_price_decision": "VALIDATED",
+  "margin_of_safety": -0.908812280030074,
+  "required_mos_threshold": 0.25,
+  "meets_mos_threshold": false,
+  "required_entry_price": 134.32960521186513,
+  "price_gap_to_entry": 207.55039478813487,
+  "pct_decline_to_entry": 0.6070855118408063,
+  "workbook_max_price_to_buy": 103.3497962484995,
+  "attractiveness": "EXPENSIVE",
+  "sensitivity": {
+    "cases": [
+      {
+        "case": "multiple_-15%",
+        "graham_multiple": 12.901713494924898,
+        "intrinsic": 152.24021924011382,
+        "mos": -1.245661505917734,
+        "meets_25pct": false,
+        "entry_price": 114.18016443008537
+      },
+      {
+        "case": "base",
+        "graham_multiple": 15.178486464617528,
+        "intrinsic": 179.10614028248685,
+        "mos": -0.908812280030074,
+        "meets_25pct": false,
+        "entry_price": 134.32960521186513
+      },
+      {
+        "case": "multiple_+15%",
+        "graham_multiple": 17.455259434310157,
+        "intrinsic": 205.97206132485988,
+        "mos": -0.6598367652435425,
+        "meets_25pct": false,
+        "entry_price": 154.47904599364492
+      },
+      {
+        "case": "eps_-10%",
+        "eps": 10.620000000000001,
+        "intrinsic": 161.19552625423816,
+        "mos": -1.1209025333667488,
+        "meets_25pct": false,
+        "entry_price": 120.89664469067861
+      },
+      {
+        "case": "eps_+10%",
+        "eps": 12.980000000000002,
+        "intrinsic": 197.01675431073554,
+        "mos": -0.7352838909364309,
+        "meets_25pct": false,
+        "entry_price": 147.76256573305164
+      }
+    ],
+    "robust_to_adverse": false,
+    "fragile_note": null
+  },
+  "decision": "VALIDATED",
+  "explanation": "Intrinsic=179.10614028248685, price=341.88, MOS=-90.9%, 25% entry=134.32960521186513, class=EXPENSIVE. Below intrinsic alone is not sufficient; need \u226525% MOS to be ATTRACTIVE.",
+  "summary": "Valuation review IDCC: IV=179.10614028248685, price=341.88, MOS=-0.9088, entry@25%=134.32960521186513, attractiveness=EXPENSIVE. Intrinsic=179.10614028248685, price=341.88, MOS=-90.9%, 25% entry=134.32960521186513, class=EXPENSIVE. Below intrinsic alone is not sufficient; need \u226525% MOS to be ATTRACTIVE.",
+  "evidence": {
+    "graham_iv_cell": "Final Metrics!L33 (latest) / B33 (10y avg)",
+    "current_price_cell": "Inputs!B63",
+    "max_price_to_buy_cell": "Inputs!B67",
+    "house_mos_threshold": 0.25
+  }
+}

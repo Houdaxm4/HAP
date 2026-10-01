@@ -35,9 +35,16 @@ export default function AnalysisHeader({
           </div>
           <p className="mt-1 text-sm text-hap-muted">
             {analysis.type}
-            {analysis.recommendationLabel
-              ? ` · ${analysis.recommendationLabel}`
-              : ""}
+            {analysis.finalRecommendation
+              ? ` · Final: ${analysis.finalRecommendation}${
+                  analysis.recommendationLabel &&
+                  analysis.recommendation?.toUpperCase() !== analysis.finalRecommendation.toUpperCase()
+                    ? ` (engine: ${analysis.recommendationLabel})`
+                    : ""
+                }`
+              : analysis.recommendationLabel
+                ? ` · ${analysis.recommendationLabel}`
+                : ""}
             {analysis.businessQualityScore != null
               ? ` · BQ ${formatScore(analysis.businessQualityScore)}`
               : ""}

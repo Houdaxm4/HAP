@@ -33,6 +33,8 @@ class AnalysisSummaryResponse(BaseModel):
     recommendation_label: str | None = None
     business_quality_score: float | None = None
     investment_attractiveness_score: float | None = None
+    # Headline = final (workbook-based) report; the engine fields above stay as the comparison view.
+    final_recommendation: str | None = None
 
 
 class AnalysisDetailResponse(AnalysisSummaryResponse):
@@ -50,6 +52,7 @@ class AnalysisDetailResponse(AnalysisSummaryResponse):
 def build_summary_response(
     analysis: Analysis,
     engine_result: dict[str, Any] | None = None,
+    final_report: dict[str, Any] | None = None,
 ) -> AnalysisSummaryResponse:
     """Serialize analysis metadata and optional persisted engine analytical fields."""
     recommendation = None
@@ -88,15 +91,17 @@ def build_summary_response(
         recommendation_label=recommendation_label,
         business_quality_score=business_quality_score,
         investment_attractiveness_score=investment_attractiveness_score,
+        final_recommendation=(final_report or {}).get("final_recommendation"),
     )
 
 
 def build_detail_response(
     analysis: Analysis,
     engine_result: dict[str, Any] | None = None,
+    final_report: dict[str, Any] | None = None,
 ) -> AnalysisDetailResponse:
     """Serialize detail metadata. Engine/validation JSON remain separate artifacts."""
-    summary = build_summary_response(analysis, engine_result)
+    summary = build_summary_response(analysis, engine_result, final_report)
     outputs = analysis.pipeline.outputs
     return AnalysisDetailResponse(
         **summary.model_dump(),
@@ -118,3 +123,14 @@ def load_engine_result_dict(output_service: Any, analysis: Analysis) -> dict[str
     if not path.exists():
         return None
     return output_service.read_json(analysis.analysis_id, "analysis_engine_result.json")
+
+
+def load_final_report_dict(output_service: Any, analysis: Analysis) -> dict[str, Any] | None:
+    """Load final_recommendation_report.json when present (best effort)."""
+    try:
+        path = output_service.artifact_path(analysis.analysis_id, "final_recommendation_report.json")
+        if not path.exists():
+            return None
+        return output_service.read_json(analysis.analysis_id, "final_recommendation_report.json")
+    except (OSError, ValueError):
+        return None

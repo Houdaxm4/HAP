@@ -7,6 +7,7 @@ import uuid
 from pathlib import Path
 
 from models.analysis import Analysis, CreateAnalysisRequest
+from services.safe_io import InvalidAnalysisIdError, validate_analysis_id, write_json_atomic
 from settings import analyses_dir as default_analyses_dir
 
 STORAGE_DIR = default_analyses_dir()
@@ -24,6 +25,11 @@ class AnalysisService:
         self.storage_dir.mkdir(parents=True, exist_ok=True)
 
     def _path_for(self, analysis_id: str) -> Path:
+        try:
+            validate_analysis_id(analysis_id)
+        except InvalidAnalysisIdError as exc:
+            # An unsafe id can never name a stored analysis; surface it as "not found".
+            raise AnalysisNotFoundError(f"Analysis '{analysis_id}' not found.") from exc
         return self.storage_dir / f"{analysis_id}.json"
 
     def create(self, request: CreateAnalysisRequest) -> Analysis:
@@ -50,8 +56,7 @@ class AnalysisService:
     def save(self, analysis: Analysis) -> Analysis:
         """Persist the analysis record to disk."""
         path = self._path_for(analysis.analysis_id)
-        with path.open("w", encoding="utf-8") as handle:
-            json.dump(analysis.to_dict(), handle, indent=2)
+        write_json_atomic(path, analysis.to_dict())
         return analysis
 
     def update(self, analysis: Analysis) -> Analysis:

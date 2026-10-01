@@ -9,9 +9,15 @@ from fastapi import UploadFile
 
 from models.analysis import Analysis, AnalysisFiles, UploadedFileMetadata
 from models.common import utc_now_iso
+from services.safe_io import validate_analysis_id
+from settings import max_upload_bytes
 from settings import uploads_dir as default_uploads_dir
 
 UPLOADS_DIR = default_uploads_dir()
+
+_WORKBOOK_EXTENSIONS = {".xlsx", ".xlsm"}
+_ZIP_MAGIC = b"PK\x03\x04"
+_UPLOAD_CHUNK_BYTES = 1024 * 1024
 
 # Form field names accepted by the upload endpoint.
 PREFILLED_WORKBOOK_FIELD = "prefilled_workbook"
@@ -32,7 +38,7 @@ class FileService:
 
     def analysis_upload_dir(self, analysis_id: str) -> Path:
         """Return (and create) the upload directory for an analysis."""
-        directory = self.uploads_dir / analysis_id
+        directory = self.uploads_dir / validate_analysis_id(analysis_id)
         directory.mkdir(parents=True, exist_ok=True)
         return directory
 
@@ -46,14 +52,46 @@ class FileService:
         directory = self.analysis_upload_dir(analysis_id)
         destination = directory / stored_filename
 
-        content = await upload.read()
-        destination.write_bytes(content)
-
         original_name = upload.filename or stored_filename
+        if stored_filename.lower().endswith((".xlsx", ".xlsm")):
+            suffix = Path(original_name).suffix.lower()
+            if suffix not in _WORKBOOK_EXTENSIONS:
+                raise FileUploadError(
+                    f"Unsupported file extension '{suffix}' for a workbook. "
+                    f"Allowed: {', '.join(sorted(_WORKBOOK_EXTENSIONS))}"
+                )
+
+        # Stream to disk in chunks so a huge upload cannot exhaust memory, and stop at the cap.
+        limit = max_upload_bytes()
+        temp_destination = destination.with_name(destination.name + ".part")
+        size = 0
+        first_chunk = True
+        try:
+            with temp_destination.open("wb") as handle:
+                while True:
+                    chunk = await upload.read(_UPLOAD_CHUNK_BYTES)
+                    if not chunk:
+                        break
+                    if first_chunk:
+                        first_chunk = False
+                        if stored_filename.lower().endswith((".xlsx", ".xlsm")) and not chunk.startswith(_ZIP_MAGIC):
+                            raise FileUploadError("The uploaded workbook is not a valid .xlsx file.")
+                    size += len(chunk)
+                    if size > limit:
+                        raise FileUploadError(
+                            f"Upload exceeds the {limit // (1024 * 1024)} MB limit (HAP_MAX_UPLOAD_MB)."
+                        )
+                    handle.write(chunk)
+            if size == 0:
+                raise FileUploadError("The uploaded file is empty.")
+            temp_destination.replace(destination)
+        finally:
+            temp_destination.unlink(missing_ok=True)
+
         return UploadedFileMetadata(
             filename=original_name,
             stored_filename=stored_filename,
-            size_bytes=len(content),
+            size_bytes=size,
             uploaded_at=utc_now_iso(),
         )
 

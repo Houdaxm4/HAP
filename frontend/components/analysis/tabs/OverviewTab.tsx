@@ -36,8 +36,13 @@ export default function OverviewTab({ analysis }: { analysis: AnalysisDetail }) 
         <div className="rounded border border-hap-border bg-hap-panel p-4">
           <p className="text-xs uppercase tracking-wider text-hap-muted">Recommendation</p>
           <p className="mt-1 text-xl font-semibold text-hap-orange">
-            {recommendation?.recommendation_label ?? analysis.recommendationLabel ?? "—"}
+            {analysis.finalRecommendation ?? recommendation?.recommendation_label ?? analysis.recommendationLabel ?? "—"}
           </p>
+          {analysis.finalRecommendation && (
+            <p className="mt-0.5 text-xs text-hap-muted">
+              Final report (headline). Engine view: {recommendation?.recommendation_label ?? analysis.recommendationLabel ?? "—"}
+            </p>
+          )}
         </div>
         <div className="rounded border border-hap-border bg-hap-panel p-4">
           <p className="text-xs uppercase tracking-wider text-hap-muted">Business Quality</p>

@@ -67,6 +67,7 @@ export function mapSummaryToAnalysisDetail(summary: AnalysisSummary): AnalysisDe
     isComplete: summary.is_complete,
     recommendation: summary.recommendation,
     recommendationLabel: summary.recommendation_label,
+    finalRecommendation: summary.final_recommendation ?? null,
     businessQualityScore: summary.business_quality_score,
     investmentAttractivenessScore: summary.investment_attractiveness_score,
     decisionLog: [],

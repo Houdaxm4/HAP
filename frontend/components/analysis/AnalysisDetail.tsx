@@ -17,6 +17,9 @@ import RecommendationTab from "./tabs/RecommendationTab";
 import VerificationTab from "./tabs/VerificationTab";
 import DeliverablesTab from "./tabs/DeliverablesTab";
 import AnalystReviewTab from "./tabs/AnalystReviewTab";
+import AnalystChat from "../AnalystChat";
+import AgentRunPanel from "../AgentRunPanel";
+import RecommendationConflictBanner from "../RecommendationConflictBanner";
 
 type AnalysisDetailProps = {
   analysis: AnalysisDetailType;
@@ -46,6 +49,10 @@ export default function AnalysisDetail({ analysis }: AnalysisDetailProps) {
         return <VerificationTab analysis={analysis} />;
       case "Deliverables":
         return <DeliverablesTab analysis={analysis} />;
+      case "Ask HAP":
+        return <AnalystChat analysisId={analysis.id} />;
+      case "Agent Run":
+        return <AgentRunPanel analysisId={analysis.id} />;
     }
   };
 
@@ -63,6 +70,7 @@ export default function AnalysisDetail({ analysis }: AnalysisDetailProps) {
           />
           <AnalysisTabs activeTab={activeTab} onTabChange={setActiveTab} />
           <div className="flex-1 overflow-y-auto px-6 py-6 lg:px-8">
+            <RecommendationConflictBanner analysisId={analysis.id} />
             {renderTab()}
           </div>
         </div>

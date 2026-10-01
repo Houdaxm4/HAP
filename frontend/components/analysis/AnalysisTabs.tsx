@@ -10,6 +10,8 @@ const TABS = [
   "Recommendation",
   "Verification",
   "Deliverables",
+  "Ask HAP",
+  "Agent Run",
 ] as const;
 
 export type AnalysisTab = (typeof TABS)[number];

@@ -11,6 +11,7 @@ from html import unescape
 from typing import Any
 
 from models.quarterly_update import QuarterlyResearchReport, ResearchSourceEntry
+from settings import sec_user_agent
 
 YAHOO_NEWS = "https://query2.finance.yahoo.com/v1/finance/search?q={query}&quotesCount=0&newsCount=10"
 SEC_USER_AGENT = "HAP-Platform contact@houda-analyst.com"
@@ -397,7 +398,7 @@ class QuarterlyResearchService:
 
     @staticmethod
     def _fetch_html(url: str) -> str | None:
-        ua = SEC_USER_AGENT if "sec.gov" in url.lower() else "HAP2-ModeA/1.0"
+        ua = (sec_user_agent() or SEC_USER_AGENT) if "sec.gov" in url.lower() else "HAP2-ModeA/1.0"
         req = urllib.request.Request(url, headers={"User-Agent": ua}, method="GET")
         try:
             with urllib.request.urlopen(req, timeout=8) as resp:

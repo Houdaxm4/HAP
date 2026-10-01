@@ -74,3 +74,9 @@ npm run dev
 - Do **not** rely on only a local folder (e.g. `Downloads/HAP`) without pushing to GitHub — other machines will not see those changes.
 - Runtime data (`backend/storage/uploads`, `backend/storage/outputs`, `backend/storage/analyses`) is local and gitignored; only code syncs through GitHub.
 - Before starting work, always `git pull`. Before leaving a machine, always `git push`.
+
+## HAP Analyst agent
+
+Each analysis has an **Ask HAP** tab: a read-only Claude assistant that explains and cites the
+analysis's stored results. Set `ANTHROPIC_API_KEY` in the backend environment and see
+`docs/HAP_ANALYST_AGENT.md`.
