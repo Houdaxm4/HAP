@@ -39,7 +39,7 @@ def _ratio(a: float | None, b: float | None) -> float | None:
     return None if a is None or not b else a / b
 
 
-def read_history(path: Path) -> list[dict[str, Any]]:
+def read_history(path: Path, filings_dir: Path | None = None) -> list[dict[str, Any]]:
     from services.annual_period_service import detect_year_columns
 
     wb = load_workbook(path, data_only=True)
@@ -70,9 +70,47 @@ def read_history(path: Path) -> list[dict[str, Any]]:
     for item in history:
         cost = item.get("cost")
         item["gross_margin_comparable"] = True
+        item["gross_margin_basis"] = "workbook"
         if (cost is None or cost == 0) and len(populated) >= 3 and item["revenue"]:
             item["gross_margin_comparable"] = False
+    if filings_dir is not None:
+        _apply_recast(history, filings_dir)
     return history
+
+
+def _fy_int(token: str) -> int | None:
+    digits = "".join(ch for ch in str(token) if ch.isdigit())
+    return int(digits) if digits else None
+
+
+def _apply_recast(history: list[dict[str, Any]], filings_dir: Path) -> None:
+    """Re-express cost of revenue on the latest definition using the 10-K income statements (see cost_recast)."""
+    try:
+        from services.cost_recast import load_filings, recast_cost
+
+        filings = load_filings(filings_dir)
+        workbook_cost = {_fy_int(h["fiscal_year"]): h.get("cost") for h in history if _fy_int(h["fiscal_year"])}
+        result = recast_cost(workbook_cost, filings)
+    except Exception:  # noqa: BLE001 - recast is an enhancement; the plain history still stands
+        return
+    if not result.get("label"):
+        return
+    for item in history:
+        info = result["years"].get(_fy_int(item["fiscal_year"]))
+        if not info or not item["revenue"]:
+            continue
+        item["recast_label"] = result["label"]
+        item["recast_source_filing_year"] = info["source_filing_year"]
+        if info["status"] == "recast":
+            item["cost_recast"] = info["value"]
+            item["gross_margin"] = (item["revenue"] - info["value"]) / item["revenue"]
+            item["gross_margin_comparable"] = True
+            item["gross_margin_basis"] = "recast"
+        elif info["status"] == "matches":
+            item["gross_margin_comparable"] = True
+            item["gross_margin_basis"] = "latest_definition"
+        else:
+            item["gross_margin_basis"] = "prior_definition"
 
 
 JUMP_POINTS = 0.20  # a gross-margin move this large in one year usually means a cost-classification change
@@ -84,6 +122,10 @@ def margin_jumps(history: list[dict[str, Any]]) -> list[tuple[str, str, float]]:
     for prev, cur in zip(history, history[1:]):
         if not (prev.get("gross_margin_comparable", True) and cur.get("gross_margin_comparable", True)):
             continue
+        if prev.get("gross_margin_basis") != cur.get("gross_margin_basis") and "prior_definition" in (
+            prev.get("gross_margin_basis"), cur.get("gross_margin_basis")
+        ):
+            continue  # a known definition change, explained in the note
         a, b = prev.get("gross_margin"), cur.get("gross_margin")
         if a is not None and b is not None and abs(b - a) >= JUMP_POINTS:
             out.append((prev["fiscal_year"], cur["fiscal_year"], b - a))
@@ -102,6 +144,10 @@ def table_rows(history: list[dict[str, Any]]) -> list[list[str]]:
     rows = []
     for h in history:
         gross = _pct(h["gross_margin"]) if h.get("gross_margin_comparable", True) else "not comparable"
+        if h.get("gross_margin_basis") == "prior_definition" and h.get("gross_margin_comparable", True):
+            gross += " (prior definition)"
+        elif h.get("gross_margin_basis") == "recast":
+            gross += " (recast)"
         rows.append([
             h["fiscal_year"],
             "n/a" if h["revenue"] is None else f"{h['revenue']:,.1f}",
@@ -114,6 +160,16 @@ def note_text(history: list[dict[str, Any]]) -> str | None:
     bad = noncomparable_years(history)
     jumps = margin_jumps(history)
     parts = []
+    recast_years = [h["fiscal_year"] for h in history if h.get("gross_margin_basis") == "recast"]
+    prior_years = [h["fiscal_year"] for h in history if h.get("gross_margin_basis") == "prior_definition"]
+    if recast_years or prior_years:
+        label = next((h.get("recast_label") for h in history if h.get("recast_label")), "the latest line")
+        parts.append(
+            f"Cost of revenue is shown on one definition: the company's '{label}' expense line as presented in its latest "
+            "filings."
+            + (f" {', '.join(recast_years)} were recast from the 10-K income statements (the data provider used a different line)." if recast_years else "")
+            + (f" {', '.join(prior_years)} predate the company's change in presentation and cannot be recast; their gross margin is on the earlier definition and is not comparable with later years." if prior_years else "")
+        )
     if bad:
         parts.append(
             f"Gross margin for {', '.join(bad)} is not comparable: the data provider left cost of revenue blank and "

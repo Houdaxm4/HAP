@@ -124,6 +124,28 @@ class NewCompanyDeliverablesService:
             ),
         )
 
+    @staticmethod
+    def _recast_note(output_dir: Path) -> str | None:
+        """Sentence about workbook cells HAP corrected, from new_company_cost_recast_report.json (if any)."""
+        import json
+
+        report_path = output_dir / "new_company_cost_recast_report.json"
+        if not report_path.exists():
+            return None
+        try:
+            with report_path.open("r", encoding="utf-8") as handle:
+                report = json.load(handle)
+        except (OSError, ValueError):
+            return None
+        years = [y["fiscal_year"] for y in report.get("years", []) if y.get("status") == "written"]
+        if not years:
+            return None
+        return (
+            f"Workbook cells for {', '.join(years)} were corrected to the company's latest cost presentation "
+            f"('{str(report.get('label', '')).title()}' line of the 10-K); each changed cell is shaded and its comment "
+            "keeps the original value. Total costs and operating income are unchanged."
+        )
+
     def _write_word(
         self,
         path: Path,
@@ -205,7 +227,8 @@ class NewCompanyDeliverablesService:
         history = []
         if workbook_path is not None:
             try:
-                history = read_history(workbook_path)
+                filing_dirs = sorted(path.parent.glob("sec_cache/*/filings"))
+                history = read_history(workbook_path, filing_dirs[0] if filing_dirs else None)
             except Exception:  # noqa: BLE001 - a missing table must not stop the document
                 history = []
         if history:
@@ -218,6 +241,9 @@ class NewCompanyDeliverablesService:
             note = note_text(history)
             if note:
                 doc.add_paragraph(note)
+            corrected = self._recast_note(path.parent)
+            if corrected:
+                doc.add_paragraph(corrected)
 
         doc.add_heading("5. Cash generation and conversion", level=1)
         doc.add_paragraph(

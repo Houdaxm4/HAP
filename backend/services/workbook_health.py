@@ -105,10 +105,13 @@ def health_report(output_dir: Path, *, quarterly: bool = False) -> dict[str, Any
         return {"available": False, "findings": [], "notes": []}
     report = scan_errors(workbook, quarterly=quarterly)
     findings = list(report["findings"])
+    _history: list = []
+    bad_years: list[str] = []
     try:
         from services.margin_history import margin_jumps, noncomparable_years, read_history
 
-        _history = read_history(workbook)
+        _filing_dirs = sorted(output_dir.glob("sec_cache/*/filings"))
+        _history = read_history(workbook, _filing_dirs[0] if _filing_dirs else None)
         bad_years = noncomparable_years(_history)
         for start, end, change in margin_jumps(_history):
             findings.append(
@@ -117,7 +120,14 @@ def health_report(output_dir: Path, *, quarterly: bool = False) -> dict[str, Any
             )
     except Exception:  # noqa: BLE001 - optional check
         bad_years = []
-    if bad_years:
+    recast_years = [h["fiscal_year"] for h in _history if h.get("gross_margin_basis") == "recast"] if _history else []
+    if recast_years:
+        findings.append(
+            f"Workbook cost of revenue differs from the company's latest income-statement definition in "
+            f"{', '.join(recast_years)}. The Word margin table uses figures recast from the 10-K; the Excel still holds "
+            "the data provider's values (not edited)."
+        )
+    elif bad_years:
         findings.append(
             f"Cost of revenue is blank in {', '.join(bad_years)} while other years are populated: gross margin there "
             "(100%) is not comparable, and ratios that divide by cost of sales show #DIV/0!. Totals still reconcile; "

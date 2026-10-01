@@ -19,6 +19,7 @@ from services.annual_formula_guard_service import AnnualFormulaGuardService
 from services.annual_valuation_extract_service import AnnualValuationExtractService
 from services.current_data_refresh_service import CurrentDataRefreshService
 from services.excel_recalc_service import ExcelRecalcService, genuine_excel_com_recalc
+from services.cost_recast_writer import CostRecastWriter
 from services.new_company_buyback_service import NewCompanyBuybackService
 from services.new_company_deliverables_service import NewCompanyDeliverablesService
 from services.new_company_lease_service import NewCompanyLeaseService
@@ -82,6 +83,7 @@ class NewCompanyRunner:
         self.rd = NewCompanyRdService()
         self.leases = NewCompanyLeaseService()
         self.buybacks = NewCompanyBuybackService()
+        self.cost_recast = CostRecastWriter()
         self.seasonality = NewCompanySeasonalityService()
         self.projection = NewCompanyProjectionService()
         self.gates = NewCompanyOutputGateService()
@@ -258,6 +260,13 @@ class NewCompanyRunner:
                 sec_manifest=sec_manifest,
                 cache_dir=self.output_service.analysis_output_dir(analysis_id) / "sec_cache",
             ),
+        )
+        # Put cost of revenue on the company's latest definition (flagged cells; skipped unless totals reconcile).
+        _sec_cache = self.output_service.analysis_output_dir(analysis_id) / "sec_cache"
+        _filing_dirs = sorted(_sec_cache.glob("*/filings"))
+        cost_recast = timed(
+            "cost_of_revenue_recast",
+            lambda: self.cost_recast.apply(workbook_path=working_path, filings_dir=_filing_dirs[0] if _filing_dirs else None),
         )
         current_refresh = self.current.apply(
             analysis_id=analysis_id,
@@ -513,6 +522,7 @@ class NewCompanyRunner:
             "new_company_lease_report.json": leases,
             "lease_rate_review.json": lease_review,
             "new_company_buyback_report.json": buybacks,
+            "new_company_cost_recast_report.json": cost_recast,
             "seasonality_projection_report.json": seasonality,
             "new_company_pe10_report.json": pe10,
             "new_company_statement_validation_report.json": statements,

@@ -72,3 +72,19 @@ def flag_suggestion(ws: Worksheet, addr: str, *, suggestion: Any, reason: str) -
 def style_hap_analysis_cell(cell) -> None:
     cell.fill = HAP_FILL
     set_comment(cell, HAP_ANALYSIS_LABEL)
+
+
+def flag_recast(ws: Worksheet, addr: str, *, old_value: Any, new_value: Any, source: str, issue: str) -> None:
+    """Mark a cell HAP changed on purpose, keeping the original value in the comment (reversible by hand)."""
+    cell = ws[addr]
+    cell.fill = HAP_FILL
+    set_comment(
+        cell,
+        (
+            "HAP RECAST - value changed from SEC evidence.\n"
+            f"Original (data provider): {old_value}\n"
+            f"New: {new_value}\n"
+            f"Source: {source}\n"
+            f"Reason: {issue}"
+        ),
+    )
