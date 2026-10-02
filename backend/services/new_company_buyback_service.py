@@ -23,13 +23,15 @@ _DOLLAR_TAGS = (
     "PaymentsForRepurchaseOfEquity",
     "TreasuryStockValueAcquiredCostMethod",
     "StockRepurchasedDuringPeriodValue",
+    "StockRepurchasedAndRetiredDuringPeriodValue",  # companies that retire repurchased shares (e.g. Cisco)
 )
 _SHARE_TAGS = (
     "StockRepurchasedDuringPeriodShares",
+    "StockRepurchasedAndRetiredDuringPeriodShares",  # companies that retire repurchased shares (e.g. Cisco)
     "TreasuryStockSharesAcquired",
     "CommonStockSharesRepurchased",
 )
-_PERIOD_VALUE_TAGS = ("StockRepurchasedDuringPeriodValue",)
+_PERIOD_VALUE_TAGS = ("StockRepurchasedDuringPeriodValue", "StockRepurchasedAndRetiredDuringPeriodValue")
 _AVG_PRICE_TAGS = (
     "TreasuryStockAcquiredAverageCostPerShare",
     "StockRepurchasedDuringPeriodAverageCostPerShare",
@@ -249,6 +251,20 @@ def _economic_year(entry: dict[str, Any]) -> int | None:
         return int(end[:4])
     fy = entry.get("fy")
     return int(fy) if fy else None
+
+
+def _annual_entries(entries: list[dict[str, Any]], year_n: int) -> list[dict[str, Any]]:
+    """Annual-duration facts for one fiscal year, 10-K full-year figures first.
+
+    A filing can also carry 52-week facts inside a 10-Q (restated or re-presented amounts). The 10-K figure is the
+    one the company reports for the year, so it leads; the others are only a fallback.
+    """
+    annual = [
+        e for e in entries
+        if e.get("val") is not None and _economic_year(e) == year_n and _is_annual_duration(e, year_n)
+    ]
+    ten_k = [e for e in annual if e.get("form") in {"10-K", "10-K/A"} and e.get("fp") in {None, "FY"}]
+    return ten_k or annual
 
 
 def _is_annual_duration(entry: dict[str, Any], target_year: int) -> bool:
@@ -534,18 +550,13 @@ class NewCompanyBuybackService:
         if not company_facts or dollars_m is None:
             return True
         year_n = _fy_int(fy)
+        denom = max(abs(dollars_m), 1e-6)
         for tag in _PERIOD_VALUE_TAGS:
-            for entry in _iter_tag_entries(company_facts, tag):
-                if _economic_year(entry) != year_n:
-                    continue
-                if not _is_annual_duration(entry, year_n):
-                    continue
-                if entry.get("val") is None:
-                    continue
-                val = _scale(float(entry["val"]))
-                denom = max(abs(dollars_m), 1e-6)
-                if abs(val - dollars_m) / denom > _VALUE_RECONCILE_TOL:
-                    return False
+            values = [_scale(float(e["val"])) for e in _annual_entries(_iter_tag_entries(company_facts, tag), year_n)]
+            # Cumulative program-to-date facts are excluded by duration. Reject only when the company's own annual
+            # figure(s) for the year all disagree with the cash-flow dollars.
+            if values and all(abs(v - dollars_m) / denom > _VALUE_RECONCILE_TOL for v in values):
+                return False
         return True
 
     @staticmethod
@@ -556,13 +567,7 @@ class NewCompanyBuybackService:
             return None, None
         year_n = _fy_int(fy)
         for tag in _SHARE_TAGS:
-            for entry in _iter_tag_entries(company_facts, tag):
-                if entry.get("val") is None:
-                    continue
-                if _economic_year(entry) != year_n:
-                    continue
-                if not _is_annual_duration(entry, year_n):
-                    continue
+            for entry in _annual_entries(_iter_tag_entries(company_facts, tag), year_n):
                 val = _scale(float(entry["val"]), shares=True)
                 return val, f"sec_xbrl:{tag}"
         return None, None
