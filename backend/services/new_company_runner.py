@@ -465,6 +465,11 @@ class NewCompanyRunner:
                         if quarterly_presentation is not None
                         else None
                     ),
+                    material_differences=(
+                        sum(len(s.source_discrepancies) for s in quarterly_presentation.statements)
+                        if quarterly_presentation is not None
+                        else 0
+                    ),
                     data_unavailable_flags=list(statements.flagged_missing)
                     + (list(quarterly_presentation.flagged_missing) if quarterly_presentation is not None else []),
                 ),

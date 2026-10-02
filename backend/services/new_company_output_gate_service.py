@@ -52,6 +52,7 @@ class NewCompanyOutputGateService:
         quarterly_unresolved_dependencies: list | None = None,
         quarterly_statement_blockers: list[str] | None = None,
         data_unavailable_flags: list[str] | None = None,
+        material_differences: int = 0,
     ) -> NewCompanyOutputGateReport:
         blockers: list[str] = []
         warnings: list[str] = []
@@ -82,12 +83,19 @@ class NewCompanyOutputGateService:
             warnings.append("RD_LOOKBACK_COVERAGE_INCOMPLETE")
 
         # Gate B — financial-statement completeness
-        if statements is None or statements.unresolved_material:
-            blockers.append("NEW_COMPANY_ANNUAL_PERIOD_RANGE_INVALID" if statements is None else "statement_material_unresolved")
+        if statements is None:
+            blockers.append("NEW_COMPANY_ANNUAL_PERIOD_RANGE_INVALID")
             gates["B_statements"] = "fail"
+        elif statements.unresolved_material:
+            # Material differences from SEC are flagged for the analyst (shaded cells and the report's Flags section);
+            # the supplied values stay, and they do not block the report.
+            gates["B_statements"] = "warn"
+            warnings.append(
+                f"MATERIAL_DIFFERENCE: {len(statements.unresolved_material)} workbook value(s) differ materially from SEC; "
+                "kept as supplied and flagged for review."
+            )
         else:
             gates["B_statements"] = "pass"
-            warnings.extend(statements.unresolved_material)
 
         # Gate C — PE10/E10
         if pe10 is None or any(o.missing for o in pe10.fiscal_year_pe10):
@@ -213,6 +221,11 @@ class NewCompanyOutputGateService:
                 elif "RECONCILIATION" in w:
                     warnings.append("BUYBACK_RECONCILIATION_FAILED")
 
+        if material_differences:
+            warnings.append(
+                f"MATERIAL_DIFFERENCE: {material_differences} quarterly value(s) differ materially from SEC; "
+                "kept as supplied and flagged for review."
+            )
         for flag in (data_unavailable_flags or [])[:20]:
             warnings.append(f"DATA_UNAVAILABLE: {flag}")
         if quarterly_statement_blockers:

@@ -489,7 +489,8 @@ def test_preserve_does_not_rewrite_healthy(healthy_quarterly_wb: Path, tmp_path:
         assert after["Last Quarter IS Standardized"]["C11"].value == before_rev
         assert revenue["workbook_value"] == before_rev
         assert revenue["action"] == "flag_for_upstream"
-        assert report.input_blockers
+        # a material difference from SEC is flagged (source_discrepancies, shaded cell) but no longer blocks
+        assert not any("STATEMENT_DISCREPANCY" in b for b in report.input_blockers)
         assert after["Last Quarter IS Standardized"]["A12"].value == "Cost of Revenue"
         assert after["Last Quarter IS Standardized"]["C2"].value == "=C4"
         assert any(

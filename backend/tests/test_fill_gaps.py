@@ -76,3 +76,15 @@ def test_flags_note_the_quarterly_check_rows(tmp_path):
     }))
     titles = [f["title"] for f in collect_flags(tmp_path)["flags"]["notes"]]
     assert "Quarterly cash-flow check rows show differences" in titles
+
+
+def test_material_differences_from_sec_are_warnings_not_blockers():
+    from types import SimpleNamespace
+
+    from services.annual_output_gate_service import AnnualOutputGateService
+
+    blockers, warnings, gates = [], [], {}
+    AnnualOutputGateService._apply_statement_gates(
+        gates, blockers, warnings, SimpleNamespace(items=[], discrepancies=3), None)
+    assert not blockers and gates["statements"] == "warn"
+    assert any(w.startswith("MATERIAL_DIFFERENCE: 3 annual statement value(s)") for w in warnings)

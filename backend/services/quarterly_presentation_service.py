@@ -201,13 +201,8 @@ class QuarterlyPresentationService:
             for stmt in statements:
                 if stmt.decision in _INCOMPLETE_DECISIONS:
                     input_blockers.append(stmt.reason)
-                for disc in stmt.source_discrepancies:
-                    input_blockers.append(
-                        "STATEMENT_DISCREPANCY "
-                        f"{disc.get('cell')} workbook={disc.get('workbook_value')} "
-                        f"sec={disc.get('sec_value')} period={disc.get('fiscal_period')} "
-                        f"fy={disc.get('fiscal_year')}"
-                    )
+                # Material differences from SEC (stmt.source_discrepancies) are flagged in the workbook and the report;
+                # they no longer block.
             summary = (
                 f"Quarterly statement validation: PRESERVE={preserve}, "
                 f"INCOMPLETE={incomplete}; filled_from_sec={len(filled_from_sec)}; "

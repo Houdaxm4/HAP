@@ -220,8 +220,12 @@ class AnnualOutputGateService:
                 blockers.append(f"STATEMENT_INCOMPLETE: {detail}")
                 gates["statements"] = "fail"
             elif disc:
-                blockers.append(f"STATEMENT_DISCREPANCY: {disc} material annual statement difference(s)")
-                gates["statements"] = "fail"
+                # Flagged for the analyst (shaded cells and the report's Flags section); supplied values stay.
+                warnings.append(
+                    f"MATERIAL_DIFFERENCE: {disc} annual statement value(s) differ materially from the filing; "
+                    "kept as supplied and flagged for review."
+                )
+                gates["statements"] = "warn"
             else:
                 gates["statements"] = "pass"
         if restatement is not None:
