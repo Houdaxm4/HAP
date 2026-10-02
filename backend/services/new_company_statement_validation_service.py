@@ -81,6 +81,7 @@ class NewCompanyStatementValidationService:
         fiscal_years: list[str],
         company_facts: dict[str, Any] | None = None,
         filing_overrides: dict[str, dict[str, float]] | None = None,
+        yahoo_fallback: Any = None,
     ) -> NewCompanyStatementValidationReport:
         wb = load_workbook(workbook_path, data_only=False)
         sec = SecService()
@@ -199,6 +200,11 @@ class NewCompanyStatementValidationService:
                                 status = "immaterial_difference"
                         else:
                             status = "validated"
+                    elif bb is None and filing is None and self._try_yahoo(
+                        wb, ws=wb[sheet] if sheet in wb.sheetnames else None, row=row, col=col, fy=fy, concept=concept,
+                        ticker=ticker, yahoo=yahoo_fallback, filled=filled, cell_addr=cell_addr, sheet=sheet,
+                    ):
+                        status = "filled_from_yahoo"
                     elif bb is None and filing is None:
                         status = "missing_both"
                         if row and col and sheet in wb.sheetnames and dependencies.feeds_metrics(sheet, row, col):
@@ -255,6 +261,44 @@ class NewCompanyStatementValidationService:
 
     # Labels that look like an amount line but are rates, ratios or checks ("Cost of Debt", "Debt / Equity").
     _NOT_AN_AMOUNT = ("cost of", "ratio", "/", "%", "check", "per share", "rate", "yield")
+
+    def _try_yahoo(self, wb, *, ws, row, col, fy, concept, ticker, yahoo, filled, cell_addr, sheet) -> bool:
+        """Last resort for a blank cell SEC has nothing for: a Yahoo figure, only if its year provably lines up."""
+        if yahoo is None or ws is None or not row or not col:
+            return False
+        anchors = self._anchors(wb, fy)
+        found = yahoo.value(ticker, concept, fy, anchors)
+        if found is None or _is_formula(ws.cell(row, col).value):
+            return False
+        value, source = found
+        ws.cell(row, col).value = value
+        flag_filled(
+            ws, ws.cell(row, col).coordinate, value=value, source=source,
+            reason="Blank in the supplied workbook and not found in the SEC filings; Yahoo's figure is indicative only.",
+        )
+        filled.append(
+            StatementDiscrepancy(
+                fiscal_year=fy, statement=sheet, concept=concept, sheet=sheet, cell=cell_addr, old_value=None,
+                new_value=value, source=source,
+                reason="Blank in the supplied workbook, not in SEC; filled from Yahoo Finance (indicative).",
+                impact="Enables downstream formulas; verify against the filing before relying on it.",
+                action="fill_missing", material=False,
+            )
+        )
+        return True
+
+    def _anchors(self, wb, fy: str) -> dict[str, float | None]:
+        """The workbook's own revenue and net income for this fiscal year (used to prove a Yahoo year lines up)."""
+        out: dict[str, float | None] = {}
+        for concept, sheet, needles, _tags, _scale in _CHECKS:
+            if concept not in ("revenue", "net_income") or sheet not in wb.sheetnames:
+                continue
+            ws = wb[sheet]
+            col = detect_year_columns(ws, wb).get(fy)
+            row = self._find_row(ws, needles)
+            raw = ws.cell(row, col).value if row and col else None
+            out[concept] = float(raw) if isinstance(raw, (int, float)) and not isinstance(raw, bool) else None
+        return out
 
     @staticmethod
     def _find_row(ws, needles: tuple[str, ...]) -> int | None:

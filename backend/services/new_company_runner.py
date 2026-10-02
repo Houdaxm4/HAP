@@ -15,6 +15,7 @@ from models.new_company import (
     NewCompanyWorkflowState,
     CurrentDataAsOf,
 )
+from research.yahoo_fundamentals import YahooFallback, yahoo_fallback_enabled
 from services.completion_scope import quarterly_analysis_required
 from services.annual_formula_guard_service import AnnualFormulaGuardService
 from services.annual_valuation_extract_service import AnnualValuationExtractService
@@ -79,6 +80,7 @@ class NewCompanyRunner:
         self.periods = NewCompanyPeriodService()
         self.coverage = NewCompanySecCoverageService()
         self.statements = NewCompanyStatementValidationService()
+        self.yahoo = YahooFallback() if yahoo_fallback_enabled() else None
         self.pe10 = NewCompanyPe10Service()
         self.tax = NewCompanyTaxService()
         self.rd = NewCompanyRdService()
@@ -151,6 +153,7 @@ class NewCompanyRunner:
         statements = timed(
             "validate_prefilled_statements",
             lambda: self.statements.validate(
+                yahoo_fallback=self.yahoo,
                 analysis_id=analysis_id,
                 ticker=ticker,
                 workbook_path=working_path,

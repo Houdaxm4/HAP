@@ -63,6 +63,7 @@ class AnnualStatementValidationService:
         fiscal_year: str,
         company_facts: dict[str, Any] | None = None,
         filing_overrides: dict[str, float] | None = None,
+        yahoo_fallback: Any = None,
     ) -> AnnualStatementValidationReport:
         wb = load_workbook(workbook_path, data_only=False)
         items: list[StatementValidationItem] = []
@@ -111,6 +112,12 @@ class AnnualStatementValidationService:
                     bb = filing
                     filled += 1
                     status, reason = "FILLED_FROM_SEC", "Blank in the supplied workbook; filled from the 10-K."
+                elif bb is None and filing is None and ws is not None and col and row and self._yahoo_fill(
+                    wb, ws, row, col, fy, concept, ticker, yahoo_fallback
+                ):
+                    bb = ws.cell(row, col).value
+                    filled += 1
+                    status, reason = "FILLED_FROM_YAHOO", "Blank in the workbook and not in SEC; filled from Yahoo Finance (indicative)."
                 elif bb is None and filing is None:
                     status, reason = "NOT_AVAILABLE", "Blank in the workbook and not found in the filing; no reported metric uses it."
                     if ws is not None and col and row and dependencies.feeds_metrics(sheet, row, col):
@@ -162,6 +169,34 @@ class AnnualStatementValidationService:
                 f"from the 10-K, {missing_important} needed value(s) unavailable; supplied values preserved."
             ),
         )
+
+    @staticmethod
+    def _yahoo_fill(wb, ws, row, col, fy, concept, ticker, yahoo) -> bool:
+        """Last resort for a blank cell SEC has nothing for; only if the Yahoo year provably lines up."""
+        if yahoo is None:
+            return False
+        anchors: dict[str, float | None] = {}
+        for anchor, sheet, needles in (
+            ("revenue", "Income - GAAP", ("revenue", "revenues", "total revenue", "sales")),
+            ("net_income", "Income - GAAP", ("net income", "net income (loss)", "net income, gaap")),
+        ):
+            if sheet in wb.sheetnames:
+                a_ws = wb[sheet]
+                a_col = detect_year_columns(a_ws).get(fy)
+                a_row = NewCompanyStatementValidationService._find_row(a_ws, needles)
+                raw = a_ws.cell(a_row, a_col).value if a_row and a_col else None
+                anchors[anchor] = float(raw) if isinstance(raw, (int, float)) and not isinstance(raw, bool) else None
+        found = yahoo.value(ticker, concept, fy, anchors)
+        if found is None:
+            return False
+        value, source = found
+        cell = ws.cell(row, col)
+        cell.value = value
+        flag_filled(
+            ws, cell.coordinate, value=value, source=source,
+            reason="Blank in the supplied workbook and not found in the SEC filing; Yahoo's figure is indicative only.",
+        )
+        return True
 
     @staticmethod
     def _classify(bb: float | None, filing: float | None) -> tuple[str, str]:

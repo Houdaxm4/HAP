@@ -194,6 +194,14 @@ def collect_flags(output_dir: Path, authorized: bool | None = None) -> dict[str,
             code, _, rest = text.partition(":")
             flags["notes"].append(_flag("notes", code.replace("_", " ").capitalize().replace("Pe10", "PE10") if rest else text, rest.strip() or "", "Output gate"))
 
+    yahoo = [f for f in flags["filled"] if "yahoo" in f["source"].lower()]
+    if yahoo:
+        flags["notes"].append(_flag(
+            "notes", f"{len(yahoo)} value(s) came from Yahoo Finance, not SEC",
+            "Yahoo's free data is unofficial and indicative only. It was used only where SEC had nothing for that year and "
+            "Yahoo's revenue or net income for the same period matched your workbook. Verify these against the filing.",
+            "Yahoo Finance",
+        ))
     counts = {category: len(items) for category, items in flags.items()}
     return {"authorized": authorized, "gate_status": status, "flags": flags, "counts": counts}
 
@@ -203,10 +211,11 @@ def _annual_and_quarterly_sources(output_dir: Path, flags: dict[str, list[dict[s
     annual = _read(output_dir, "annual_statement_validation_report.json")
     for item in (annual or {}).get("items", []):
         status = str(item.get("status", "")).upper()
-        if status == "FILLED_FROM_SEC":
+        if status in {"FILLED_FROM_SEC", "FILLED_FROM_YAHOO"}:
             flags["filled"].append(_flag(
                 "filled", f"{_concept(item.get('concept'))} {item.get('fiscal_year', '')}",
-                f"{_fmt(item.get('filing_value'))}", "SEC 10-K",
+                f"{_fmt(item.get('filing_value') if status == 'FILLED_FROM_SEC' else item.get('bloomberg_value'))}",
+                "SEC 10-K" if status == "FILLED_FROM_SEC" else "Yahoo Finance (indicative)",
             ))
         elif status == "MISSING_IMPORTANT":
             flags["attention"].append(_flag(

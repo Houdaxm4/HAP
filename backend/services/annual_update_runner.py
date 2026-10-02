@@ -20,6 +20,7 @@ from services.annual_output_gate_service import AnnualOutputGateService
 from services.annual_rd_service import AnnualRdService
 from services.annual_research_service import AnnualResearchService
 from services.annual_analytical_research_service import AnnualAnalyticalResearchService
+from research.yahoo_fundamentals import YahooFallback, yahoo_fallback_enabled
 from services.annual_restatement_service import AnnualRestatementService
 from services.annual_statement_validation_service import AnnualStatementValidationService
 from services.annual_tax_service import AnnualTaxService
@@ -46,6 +47,7 @@ class AnnualUpdateRunner:
         self.continuity = AnnualContinuityService()
         self.restatement = AnnualRestatementService()
         self.statements = AnnualStatementValidationService()
+        self.yahoo = YahooFallback() if yahoo_fallback_enabled() else None
         self.inputs = AnnualInputsService()
         self.tax = AnnualTaxService()
         self.rd = AnnualRdService()
@@ -154,6 +156,7 @@ class AnnualUpdateRunner:
                 workbook_path=working_path,
                 fiscal_year=new_fy or "",
                 company_facts=company_facts,
+                yahoo_fallback=self.yahoo,
             ),
         )
         completeness = timed(
