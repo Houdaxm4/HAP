@@ -1041,6 +1041,14 @@ def test_cross_company_runner_suite(tmp_path: Path, out_svc: OutputService, monk
             assert ("STATEMENT_INCOMPLETE" in done["output_gate"].blockers) == (q in (1, 2, 3))
             assert done["certification_status"] == NewCompanyWorkflowState.NEEDS_REVIEW.value
             assert "WORKBOOK_RECALCULATION_INCOMPLETE" in done["output_gate"].blockers
+            # The Word report must see the reports of the same run (they are saved before it is written):
+            # the agent's own lease-rate and R&D decisions appear in its Flags section.
+            from docx import Document
+
+            word = done["deliverables"].word_path if done["deliverables"] else None
+            assert word, "the Word report is always produced"
+            flag_text = "\n".join(p.text for p in Document(word).paragraphs)
+            assert "Decisions the agent made" in flag_text and "R&D useful life" in flag_text
             assert done["periods"].latest_quarter == q
             assert len(done["tax"].years) == 10
             assert len(done["buybacks"].years) == 10

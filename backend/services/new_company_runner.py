@@ -467,6 +467,19 @@ class NewCompanyRunner:
                 ),
             )
             authorized = gate.report_authorized
+            # The Word report's Flags section reads these artifacts, so they must be saved before the report is
+            # written (the full artifact set is still written below, unchanged).
+            for _name, _report in {
+                "new_company_statement_validation_report.json": statements,
+                "quarterly_presentation_report.json": quarterly_presentation,
+                "new_company_buyback_report.json": buybacks,
+                "new_company_cost_recast_report.json": cost_recast,
+                "lease_rate_review.json": lease_review,
+                "rd_useful_life_decision.json": rd_decision,
+                "new_company_output_gate_report.json": gate,
+            }.items():
+                if _report is not None:
+                    self.output_service.write_json(analysis_id, _name, _report)
             deliv = timed(
                 "deliverables",
                 lambda: self.deliverables.produce(
