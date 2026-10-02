@@ -1039,7 +1039,13 @@ def test_cross_company_runner_suite(tmp_path: Path, out_svc: OutputService, monk
             assert done["workflow_state"] != NewCompanyWorkflowState.COMPLETE
             # Last-quarter statements are required only for an interim quarter (Q1-Q3); Q4 is the fiscal year itself.
             assert ("STATEMENT_INCOMPLETE" in done["output_gate"].blockers) == (q in (1, 2, 3))
-            assert done["certification_status"] == NewCompanyWorkflowState.NEEDS_REVIEW.value
+            # With no other blocker, the only thing missing is genuine Excel COM: "pending Windows certification".
+            # Any other blocker (for example incomplete last-quarter statements) keeps it at NEEDS_REVIEW.
+            other_blockers = set(done["output_gate"].blockers) - {"WORKBOOK_RECALCULATION_INCOMPLETE", "NEW_COMPANY_REPORT_NOT_AUTHORIZED"}
+            assert done["certification_status"] == (
+                NewCompanyWorkflowState.NEEDS_REVIEW.value if other_blockers
+                else "CLOUD_IMPLEMENTATION_COMPLETE_PENDING_WINDOWS_CERTIFICATION"
+            )
             assert "WORKBOOK_RECALCULATION_INCOMPLETE" in done["output_gate"].blockers
             # The Word report must see the reports of the same run (they are saved before it is written):
             # the agent's own lease-rate and R&D decisions appear in its Flags section.

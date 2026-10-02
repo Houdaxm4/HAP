@@ -105,6 +105,13 @@ def sheet_value_for(kind: QuarterlyStatementKind, match: Any, sec_items: list[An
     return None
 
 
+CHECK_ROW_NOTE = (
+    "HAP NOTE: this check compares the breakdown lines with the total above. The total was filled from the SEC 10-Q "
+    "because it was blank; the breakdown lines were blank in the supplied workbook, so a difference here is expected "
+    "and is not a data error."
+)
+
+
 class QuarterlyPresentationService:
     """
     Validate supplied quarterly statements against SEC.
@@ -241,7 +248,7 @@ class QuarterlyPresentationService:
         deps: MetricDependencies,
     ) -> tuple[list[dict[str, Any]], list[str]]:
         """Fill blank latest-quarter cells from the 10-Q; flag the blanks that feed a metric and cannot be filled."""
-        from services.workbook_flag_service import flag_filled, flag_missing_data
+        from services.workbook_flag_service import flag_filled, flag_missing_data, set_comment
 
         ws = wb[sheet_name]
         sec_items = [
@@ -273,6 +280,9 @@ class QuarterlyPresentationService:
                     reason="The supplied workbook left this quarterly cell blank; the 10-Q reports the figure.",
                 )
                 filled.append({"cell": f"{sheet_name}!{cell.coordinate}", "label": row["label"], "value": value, "source": source})
+                below = ws.cell(row["row"] + 1, LABEL_COL).value
+                if isinstance(below, str) and below.strip().lower() == "check":
+                    set_comment(ws.cell(row["row"] + 1, VALUE_COL), CHECK_ROW_NOTE)  # explain the expected difference
             elif any(deps.feeds_metrics(sheet_name, row["row"], col) for col in range(VALUE_COL, VALUE_COL + 6)):
                 flag_missing_data(
                     ws, cell.coordinate, concept=row["label"],

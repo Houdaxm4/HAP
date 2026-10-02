@@ -106,6 +106,14 @@ def collect_flags(output_dir: Path, authorized: bool | None = None) -> dict[str,
             flags["attention"].append(_flag(
                 "attention", "Quarterly data not available online and needed by a metric", text, "SEC 10-Q: not found",
             ))
+        totals_only = [i for i in quarterly.get("filled_from_sec", []) if "Cash Flow" in str(i.get("cell", "")) or "CF " in str(i.get("cell", ""))]
+        if totals_only:
+            flags["notes"].append(_flag(
+                "notes", "Quarterly cash-flow check rows show differences",
+                f"{len(totals_only)} cash-flow total(s) were filled from the 10-Q while their breakdown lines were blank in the "
+                "supplied workbook; the template's check rows on those blocks are expected to differ (explained in each cell comment).",
+                "Workbook",
+            ))
         for statement in quarterly.get("statements", []):
             for item in statement.get("source_discrepancies", []):
                 flags["attention"].append(_flag(

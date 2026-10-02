@@ -12,6 +12,7 @@ from models.new_company import NewCompanyStatementValidationReport, StatementDis
 from services.annual_period_service import detect_year_columns
 from services.formula_dependencies import MetricDependencies
 from services.sec_service import SecService
+from services.statement_row_rules import STATEMENT_ROW_RULES, sign_for
 from services.workbook_flag_service import flag_filled, flag_missing_data
 
 # concept, sheet, label needles, xbrl tags, scale_if_large
@@ -24,7 +25,7 @@ _CHECKS: list[tuple[str, str, tuple[str, ...], tuple[str, ...], bool]] = [
     ("net_income", "Income - GAAP", ("net income", "net income (loss)"), ("NetIncomeLoss",), True),
     ("diluted_eps", "Income - GAAP", ("diluted eps", "earnings per share diluted", "eps - diluted"), ("EarningsPerShareDiluted",), False),
     ("cfo", "Cash Flow - Standardized", ("cash from operating", "operating activities"), ("NetCashProvidedByUsedInOperatingActivities",), True),
-    ("capex", "Cash Flow - Standardized", ("capital expenditure", "capex", "acq of fixed", "purchase of ppe"), ("PaymentsToAcquirePropertyPlantAndEquipment",), True),
+    ("capex", STATEMENT_ROW_RULES["capex"]["sheet"], STATEMENT_ROW_RULES["capex"]["needles"], STATEMENT_ROW_RULES["capex"]["tags"], True),
     ("cfi", "Cash Flow - Standardized", ("cash from investing", "investing activities"), ("NetCashProvidedByUsedInInvestingActivities",), True),
     ("cff", "Cash Flow - Standardized", ("cash from financing", "financing activities"), ("NetCashProvidedByUsedInFinancingActivities",), True),
     ("cash", "Balance Sheet - Standardized", ("cash and cash equivalents", "cash & cash equivalents", "cash"), ("CashAndCashEquivalentsAtCarryingValue",), True),
@@ -32,7 +33,7 @@ _CHECKS: list[tuple[str, str, tuple[str, ...], tuple[str, ...], bool]] = [
     ("current_liabilities", "Balance Sheet - Standardized", ("total current liabilities", "current liabilities"), ("LiabilitiesCurrent",), True),
     ("total_liabilities", "Balance Sheet - Standardized", ("total liabilities",), ("Liabilities",), True),
     ("equity", "Balance Sheet - Standardized", ("total equity", "total shareholders", "stockholders' equity"), ("StockholdersEquity",), True),
-    ("debt", "Balance Sheet - Standardized", ("total debt", "long-term debt", "debt"), ("LongTermDebt", "LongTermDebtNoncurrent"), True),
+    ("debt", STATEMENT_ROW_RULES["debt"]["sheet"], STATEMENT_ROW_RULES["debt"]["needles"], STATEMENT_ROW_RULES["debt"]["tags"], True),
     ("diluted_shares", "Income - GAAP", ("diluted weighted", "weighted average shares diluted", "diluted shares"), ("WeightedAverageNumberOfDilutedSharesOutstanding",), True),
 ]
 
@@ -115,13 +116,13 @@ class NewCompanyStatementValidationService:
                     filing = None
                     source = None
                     if filing_overrides and fy in filing_overrides and concept in filing_overrides[fy]:
-                        filing = float(filing_overrides[fy][concept])
+                        filing = float(filing_overrides[fy][concept]) * sign_for(concept)
                         source = "filing_override"
                     elif company_facts:
                         for tag in tags:
                             fact = sec.find_fact(company_facts, concept, fy, xbrl_tag_hint=tag)
                             if fact is not None and fact.value is not None:
-                                filing = _scale_usd(float(fact.value), scale=scale)
+                                filing = _scale_usd(float(fact.value), scale=scale) * sign_for(concept)
                                 source = f"SEC {fact.form} {tag} accn={fact.accession_number}"
                                 break
 

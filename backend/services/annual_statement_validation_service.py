@@ -12,6 +12,7 @@ from services.accounting_concept_matcher import CONCEPT_ALIASES
 from services.annual_continuity_service import detect_year_columns
 from services.formula_dependencies import MetricDependencies
 from services.new_company_statement_validation_service import NewCompanyStatementValidationService
+from services.statement_row_rules import STATEMENT_ROW_RULES, sign_for
 from services.sec_service import SecService
 from services.workbook_flag_service import flag_filled, flag_missing_data
 
@@ -26,6 +27,8 @@ _CHECKS: list[tuple[str, str, str, tuple[str, ...]]] = [
     ("cash_flow", "cfo", "Cash Flow - Standardized", ("NetCashProvidedByUsedInOperatingActivities",)),
     ("cash_flow", "cfi", "Cash Flow - Standardized", ("NetCashProvidedByUsedInInvestingActivities",)),
     ("cash_flow", "cff", "Cash Flow - Standardized", ("NetCashProvidedByUsedInFinancingActivities",)),
+    ("balance_sheet", "debt", STATEMENT_ROW_RULES["debt"]["sheet"], STATEMENT_ROW_RULES["debt"]["tags"]),
+    ("cash_flow", "capex", STATEMENT_ROW_RULES["capex"]["sheet"], STATEMENT_ROW_RULES["capex"]["tags"]),
 ]
 
 _REL = 0.03
@@ -93,6 +96,7 @@ class AnnualStatementValidationService:
                             filing = float(fact.value)
                             if concept != "diluted_eps" and abs(filing) > 10_000:
                                 filing = filing / 1_000_000.0
+                            filing = filing * sign_for(concept)
                             break
                 status, reason = self._classify(bb, filing)
                 if is_formula:
@@ -178,5 +182,6 @@ class AnnualStatementValidationService:
 
     @staticmethod
     def _find_row(ws, concept: str) -> int | None:
-        aliases = tuple(a.lower() for a in CONCEPT_ALIASES.get(concept, (concept,)))
+        rule = STATEMENT_ROW_RULES.get(concept)
+        aliases = tuple(rule["needles"]) if rule else tuple(a.lower() for a in CONCEPT_ALIASES.get(concept, (concept,)))
         return NewCompanyStatementValidationService._find_row(ws, aliases)
