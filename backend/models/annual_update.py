@@ -96,6 +96,8 @@ class AnnualStatementValidationReport(BaseModel):
     items: list[StatementValidationItem] = Field(default_factory=list)
     bloomberg_preserved: bool = True
     discrepancies: int = 0
+    filled: int = 0  # blank cells filled from the 10-K
+    missing_important: int = 0  # blank, not in the filing, and a reported metric depends on it
     summary: str = ""
 
 
@@ -119,6 +121,9 @@ class AnnualInputsReport(BaseModel):
     pe10: Pe10Provenance | None = None
     e10: Pe10Provenance | None = None
     pe10_current: Pe10Provenance | None = None
+    eps_10y_growth: Pe10Provenance | None = None
+    eps_10y_direction: Pe10Provenance | None = None
+    revenue_10y_growth: Pe10Provenance | None = None
     pe10_mismatch: str | None = None
     current_data_refreshed: int = 0
     summary: str = ""
@@ -167,6 +172,7 @@ class AnnualRdReport(BaseModel):
     schedule_extended: bool = False
     lookback_years: list[str] = Field(default_factory=list)
     lookback_complete: bool = True
+    missing_required_history: list[str] = Field(default_factory=list)
     cells_written: list[str] = Field(default_factory=list)
     summary: str = ""
 
@@ -180,6 +186,9 @@ class AnnualLeasesReport(BaseModel):
     outlier: bool = False
     extraordinary_event: bool = False
     normalized_to_prior: bool = False
+    methodology_carried: bool = False
+    suggestion_only: bool = False
+    action_class: str | None = None
     analyst_note: str | None = None
     evidence: list[str] = Field(default_factory=list)
     summary: str = ""
@@ -205,6 +214,188 @@ class AnnualRoicReport(BaseModel):
     summary: str = ""
 
 
+class ValuationAssumptionAnalysis(BaseModel):
+    """Independent company-specific analysis of one valuation growth assumption."""
+
+    metric: str
+    existing_assumption: float | None = None
+    existing_assumption_source: str | None = None
+    existing_assumption_grain: str | None = None
+    actual_formula_driver: str | None = None
+    historical_observations: dict[str, Any] = Field(default_factory=dict)
+    recent_observations: dict[str, Any] = Field(default_factory=dict)
+    normalization_adjustments: list[str] = Field(default_factory=list)
+    distortions_identified: list[str] = Field(default_factory=list)
+    anomalies: list[str] = Field(default_factory=list)
+    prospective_range_low: float | None = None
+    prospective_range_high: float | None = None
+    selected_prospective_rate: float | None = None
+    selection_method: str | None = None
+    rationale: str = ""
+    evidence: list[str] = Field(default_factory=list)
+    provenance: list[str] = Field(default_factory=list)
+    confidence: float = 0.0
+    valuation_impact: str | None = None
+    decision: str = "INSUFFICIENT_EVIDENCE"  # KEEP_EXISTING | ADJUST | INSUFFICIENT_EVIDENCE
+    evidence_center: float | None = None
+    evidence_dispersion: float | None = None
+    existing_distance_from_evidence: float | None = None
+    materiality_assessment: str | None = None
+    decision_basis: str | None = None
+
+
+KEEP_REPORTED_BASE = "KEEP_REPORTED_BASE"
+USE_NORMALIZED_BASE = "USE_NORMALIZED_BASE"
+INSUFFICIENT_BASE_EVIDENCE = "INSUFFICIENT_EVIDENCE"
+
+
+class CandidateNormalizedBase(BaseModel):
+    """One candidate reconstruction of earnings power. Not an automatic winner."""
+
+    method: str
+    result: float | None = None
+    calculation: str = ""
+    economic_rationale: str = ""
+    strengths: list[str] = Field(default_factory=list)
+    weaknesses: list[str] = Field(default_factory=list)
+    uses_current_scale: bool = False
+    assumes_capex_mean_reversion: bool = False
+    family: str = ""  # reported | earnings_power | capex_intensity | mixed_scale
+
+
+NO_DISCLOSURE_REQUIRED = "NO_DISCLOSURE_REQUIRED"
+DISCLOSE_DISTORTED_BASE = "DISCLOSE_DISTORTED_BASE"
+DISCLOSE_NORMALIZED_BASE = "DISCLOSE_NORMALIZED_BASE"
+
+
+class NormalizedBaseDisclosure(BaseModel):
+    """Concise analyst-facing OE-base disclosure. Not a substituted valuation base."""
+
+    metric: str = "operating_earnings_base"
+    severity: str = ""
+    reported_base: float | None = None
+    issue: str = ""
+    primary_driver: str = ""
+    research_summary: str = ""
+    hap_interpretation: str = ""
+    unresolved_question: str = ""
+    valuation_implication: str = ""
+    decision: str = NO_DISCLOSURE_REQUIRED
+    confidence: str = "LOW"
+    provenance: list[str] = Field(default_factory=list)
+    display_text: str = ""
+    word_text: str = ""
+
+
+class NormalizedEarningsPowerAnalysis(BaseModel):
+    """Diagnostic record for whether the valuation OE base is representative.
+
+    Diagnostic only in this phase: never writes a replacement base into the workbook.
+    Independent of prospective-growth KEEP/ADJUST/INSUFFICIENT.
+    """
+
+    metric: str = "operating_earnings_base"
+    reported_current_base: float | None = None
+    base_formula: str | None = None
+    component_series: dict[str, Any] = Field(default_factory=dict)
+    distortions_identified: list[str] = Field(default_factory=list)
+    distortion_type: list[str] = Field(default_factory=list)
+    historical_normalized_observations: dict[str, Any] = Field(default_factory=dict)
+    candidate_normalization_methods: list[str] = Field(default_factory=list)
+    candidate_bases: list[CandidateNormalizedBase] = Field(default_factory=list)
+    candidate_base_low: float | None = None
+    candidate_base_high: float | None = None
+    selected_normalized_base: float | None = None
+    selection_method: str | None = None
+    decision: str = INSUFFICIENT_BASE_EVIDENCE
+    reported_base_status: str = "insufficient_evidence"
+    rationale: str = ""
+    evidence: list[str] = Field(default_factory=list)
+    provenance: list[str] = Field(default_factory=list)
+    confidence: float = 0.0
+    valuation_impact: str | None = "Diagnostic only; original OE base and EV formulas untouched"
+    growth_interaction: str | None = None
+    writes_to_workbook: bool = False
+    implementation_status: str = "DIAGNOSTIC_ONLY"
+    valuation_bridge: dict[str, Any] | None = None
+    research_status: str | None = None
+    research_decision_effect: str | None = None
+    disclosure: NormalizedBaseDisclosure | None = None
+
+
+NO_EXTERNAL_RESEARCH_REQUIRED = "NO_EXTERNAL_RESEARCH_REQUIRED"
+RESEARCHED = "RESEARCHED"
+RESEARCH_UNAVAILABLE = "RESEARCH_UNAVAILABLE"
+
+MANAGEMENT_STATEMENT = "MANAGEMENT_STATEMENT"
+SEC_DISCLOSURE = "SEC_DISCLOSURE"
+HAP_INFERENCE = "HAP_INFERENCE"
+SECONDARY_SOURCE = "SECONDARY_SOURCE"
+
+MAINTENANCE_CAPEX = "MAINTENANCE_CAPEX"
+GROWTH_CAPEX = "GROWTH_CAPEX"
+TEMPORARY_PROJECT_CAPEX = "TEMPORARY_PROJECT_CAPEX"
+ACQUISITION_RELATED_CAPEX = "ACQUISITION_RELATED_CAPEX"
+STRUCTURAL_CAPITAL_INTENSITY = "STRUCTURAL_CAPITAL_INTENSITY"
+UNCLASSIFIED_CAPEX = "UNCLASSIFIED_CAPEX"
+
+NORMALIZATION_SUPPORTABLE_AMOUNT_NOT_SELECTED = "NORMALIZATION_SUPPORTABLE_AMOUNT_NOT_SELECTED"
+REMAINS_INSUFFICIENT = "REMAINS_INSUFFICIENT"
+KEEP_REPORTED_BASE_SUPPORTED = "KEEP_REPORTED_BASE_SUPPORTED"
+NO_DECISION_EFFECT = "NO_CHANGE"
+
+
+class AnalyticalResearchEvidence(BaseModel):
+    """One sourced excerpt. Facts, management claims, and HAP inference stay separate."""
+
+    company: str
+    metric_or_issue: str
+    research_question: str
+    source_type: str
+    source_title: str
+    source_date: str | None = None
+    filing_period: str | None = None
+    source_locator: str | None = None
+    evidence_text_or_summary: str = ""
+    management_claim: str | None = None
+    verified_financial_fact: str | None = None
+    hap_interpretation: str | None = None
+    supports: str | None = None
+    contradicts: str | None = None
+    uncertainty: str | None = None
+    relevance: str = "medium"
+    provenance: list[str] = Field(default_factory=list)
+    confidence: str = "LOW"
+    publication_date: str | None = None
+    analysis_as_of_date: str | None = None
+    available_as_of_analysis: bool = True
+    claim_fingerprint: str | None = None
+    source_tier: int = 1
+    document_identity: str | None = None
+    retrieval_date: str | None = None
+    search_terms: list[str] = Field(default_factory=list)
+    filing_type: str | None = None
+
+
+class AnalyticalResearchSynthesis(BaseModel):
+    """Issue-level HAP synthesis. Not a substitute for the raw evidence list."""
+
+    issue: str
+    question: str
+    evidence_for_temporary: list[str] = Field(default_factory=list)
+    evidence_for_structural: list[str] = Field(default_factory=list)
+    evidence_for_other_explanation: list[str] = Field(default_factory=list)
+    contradictory_evidence: list[str] = Field(default_factory=list)
+    missing_evidence: list[str] = Field(default_factory=list)
+    hap_conclusion: str = UNCLASSIFIED_CAPEX
+    confidence: str = "LOW"
+    decision_effect: str = REMAINS_INSUFFICIENT
+    independent_fact_count: int = 0
+    repeated_claim_count: int = 0
+    capex_category: str | None = None
+    hap_interpretation: str = ""
+
+
 class JudgmentRecord(BaseModel):
     metric: str
     original_value: Any = None
@@ -218,10 +409,29 @@ class JudgmentRecord(BaseModel):
     rationale: str = ""
     workbook_impact: str | None = None
     model_impact: str | None = None
-    change_type: str | None = None  # ACCEPTED | NORMALIZED | METHODOLOGY_SWITCH
+    change_type: str | None = None  # ACCEPTED | NORMALIZED | METHODOLOGY_SWITCH | INSUFFICIENT_EVIDENCE
     source_references: list[str] = Field(default_factory=list)
     confidence: float = 0.0
     adjusted: bool = False
+    decision: str | None = None
+    existing_assumption_source: str | None = None
+    existing_assumption_grain: str | None = None
+    actual_formula_driver: str | None = None
+    normalization_adjustments: list[str] = Field(default_factory=list)
+    distortions_identified: list[str] = Field(default_factory=list)
+    prospective_range_low: float | None = None
+    prospective_range_high: float | None = None
+    selection_method: str | None = None
+    anomalies: list[str] = Field(default_factory=list)
+    evidence_center: float | None = None
+    evidence_dispersion: float | None = None
+    existing_distance_from_evidence: float | None = None
+    materiality_assessment: str | None = None
+    decision_basis: str | None = None
+    hap_expected_return: float | None = None
+    hap_expected_return_cell: str | None = None
+    semantic_substitution: str | None = None
+    parallel_model_status: str | None = None
 
 
 class AnnualAnalystJudgmentReport(BaseModel):
@@ -231,7 +441,13 @@ class AnnualAnalystJudgmentReport(BaseModel):
     expected_return: JudgmentRecord | None = None
     owner_earnings_growth: JudgmentRecord | None = None
     graham_eps_growth: JudgmentRecord | None = None
+    hap_analysis_cells: list[str] = Field(default_factory=list)
+    original_cells_preserved: list[str] = Field(default_factory=list)
     summary: str = ""
+    er_analysis: ValuationAssumptionAnalysis | None = None
+    oe_analysis: ValuationAssumptionAnalysis | None = None
+    graham_analysis: ValuationAssumptionAnalysis | None = None
+    oe_base_analysis: NormalizedEarningsPowerAnalysis | None = None
 
 
 class AnnualExpectedReturnReport(BaseModel):
@@ -253,6 +469,13 @@ class AnnualExpectedReturnReport(BaseModel):
     rationale: str = ""
     confidence: float = 0.0
     summary: str = ""
+    hap_expected_return: float | None = None
+    hap_expected_return_cell: str | None = None
+    semantic_substitution: str | None = None
+    original_mechanics: dict[str, Any] = Field(default_factory=dict)
+    hap_mechanics: dict[str, Any] = Field(default_factory=dict)
+    parallel_model_status: str | None = None
+    retention_defect_class: str | None = None
 
 
 class FormulaGuardReport(BaseModel):
@@ -281,6 +504,22 @@ class ResearchQuestion(BaseModel):
     unsuccessful: bool = False
     confidence: float = 0.0
     rationale: str | None = None
+
+
+class AnalyticalResearchReport(BaseModel):
+    analysis_id: str
+    ticker: str
+    fiscal_year: int | None = None
+    analysis_as_of_date: str | None = None
+    status: str = NO_EXTERNAL_RESEARCH_REQUIRED
+    questions: list[ResearchQuestion] = Field(default_factory=list)
+    queries: list[str] = Field(default_factory=list)
+    evidence: list[AnalyticalResearchEvidence] = Field(default_factory=list)
+    synthesis: AnalyticalResearchSynthesis | None = None
+    retrieval_date: str | None = None
+    writes_to_workbook: bool = False
+    selected_normalized_base_written: bool = False
+    summary: str = ""
 
 
 class CompletenessItem(BaseModel):

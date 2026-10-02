@@ -1,0 +1,192 @@
+{
+  "analysis_id": "3bc7b27e-fa52-42e2-947c-9d9d4c5aee57",
+  "ticker": "LNN",
+  "schema_version": "1.0.0",
+  "milestone": "valuation_margin_of_safety_entry_price_review",
+  "workbook_path": "C:\\Users\\Soulaymane Kachani\\Downloads\\HAP2\\backend\\storage\\outputs\\3bc7b27e-fa52-42e2-947c-9d9d4c5aee57\\completed_workbook.xlsx",
+  "methodology": {
+    "primary_intrinsic": "Graham Growth Intrinsic Value (Final Metrics row 33 / Enterprise Value!B42)",
+    "intrinsic_formula": "EPS \u00d7 (PE_multiplier + CAGR% \u00d7 growth_multiplier)",
+    "graham_multiple_formula": "Enterprise Value!B51 + (EPS_CAGR\u00d7100)\u00d7Enterprise Value!B52",
+    "default_pe_multiplier": 8.5,
+    "default_growth_multiplier": 2.0,
+    "sample_L33": "=L32*L29",
+    "sample_B42": "=(B51+(B41*100*B52))*B40",
+    "current_price": "Inputs!B63 \u2192 Final Metrics!B51 (live market_internet; not CRF)",
+    "max_price_to_buy": "Inputs!B67 (Bloomberg CRF entry guide)",
+    "max_pe10_to_enter": "Inputs!B66 / Final Metrics!B54",
+    "mos_definition": "(intrinsic - price) / intrinsic",
+    "house_mos_threshold": 0.25,
+    "entry_price_definition": "intrinsic * (1 - 0.25)",
+    "no_parallel_dcf": true,
+    "no_workbook_formula_writes": true
+  },
+  "inputs": [
+    {
+      "name": "workbook_intrinsic_graham",
+      "value": 268.1386481194719,
+      "cell": "reconstructed_house:EPS\u00d7(8.5+2g)",
+      "status": "VALIDATED",
+      "reason": "Graham Growth Intrinsic Value (house)",
+      "source": "workbook"
+    },
+    {
+      "name": "graham_multiple",
+      "value": 39.5484731739634,
+      "cell": "Final Metrics!L32 / reconstructed 8.5+2g",
+      "status": "VALIDATED",
+      "reason": "Graham Value Multiple",
+      "source": "workbook"
+    },
+    {
+      "name": "eps",
+      "value": 6.78,
+      "cell": "Income!L71",
+      "status": "VALIDATED",
+      "reason": "Diluted EPS feeding Graham IV",
+      "source": "workbook"
+    },
+    {
+      "name": "eps_cagr",
+      "value": 0.155242365869817,
+      "cell": "Final Metrics!L31 / EPS series",
+      "status": "VALIDATED",
+      "reason": "EPS 10y CAGR for Graham multiple",
+      "source": "workbook"
+    },
+    {
+      "name": "current_price",
+      "value": 116.59,
+      "cell": "Inputs!B63",
+      "status": "VALIDATED",
+      "reason": "Live/current price present",
+      "source": "workbook:Inputs!B63"
+    },
+    {
+      "name": "max_pe10_to_enter",
+      "value": 29.46258210673613,
+      "cell": "Inputs!B66",
+      "status": "VALIDATED",
+      "reason": "Entry multiple guide",
+      "source": "workbook/CRF"
+    },
+    {
+      "name": "max_price_to_buy",
+      "value": 142.1201855539458,
+      "cell": "Inputs!B67",
+      "status": "VALIDATED",
+      "reason": "CRF max buy price (optional cross-check vs 25% entry)",
+      "source": "bloomberg_custom_run"
+    },
+    {
+      "name": "current_e10",
+      "value": 4.8237518707314,
+      "cell": "Inputs!B64",
+      "status": "VALIDATED",
+      "reason": "E10 supporting PE10 valuation context",
+      "source": null
+    },
+    {
+      "name": "current_pe10",
+      "value": 23.68695634891257,
+      "cell": "Inputs!B65",
+      "status": "VALIDATED",
+      "reason": "Current PE10",
+      "source": null
+    },
+    {
+      "name": "wacc",
+      "value": null,
+      "cell": "Final Metrics!L7",
+      "status": "WATCH",
+      "reason": "WACC context (not primary Graham driver)",
+      "source": null
+    },
+    {
+      "name": "exit_price",
+      "value": 153.075449008162,
+      "cell": "Inputs!B68",
+      "status": "WATCH",
+      "reason": "1st exit price (PE10 percentile)",
+      "source": null
+    }
+  ],
+  "assumptions": {
+    "house_mos_threshold": 0.25,
+    "intrinsic_method": "graham_growth",
+    "pe_multiplier": 8.5,
+    "growth_multiplier": 2.0,
+    "eps_cagr": 0.155242365869817,
+    "exit_price": 153.075449008162
+  },
+  "workbook_intrinsic_value": 268.1386481194719,
+  "independent_intrinsic_value": 268.1386481194719,
+  "intrinsic_difference": 0.0,
+  "intrinsic_decision": "VALIDATED",
+  "current_price": 116.59,
+  "current_price_source": "workbook:Inputs!B63",
+  "current_price_decision": "VALIDATED",
+  "margin_of_safety": 0.5651876340181586,
+  "required_mos_threshold": 0.25,
+  "meets_mos_threshold": true,
+  "required_entry_price": 201.10398608960392,
+  "price_gap_to_entry": -84.51398608960392,
+  "pct_decline_to_entry": -0.7248819460468644,
+  "workbook_max_price_to_buy": 142.1201855539458,
+  "attractiveness": "ATTRACTIVE",
+  "sensitivity": {
+    "cases": [
+      {
+        "case": "multiple_-15%",
+        "graham_multiple": 33.61620219786889,
+        "intrinsic": 227.91785090155105,
+        "mos": 0.4884560400213629,
+        "meets_25pct": true,
+        "entry_price": 170.9383881761633
+      },
+      {
+        "case": "base",
+        "graham_multiple": 39.5484731739634,
+        "intrinsic": 268.1386481194719,
+        "mos": 0.5651876340181586,
+        "meets_25pct": true,
+        "entry_price": 201.10398608960392
+      },
+      {
+        "case": "multiple_+15%",
+        "graham_multiple": 45.48074415005791,
+        "intrinsic": 308.35944533739263,
+        "mos": 0.6219022904505727,
+        "meets_25pct": true,
+        "entry_price": 231.26958400304449
+      },
+      {
+        "case": "eps_-10%",
+        "eps": 6.102,
+        "intrinsic": 241.32478330752468,
+        "mos": 0.516875148909065,
+        "meets_25pct": true,
+        "entry_price": 180.9935874806435
+      },
+      {
+        "case": "eps_+10%",
+        "eps": 7.458000000000001,
+        "intrinsic": 294.9525129314191,
+        "mos": 0.6047160309255988,
+        "meets_25pct": true,
+        "entry_price": 221.21438469856434
+      }
+    ],
+    "robust_to_adverse": true,
+    "fragile_note": null
+  },
+  "decision": "VALIDATED",
+  "explanation": "Intrinsic=268.1386481194719, price=116.59, MOS=56.5%, 25% entry=201.10398608960392, class=ATTRACTIVE. Below intrinsic alone is not sufficient; need \u226525% MOS to be ATTRACTIVE.",
+  "summary": "Valuation review LNN: IV=268.1386481194719, price=116.59, MOS=0.5652, entry@25%=201.10398608960392, attractiveness=ATTRACTIVE. Intrinsic=268.1386481194719, price=116.59, MOS=56.5%, 25% entry=201.10398608960392, class=ATTRACTIVE. Below intrinsic alone is not sufficient; need \u226525% MOS to be ATTRACTIVE.",
+  "evidence": {
+    "graham_iv_cell": "Final Metrics!L33 (latest) / B33 (10y avg)",
+    "current_price_cell": "Inputs!B63",
+    "max_price_to_buy_cell": "Inputs!B67",
+    "house_mos_threshold": 0.25
+  }
+}

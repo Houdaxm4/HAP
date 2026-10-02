@@ -209,8 +209,9 @@ def test_identical_cell_different_decisions_by_analysis_type(scoped_workbook: Pa
     # Same cell under annual_update with target FY2025 → still OUT_OF_SCOPE (prior year)
     assert au_by_id["is.revenue:F9"].decision == CompletionDecision.OUT_OF_SCOPE
 
-    # New FY blank under annual_update → FILL
-    assert au_by_id["is.revenue:L9"].decision == CompletionDecision.FILL
+    # New FY blank under annual_update → blocked. Upstream supplies the statement.
+    assert au_by_id["is.revenue:L9"].decision == CompletionDecision.BLOCKED
+    assert "STATEMENT_INCOMPLETE" in (au_by_id["is.revenue:L9"].reason or "")
     assert au_by_id["is.revenue:L9"].required_for_mode is True
 
     # New FY blank under new_company → OUT_OF_SCOPE (annual statements not in scope)
@@ -267,9 +268,10 @@ def test_annual_update_prior_years_out_of_scope(scoped_workbook: Path):
     )
     by_id = {e.intent_id: e for e in completion.entries}
     assert by_id["is.revenue:E9"].decision == CompletionDecision.OUT_OF_SCOPE
-    assert by_id["is.revenue:L9"].decision == CompletionDecision.FILL
+    assert by_id["is.revenue:L9"].decision == CompletionDecision.BLOCKED
+    assert "STATEMENT_INCOMPLETE" in (by_id["is.revenue:L9"].reason or "")
     assert completion.target_fiscal_year == "FY2025"
-    assert fill.write_count == 1
+    assert fill.write_count == 0
 
 
 def test_quarterly_populated_preserves_bloomberg(scoped_workbook: Path):
@@ -310,7 +312,7 @@ def test_quarterly_populated_preserves_bloomberg(scoped_workbook: Path):
     assert fill.write_count == 0
 
 
-def test_quarterly_empty_emits_sec_fallback(empty_quarterly_workbook: Path):
+def test_quarterly_empty_blocks_as_incomplete(empty_quarterly_workbook: Path):
     intents = WriteIntentReport(
         analysis_id="q2",
         ticker="AAPL",
@@ -334,8 +336,9 @@ def test_quarterly_empty_emits_sec_fallback(empty_quarterly_workbook: Path):
         source_workbook_path=empty_quarterly_workbook,
         intent_report=intents,
     )
-    assert completion.sec_quarterly_fallback_required is True
-    assert completion.entries[0].decision == CompletionDecision.YAHOO_QUARTERLY_FALLBACK_REQUIRED
+    assert completion.sec_quarterly_fallback_required is False
+    assert completion.entries[0].decision == CompletionDecision.BLOCKED
+    assert "STATEMENT_INCOMPLETE" in (completion.entries[0].reason or "")
     assert fill.write_count == 0
     assert fill.intents[0].decision == IntentDecision.SKIP
 
@@ -367,4 +370,144 @@ def test_assess_quarterly_health_on_empty(empty_quarterly_workbook: Path):
         health = assess_quarterly_bloomberg_health(wb)
     finally:
         wb.close()
-    assert health["sec_quarterly_fallback_required"] is True
+    assert health["sec_quarterly_fallback_required"] is False
+    assert set(health["per_statement_decisions"].values()) == {"STATEMENT_INCOMPLETE"}
+
+
+_RECONSTRUCTION_MARKERS = (
+    "_apply_authoritative_rebuild",
+    "_apply_sec_layout",
+    "_apply_yahoo_basic_template",
+    "_fill_major_gaps",
+    "_fill_blank_ytd_from_sec",
+    "_fill_remaining_from_yahoo",
+    "yahoo_quarterly_statement_service",
+    "return PresentationDecision.BLOOMBERG_FILL_GAPS",
+    "return PresentationDecision.SEC_10Q_PRESENTATION_REQUIRED",
+    "return PresentationDecision.YAHOO_BASIC_TEMPLATE_REQUIRED",
+)
+
+_MODE_ENTRYPOINTS = (
+    "services/quarterly_presentation_service.py",
+    "services/quarterly_health_service.py",
+    "services/completion_service.py",
+    "services/annual_update_runner.py",
+    "services/new_company_runner.py",
+    "services/quarterly_valuation_service.py",
+    "services/new_company_valuation_service.py",
+    "pipeline/stages/fill_workbook.py",
+    "pipeline/orchestrator.py",
+)
+
+
+def test_statement_reconstruction_is_unreachable():
+    """Quarterly Update, Annual Update, and New Company cannot fill statements."""
+    backend = Path(__file__).resolve().parents[1]
+    for rel in _MODE_ENTRYPOINTS:
+        text = (backend / rel).read_text(encoding="utf-8")
+        for marker in _RECONSTRUCTION_MARKERS:
+            assert marker not in text, f"{rel} references {marker}"
+    for rel in (
+        "services/annual_update_runner.py",
+        "services/quarterly_valuation_service.py",
+        "services/new_company_valuation_service.py",
+    ):
+        assert "AnnualJudgmentService(" in (backend / rel).read_text(encoding="utf-8")
+
+
+def test_three_modes_leave_blank_statements_unwritten(
+    scoped_workbook: Path, empty_quarterly_workbook: Path
+):
+    cases = (
+        (
+            "quarterly_update",
+            empty_quarterly_workbook,
+            _intent(
+                intent_id="lq.is:C11",
+                cell="C11",
+                value=50.0,
+                sheet="Last Quarter IS Standardized",
+                period="LQ",
+                cfm_path="income_statement.revenue",
+            ),
+            None,
+            CompletionDecision.BLOCKED,
+        ),
+        (
+            "annual_update",
+            scoped_workbook,
+            _intent(intent_id="is.revenue:L9", cell="L9", value=391035.0, period="FY2025"),
+            "FY2025",
+            CompletionDecision.BLOCKED,
+        ),
+        (
+            "new_company",
+            scoped_workbook,
+            _intent(intent_id="is.revenue:L9", cell="L9", value=391035.0, period="FY2025"),
+            None,
+            CompletionDecision.OUT_OF_SCOPE,
+        ),
+    )
+    for analysis_type, workbook, intent, target_fy, expected in cases:
+        completion, fill = CompletionService().plan(
+            analysis_id="norebuild",
+            ticker="AAPL",
+            analysis_type=analysis_type,
+            source_workbook_path=workbook,
+            intent_report=WriteIntentReport(
+                analysis_id="norebuild",
+                ticker="AAPL",
+                intents=[intent],
+                write_count=1,
+            ),
+            target_fiscal_year=target_fy,
+        )
+        assert completion.entries[0].decision == expected
+        assert fill.write_count == 0
+        assert fill.intents[0].decision == IntentDecision.SKIP
+        if expected == CompletionDecision.BLOCKED:
+            assert "STATEMENT_INCOMPLETE" in (completion.entries[0].reason or "")
+
+
+def test_legacy_fill_label_does_not_authorize_a_statement_write(
+    empty_quarterly_workbook: Path, monkeypatch: pytest.MonkeyPatch
+):
+    """A stale BLOOMBERG_FILL_GAPS label is incomplete input, not a fill instruction."""
+
+    def _legacy(workbook):
+        health = assess_quarterly_bloomberg_health(workbook)
+        health["per_statement_decisions"] = {
+            key: "BLOOMBERG_FILL_GAPS" for key in health["per_statement_decisions"]
+        }
+        return health
+
+    monkeypatch.setattr(
+        "services.completion_service.assess_quarterly_bloomberg_health",
+        _legacy,
+    )
+    completion, fill = CompletionService().plan(
+        analysis_id="legacy",
+        ticker="AAPL",
+        analysis_type="quarterly_update",
+        source_workbook_path=empty_quarterly_workbook,
+        intent_report=WriteIntentReport(
+            analysis_id="legacy",
+            ticker="AAPL",
+            intents=[
+                _intent(
+                    intent_id="lq.is:C11",
+                    cell="C11",
+                    value=50.0,
+                    sheet="Last Quarter IS Standardized",
+                    period="LQ",
+                    cfm_path="income_statement.revenue",
+                )
+            ],
+            write_count=1,
+        ),
+    )
+    assert completion.entries[0].decision == CompletionDecision.BLOCKED
+    assert "STATEMENT_INCOMPLETE" in (completion.entries[0].reason or "")
+    assert "BLOOMBERG_FILL_GAPS" in (completion.entries[0].reason or "")
+    assert fill.write_count == 0
+    assert fill.intents[0].decision == IntentDecision.SKIP

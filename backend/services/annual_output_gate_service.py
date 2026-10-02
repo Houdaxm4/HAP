@@ -14,6 +14,7 @@ from models.annual_update import (
     AnnualTaxReport,
     AnnualValuationOutputs,
 )
+from models.new_company import BuybackAbsenceClass, NewCompanyBuybackReport
 from services.annual_period_service import detect_year_columns
 from services.excel_recalc_service import ExcelRecalcReport
 
@@ -34,6 +35,10 @@ class AnnualOutputGateService:
         rd: AnnualRdReport | None,
         valuation: AnnualValuationOutputs | None,
         recalc: ExcelRecalcReport | None = None,
+        circular=None,
+        buybacks: NewCompanyBuybackReport | None = None,
+        statements=None,
+        restatement=None,
     ) -> AnnualOutputGateReport:
         blockers: list[str] = []
         warnings: list[str] = []
@@ -56,6 +61,30 @@ class AnnualOutputGateService:
             gates["workbook_recalculation"] = "fail"
         else:
             gates["workbook_recalculation"] = "pass"
+
+        if circular is not None:
+            if getattr(circular, "hap_introduced", None):
+                blockers.append("HAP_INTRODUCED_CIRCULAR_REFERENCE")
+                for cycle in circular.hap_introduced:
+                    blockers.append(
+                        "BLOCKING_STRUCTURAL_ERROR: " + (cycle.reason or " -> ".join(cycle.cells))
+                    )
+                gates["circular_references"] = "fail"
+            elif getattr(circular, "pre_existing", None):
+                warnings.append("PRE_EXISTING_CIRCULAR_REFERENCE")
+                gates["circular_references"] = "review"
+            else:
+                gates["circular_references"] = "pass"
+        else:
+            gates["circular_references"] = "skipped"
+
+        if inputs is not None:
+            if inputs.eps_10y_growth is None or inputs.eps_10y_growth.source_value is None:
+                warnings.append("ANNUAL_EPS_10Y_GROWTH_INPUT_MISSING")
+            if inputs.eps_10y_direction is None or inputs.eps_10y_direction.source_value is None:
+                warnings.append("ANNUAL_EPS_10Y_DIRECTION_INPUT_MISSING")
+            if inputs.revenue_10y_growth is None or inputs.revenue_10y_growth.source_value is None:
+                warnings.append("ANNUAL_REVENUE_10Y_GROWTH_INPUT_MISSING")
 
         # Gate — tax inputs + Tax sheet calculated outputs
         if tax is None or not tax.schedule_populated or not tax.cells_written:
@@ -137,6 +166,9 @@ class AnnualOutputGateService:
             else:
                 gates["valuation_outputs"] = "pass"
 
+        self._apply_statement_gates(gates, blockers, warnings, statements, restatement)
+        self._apply_buyback_gate(gates, blockers, warnings, fiscal_year, buybacks)
+
         # Report authorization
         # Deduplicate blockers while preserving order
         seen: set[str] = set()
@@ -168,6 +200,95 @@ class AnnualOutputGateService:
                 f"detail={', '.join(blockers[:4]) or 'none'}."
             ),
         )
+
+    @staticmethod
+    def _apply_statement_gates(gates, blockers, warnings, statements, restatement) -> None:
+        if statements is not None:
+            items = list(getattr(statements, "items", []) or [])
+            missing = [i for i in items if getattr(i, "status", "") == "REVIEW_REQUIRED"]
+            for i in items:
+                if getattr(i, "status", "") == "MISSING_IMPORTANT":
+                    warnings.append(
+                        f"DATA_UNAVAILABLE: {getattr(i, 'concept', '')}@{getattr(i, 'fiscal_year', '')} "
+                        "is blank in the workbook, not in the SEC filing, and a reported metric needs it."
+                    )
+            disc = int(getattr(statements, "discrepancies", 0) or 0)
+            if missing:
+                detail = ", ".join(
+                    f"{getattr(i, 'concept', '')}@{getattr(i, 'fiscal_year', '')}" for i in missing[:6]
+                )
+                blockers.append(f"STATEMENT_INCOMPLETE: {detail}")
+                gates["statements"] = "fail"
+            elif disc:
+                # Flagged for the analyst (shaded cells and the report's Flags section); supplied values stay.
+                warnings.append(
+                    f"MATERIAL_DIFFERENCE: {disc} annual statement value(s) differ materially from the filing; "
+                    "kept as supplied and flagged for review."
+                )
+                gates["statements"] = "warn"
+            else:
+                gates["statements"] = "pass"
+        if restatement is not None:
+            flagged = [
+                item
+                for item in (getattr(restatement, "review_required", None) or [])
+                if getattr(item, "revised_reported_value", None) is not None
+            ]
+            if flagged:
+                sample = ", ".join(
+                    f"{getattr(i, 'sheet', '')}!{getattr(i, 'cell', '')} {getattr(i, 'fiscal_year', '')}"
+                    for i in flagged[:6]
+                )
+                blockers.append(f"STATEMENT_RESTATEMENT_UPSTREAM: {sample}")
+                gates["restatement"] = "fail"
+            else:
+                gates["restatement"] = "pass"
+                narrative = list(getattr(restatement, "review_required", None) or [])
+                if narrative:
+                    warnings.append("RESTATEMENT_NARRATIVE_REVIEW")
+
+    @staticmethod
+    def _apply_buyback_gate(
+        gates: dict[str, str],
+        blockers: list[str],
+        warnings: list[str],
+        fiscal_year: str | None,
+        buybacks: NewCompanyBuybackReport | None,
+    ) -> None:
+        """Annual Update coverage gate. Historical cells are not a silent rewrite."""
+        if buybacks is None:
+            gates["buybacks"] = "skipped"
+            return
+        token = None
+        if fiscal_year:
+            digits = "".join(ch for ch in str(fiscal_year) if ch.isdigit())
+            token = f"FY{digits}" if digits else None
+        year = next((item for item in buybacks.years if item.fiscal_year == token), None)
+        if year is None:
+            blockers.append("BUYBACK_DOLLARS_COVERAGE_INCOMPLETE")
+            gates["buybacks"] = "fail"
+            return
+        reported_zero = year.absence_class == BuybackAbsenceClass.REPORTED_ZERO
+        if reported_zero or (
+            year.dollars is not None and (year.shares is not None or year.shares_derived)
+        ):
+            gates["buybacks"] = "pass"
+        elif year.dollars is None:
+            blockers.append(f"BUYBACK_DOLLARS_COVERAGE_INCOMPLETE: {token}")
+            gates["buybacks"] = "fail"
+        else:
+            blockers.append(f"BUYBACK_SHARES_COVERAGE_INCOMPLETE: {token}")
+            gates["buybacks"] = "fail"
+        if any(
+            item.write_action == "corrected_from_sec" and item.fiscal_year != token
+            for item in buybacks.years
+        ):
+            blockers.append("BUYBACK_HISTORY_OVERWRITTEN")
+            gates["buybacks"] = "fail"
+        for item in buybacks.discrepancies:
+            warnings.append(
+                f"BUYBACK_DISCREPANCY: {item.get('fiscal_year')} {item.get('metric')} {item.get('cell')}"
+            )
 
     def _verify_tax_sheet(
         self, path: Path, fiscal_year: str | None, tax: AnnualTaxReport

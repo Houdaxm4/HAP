@@ -1,0 +1,791 @@
+{
+  "analysis_id": "3bc7b27e-fa52-42e2-947c-9d9d4c5aee57",
+  "ticker": "LNN",
+  "schema_version": "1.0.0",
+  "milestone": "financial_statement_validation_analyst_review",
+  "findings": [
+    {
+      "statement": "income_statement",
+      "metric": "Revenue",
+      "period": "FY2019",
+      "severity": "MATERIAL",
+      "observation": "Data discrepancy: workbook 444.072 vs SEC 436.32 at Income - GAAP!F9",
+      "quantitative_evidence": {
+        "workbook_value": 444.072,
+        "sec_value": 436.32,
+        "absolute_difference": 7.752,
+        "percentage_difference": -0.017457
+      },
+      "sec_explanation": "SEC is authoritative for resolution; value not auto-rewritten.",
+      "explanation_status": "UNEXPLAINED_REVIEW_REQUIRED",
+      "source_references": [
+        "Income - GAAP!F9",
+        "RevenueFromContractWithCustomerExcludingAssessedTax",
+        "0000950123-19-009834"
+      ],
+      "analyst_relevance": "Resolve discrepancy before relying on this input for analysis.",
+      "status": "open",
+      "is_data_discrepancy": true
+    },
+    {
+      "statement": "income_statement",
+      "metric": "Revenue",
+      "period": "FY2020",
+      "severity": "MATERIAL",
+      "observation": "Data discrepancy: workbook 474.692 vs SEC 463.207 at Income - GAAP!G9",
+      "quantitative_evidence": {
+        "workbook_value": 474.692,
+        "sec_value": 463.207,
+        "absolute_difference": 11.485,
+        "percentage_difference": -0.024195
+      },
+      "sec_explanation": "SEC is authoritative for resolution; value not auto-rewritten.",
+      "explanation_status": "UNEXPLAINED_REVIEW_REQUIRED",
+      "source_references": [
+        "Income - GAAP!G9",
+        "RevenueFromContractWithCustomerExcludingAssessedTax",
+        "0001564590-20-047271"
+      ],
+      "analyst_relevance": "Resolve discrepancy before relying on this input for analysis.",
+      "status": "open",
+      "is_data_discrepancy": true
+    },
+    {
+      "statement": "income_statement",
+      "metric": "Revenue",
+      "period": "FY2021",
+      "severity": "MATERIAL",
+      "observation": "Data discrepancy: workbook 567.646 vs SEC 551.283 at Income - GAAP!H9",
+      "quantitative_evidence": {
+        "workbook_value": 567.646,
+        "sec_value": 551.283,
+        "absolute_difference": 16.363,
+        "percentage_difference": -0.028826
+      },
+      "sec_explanation": "SEC is authoritative for resolution; value not auto-rewritten.",
+      "explanation_status": "UNEXPLAINED_REVIEW_REQUIRED",
+      "source_references": [
+        "Income - GAAP!H9",
+        "RevenueFromContractWithCustomerExcludingAssessedTax",
+        "0001564590-21-051450"
+      ],
+      "analyst_relevance": "Resolve discrepancy before relying on this input for analysis.",
+      "status": "open",
+      "is_data_discrepancy": true
+    },
+    {
+      "statement": "income_statement",
+      "metric": "Revenue",
+      "period": "FY2022",
+      "severity": "MATERIAL",
+      "observation": "Data discrepancy: workbook 770.743 vs SEC 760.263 at Income - GAAP!I9",
+      "quantitative_evidence": {
+        "workbook_value": 770.743,
+        "sec_value": 760.263,
+        "absolute_difference": 10.48,
+        "percentage_difference": -0.013597
+      },
+      "sec_explanation": "SEC is authoritative for resolution; value not auto-rewritten.",
+      "explanation_status": "UNEXPLAINED_REVIEW_REQUIRED",
+      "source_references": [
+        "Income - GAAP!I9",
+        "RevenueFromContractWithCustomerExcludingAssessedTax",
+        "0000950170-22-019799"
+      ],
+      "analyst_relevance": "Resolve discrepancy before relying on this input for analysis.",
+      "status": "open",
+      "is_data_discrepancy": true
+    },
+    {
+      "statement": "income_statement",
+      "metric": "Revenue",
+      "period": "FY2023",
+      "severity": "MATERIAL",
+      "observation": "Data discrepancy: workbook 674.084 vs SEC 661.905 at Income - GAAP!J9",
+      "quantitative_evidence": {
+        "workbook_value": 674.084,
+        "sec_value": 661.905,
+        "absolute_difference": 12.179,
+        "percentage_difference": -0.018067
+      },
+      "sec_explanation": "SEC is authoritative for resolution; value not auto-rewritten.",
+      "explanation_status": "UNEXPLAINED_REVIEW_REQUIRED",
+      "source_references": [
+        "Income - GAAP!J9",
+        "RevenueFromContractWithCustomerExcludingAssessedTax",
+        "0000950170-23-054198"
+      ],
+      "analyst_relevance": "Resolve discrepancy before relying on this input for analysis.",
+      "status": "open",
+      "is_data_discrepancy": true
+    },
+    {
+      "statement": "income_statement",
+      "metric": "Revenue",
+      "period": "FY2024",
+      "severity": "MATERIAL",
+      "observation": "Data discrepancy: workbook 607.074 vs SEC 584.256 at Income - GAAP!K9",
+      "quantitative_evidence": {
+        "workbook_value": 607.074,
+        "sec_value": 584.256,
+        "absolute_difference": 22.818,
+        "percentage_difference": -0.037587
+      },
+      "sec_explanation": "SEC is authoritative for resolution; value not auto-rewritten.",
+      "explanation_status": "UNEXPLAINED_REVIEW_REQUIRED",
+      "source_references": [
+        "Income - GAAP!K9",
+        "RevenueFromContractWithCustomerExcludingAssessedTax",
+        "0001193125-25-248751"
+      ],
+      "analyst_relevance": "Resolve discrepancy before relying on this input for analysis.",
+      "status": "open",
+      "is_data_discrepancy": true
+    },
+    {
+      "statement": "income_statement",
+      "metric": "Revenue",
+      "period": "FY2025",
+      "severity": "MATERIAL",
+      "observation": "Data discrepancy: workbook 676.368 vs SEC 659.074 at Income - GAAP!L9",
+      "quantitative_evidence": {
+        "workbook_value": 676.368,
+        "sec_value": 659.074,
+        "absolute_difference": 17.294,
+        "percentage_difference": -0.025569
+      },
+      "sec_explanation": "SEC is authoritative for resolution; value not auto-rewritten.",
+      "explanation_status": "UNEXPLAINED_REVIEW_REQUIRED",
+      "source_references": [
+        "Income - GAAP!L9",
+        "RevenueFromContractWithCustomerExcludingAssessedTax",
+        "0001193125-25-248751"
+      ],
+      "analyst_relevance": "Resolve discrepancy before relying on this input for analysis.",
+      "status": "open",
+      "is_data_discrepancy": true
+    },
+    {
+      "statement": "balance_sheet",
+      "metric": "Total Assets",
+      "period": "FY2016",
+      "severity": "MATERIAL",
+      "observation": "Data discrepancy: workbook 487.515 vs SEC 499.565 at Balance Sheet - Standardized!C61",
+      "quantitative_evidence": {
+        "workbook_value": 487.515,
+        "sec_value": 499.565,
+        "absolute_difference": 12.05,
+        "percentage_difference": 0.024717
+      },
+      "sec_explanation": "SEC is authoritative for resolution; value not auto-rewritten.",
+      "explanation_status": "UNEXPLAINED_REVIEW_REQUIRED",
+      "source_references": [
+        "Balance Sheet - Standardized!C61",
+        "Assets",
+        "0001193125-16-740910"
+      ],
+      "analyst_relevance": "Resolve discrepancy before relying on this input for analysis.",
+      "status": "open",
+      "is_data_discrepancy": true
+    },
+    {
+      "statement": "balance_sheet",
+      "metric": "Total Liabilities",
+      "period": "FY2016",
+      "severity": "MATERIAL",
+      "observation": "Data discrepancy: workbook 235.948 vs SEC 247.998 at Balance Sheet - Standardized!C106",
+      "quantitative_evidence": {
+        "workbook_value": 235.948,
+        "sec_value": 247.998,
+        "absolute_difference": 12.05,
+        "percentage_difference": 0.051071
+      },
+      "sec_explanation": "SEC is authoritative for resolution; value not auto-rewritten.",
+      "explanation_status": "UNEXPLAINED_REVIEW_REQUIRED",
+      "source_references": [
+        "Balance Sheet - Standardized!C106",
+        "Liabilities",
+        "0001193125-16-740910"
+      ],
+      "analyst_relevance": "Resolve discrepancy before relying on this input for analysis.",
+      "status": "open",
+      "is_data_discrepancy": true
+    },
+    {
+      "statement": "cash_flow",
+      "metric": "Operating Cash Flow",
+      "period": "FY2023",
+      "severity": "MATERIAL",
+      "observation": "CFO changed 3827.4% YoY (3 \u2192 120)",
+      "quantitative_evidence": {
+        "prior_value": 3.048,
+        "current_value": 119.707,
+        "yoy_change": 38.274
+      },
+      "sec_explanation": null,
+      "explanation_status": "UNEXPLAINED_REVIEW_REQUIRED",
+      "source_references": [
+        "workbook Cash Flow - Standardized"
+      ],
+      "analyst_relevance": "Inspect WC swings, deferred taxes, and non-cash items.",
+      "status": "open",
+      "is_data_discrepancy": false
+    },
+    {
+      "statement": "cash_flow",
+      "metric": "Operating Cash Flow",
+      "period": "FY2020",
+      "severity": "MATERIAL",
+      "observation": "CFO changed 1112.4% YoY (4 \u2192 46)",
+      "quantitative_evidence": {
+        "prior_value": 3.797,
+        "current_value": 46.034,
+        "yoy_change": 11.1238
+      },
+      "sec_explanation": null,
+      "explanation_status": "UNEXPLAINED_REVIEW_REQUIRED",
+      "source_references": [
+        "workbook Cash Flow - Standardized"
+      ],
+      "analyst_relevance": "Inspect WC swings, deferred taxes, and non-cash items.",
+      "status": "open",
+      "is_data_discrepancy": false
+    },
+    {
+      "statement": "cash_flow",
+      "metric": "Operating Cash Flow",
+      "period": "FY2022",
+      "severity": "MATERIAL",
+      "observation": "CFO changed -93.1% YoY (44 \u2192 3)",
+      "quantitative_evidence": {
+        "prior_value": 43.968,
+        "current_value": 3.048,
+        "yoy_change": -0.9307
+      },
+      "sec_explanation": null,
+      "explanation_status": "UNEXPLAINED_REVIEW_REQUIRED",
+      "source_references": [
+        "workbook Cash Flow - Standardized"
+      ],
+      "analyst_relevance": "Inspect WC swings, deferred taxes, and non-cash items.",
+      "status": "open",
+      "is_data_discrepancy": false
+    },
+    {
+      "statement": "cash_flow",
+      "metric": "Operating Cash Flow",
+      "period": "FY2019",
+      "severity": "MATERIAL",
+      "observation": "CFO changed -88.8% YoY (34 \u2192 4)",
+      "quantitative_evidence": {
+        "prior_value": 33.934,
+        "current_value": 3.797,
+        "yoy_change": -0.8881
+      },
+      "sec_explanation": null,
+      "explanation_status": "UNEXPLAINED_REVIEW_REQUIRED",
+      "source_references": [
+        "workbook Cash Flow - Standardized"
+      ],
+      "analyst_relevance": "Inspect WC swings, deferred taxes, and non-cash items.",
+      "status": "open",
+      "is_data_discrepancy": false
+    },
+    {
+      "statement": "balance_sheet",
+      "metric": "Cash",
+      "period": "FY2023",
+      "severity": "MATERIAL",
+      "observation": "Cash changed 53.0% YoY (105 \u2192 161 USD millions)",
+      "quantitative_evidence": {
+        "prior_value": 105.048,
+        "current_value": 160.755,
+        "yoy_change": 0.5303,
+        "absolute_change": 55.71
+      },
+      "sec_explanation": null,
+      "explanation_status": "UNEXPLAINED_REVIEW_REQUIRED",
+      "source_references": [
+        "workbook Balance Sheet - Standardized"
+      ],
+      "analyst_relevance": "Review debt activity, acquisitions, buybacks, and working capital notes.",
+      "status": "open",
+      "is_data_discrepancy": false
+    },
+    {
+      "statement": "income_statement",
+      "metric": "Revenue",
+      "period": "FY2022",
+      "severity": "MATERIAL",
+      "observation": "Revenue growth of 35.8% YoY (FY2021: 568 \u2192 FY2022: 771 USD millions)",
+      "quantitative_evidence": {
+        "prior_period": "FY2021",
+        "prior_value": 567.646,
+        "current_value": 770.743,
+        "yoy_change": 0.3578
+      },
+      "sec_explanation": "If both periods VALIDATED against SEC, this is a business-performance finding \u2014 not a fiscal-period or data-identity error.",
+      "explanation_status": "LIKELY_EXPLANATION",
+      "source_references": [
+        "workbook Income - GAAP",
+        "SEC companyfacts revenue"
+      ],
+      "analyst_relevance": "Investigate drivers in MD&A / segment notes for this FY.",
+      "status": "open",
+      "is_data_discrepancy": false
+    },
+    {
+      "statement": "income_statement",
+      "metric": "Gross Margin",
+      "period": "FY2020",
+      "severity": "MATERIAL",
+      "observation": "Gross margin moved 6 bps (FY2019: 25.8% \u2192 FY2020: 32.1%)",
+      "quantitative_evidence": {
+        "prior_gross_margin": 0.2581,
+        "current_gross_margin": 0.3214,
+        "delta": 0.0633
+      },
+      "sec_explanation": null,
+      "explanation_status": "UNEXPLAINED_REVIEW_REQUIRED",
+      "source_references": [
+        "workbook Income - GAAP"
+      ],
+      "analyst_relevance": "Review cost mix, product mix, and MD&A margin commentary.",
+      "status": "open",
+      "is_data_discrepancy": false
+    },
+    {
+      "statement": "income_statement",
+      "metric": "Operating Margin",
+      "period": "FY2020",
+      "severity": "MATERIAL",
+      "observation": "Operating margin moved 10 bps (FY2019: 1.4% \u2192 FY2020: 11.4%)",
+      "quantitative_evidence": {
+        "prior_operating_margin": 0.0138,
+        "current_operating_margin": 0.1142,
+        "delta": 0.1004
+      },
+      "sec_explanation": null,
+      "explanation_status": "UNEXPLAINED_REVIEW_REQUIRED",
+      "source_references": [
+        "workbook Income - GAAP"
+      ],
+      "analyst_relevance": "Check opex, R&D, SG&A, and one-time operating items.",
+      "status": "open",
+      "is_data_discrepancy": false
+    },
+    {
+      "statement": "income_statement",
+      "metric": "Gross Margin",
+      "period": "FY2021",
+      "severity": "MATERIAL",
+      "observation": "Gross margin moved -6 bps (FY2020: 32.1% \u2192 FY2021: 26.5%)",
+      "quantitative_evidence": {
+        "prior_gross_margin": 0.3214,
+        "current_gross_margin": 0.2646,
+        "delta": -0.0567
+      },
+      "sec_explanation": null,
+      "explanation_status": "UNEXPLAINED_REVIEW_REQUIRED",
+      "source_references": [
+        "workbook Income - GAAP"
+      ],
+      "analyst_relevance": "Review cost mix, product mix, and MD&A margin commentary.",
+      "status": "open",
+      "is_data_discrepancy": false
+    },
+    {
+      "statement": "income_statement",
+      "metric": "Gross Margin",
+      "period": "FY2023",
+      "severity": "MATERIAL",
+      "observation": "Gross margin moved 6 bps (FY2022: 25.8% \u2192 FY2023: 31.6%)",
+      "quantitative_evidence": {
+        "prior_gross_margin": 0.2584,
+        "current_gross_margin": 0.316,
+        "delta": 0.0576
+      },
+      "sec_explanation": null,
+      "explanation_status": "UNEXPLAINED_REVIEW_REQUIRED",
+      "source_references": [
+        "workbook Income - GAAP"
+      ],
+      "analyst_relevance": "Review cost mix, product mix, and MD&A margin commentary.",
+      "status": "open",
+      "is_data_discrepancy": false
+    },
+    {
+      "statement": "cash_flow",
+      "metric": "Share Repurchases",
+      "period": "FY2021",
+      "severity": "WATCH",
+      "observation": "Share Repurchases changed 156.6% YoY (2 \u2192 4)",
+      "quantitative_evidence": {
+        "prior_value": 1.545,
+        "current_value": 3.965,
+        "yoy_change": 1.5663
+      },
+      "sec_explanation": null,
+      "explanation_status": "LIKELY_EXPLANATION",
+      "source_references": [
+        "workbook Cash Flow - Standardized"
+      ],
+      "analyst_relevance": "Capital allocation / investment intensity change.",
+      "status": "open",
+      "is_data_discrepancy": false
+    },
+    {
+      "statement": "cash_flow",
+      "metric": "Capital Expenditures",
+      "period": "FY2019",
+      "severity": "WATCH",
+      "observation": "Capital Expenditures changed -110.0% YoY (-11 \u2192 -23)",
+      "quantitative_evidence": {
+        "prior_value": -11.054,
+        "current_value": -23.211,
+        "yoy_change": -1.0998
+      },
+      "sec_explanation": null,
+      "explanation_status": "LIKELY_EXPLANATION",
+      "source_references": [
+        "workbook Cash Flow - Standardized"
+      ],
+      "analyst_relevance": "Capital allocation / investment intensity change.",
+      "status": "open",
+      "is_data_discrepancy": false
+    },
+    {
+      "statement": "cash_flow",
+      "metric": "Share Repurchases",
+      "period": "FY2017",
+      "severity": "WATCH",
+      "observation": "Share Repurchases changed 106.3% YoY (-48 \u2192 3)",
+      "quantitative_evidence": {
+        "prior_value": -48.222,
+        "current_value": 3.02,
+        "yoy_change": 1.0626
+      },
+      "sec_explanation": null,
+      "explanation_status": "LIKELY_EXPLANATION",
+      "source_references": [
+        "workbook Cash Flow - Standardized"
+      ],
+      "analyst_relevance": "Capital allocation / investment intensity change.",
+      "status": "open",
+      "is_data_discrepancy": false
+    },
+    {
+      "statement": "cash_flow",
+      "metric": "Share Repurchases",
+      "period": "FY2023",
+      "severity": "WATCH",
+      "observation": "Share Repurchases changed -98.9% YoY (3 \u2192 0)",
+      "quantitative_evidence": {
+        "prior_value": 2.894,
+        "current_value": 0.032,
+        "yoy_change": -0.9889
+      },
+      "sec_explanation": null,
+      "explanation_status": "LIKELY_EXPLANATION",
+      "source_references": [
+        "workbook Cash Flow - Standardized"
+      ],
+      "analyst_relevance": "Capital allocation / investment intensity change.",
+      "status": "open",
+      "is_data_discrepancy": false
+    },
+    {
+      "statement": "cash_flow",
+      "metric": "Share Repurchases",
+      "period": "FY2019",
+      "severity": "WATCH",
+      "observation": "Share Repurchases changed -93.7% YoY (3 \u2192 0)",
+      "quantitative_evidence": {
+        "prior_value": 2.788,
+        "current_value": 0.177,
+        "yoy_change": -0.9365
+      },
+      "sec_explanation": null,
+      "explanation_status": "LIKELY_EXPLANATION",
+      "source_references": [
+        "workbook Cash Flow - Standardized"
+      ],
+      "analyst_relevance": "Capital allocation / investment intensity change.",
+      "status": "open",
+      "is_data_discrepancy": false
+    },
+    {
+      "statement": "cash_flow",
+      "metric": "Share Repurchases",
+      "period": "FY2025",
+      "severity": "WATCH",
+      "observation": "Share Repurchases changed 54.4% YoY (-22 \u2192 -10)",
+      "quantitative_evidence": {
+        "prior_value": -21.975,
+        "current_value": -10.025,
+        "yoy_change": 0.5438
+      },
+      "sec_explanation": null,
+      "explanation_status": "LIKELY_EXPLANATION",
+      "source_references": [
+        "workbook Cash Flow - Standardized"
+      ],
+      "analyst_relevance": "Capital allocation / investment intensity change.",
+      "status": "open",
+      "is_data_discrepancy": false
+    },
+    {
+      "statement": "cash_flow",
+      "metric": "Capital Expenditures",
+      "period": "FY2024",
+      "severity": "WATCH",
+      "observation": "Capital Expenditures changed -54.3% YoY (-19 \u2192 -29)",
+      "quantitative_evidence": {
+        "prior_value": -18.775,
+        "current_value": -28.979,
+        "yoy_change": -0.5435
+      },
+      "sec_explanation": null,
+      "explanation_status": "LIKELY_EXPLANATION",
+      "source_references": [
+        "workbook Cash Flow - Standardized"
+      ],
+      "analyst_relevance": "Capital allocation / investment intensity change.",
+      "status": "open",
+      "is_data_discrepancy": false
+    },
+    {
+      "statement": "cash_flow",
+      "metric": "Capital Expenditures",
+      "period": "FY2025",
+      "severity": "WATCH",
+      "observation": "Capital Expenditures changed -46.6% YoY (-29 \u2192 -42)",
+      "quantitative_evidence": {
+        "prior_value": -28.979,
+        "current_value": -42.496,
+        "yoy_change": -0.4664
+      },
+      "sec_explanation": null,
+      "explanation_status": "LIKELY_EXPLANATION",
+      "source_references": [
+        "workbook Cash Flow - Standardized"
+      ],
+      "analyst_relevance": "Capital allocation / investment intensity change.",
+      "status": "open",
+      "is_data_discrepancy": false
+    },
+    {
+      "statement": "cash_flow",
+      "metric": "Capital Expenditures",
+      "period": "FY2022",
+      "severity": "WATCH",
+      "observation": "Capital Expenditures changed 41.2% YoY (-27 \u2192 -16)",
+      "quantitative_evidence": {
+        "prior_value": -26.511,
+        "current_value": -15.595,
+        "yoy_change": 0.4118
+      },
+      "sec_explanation": null,
+      "explanation_status": "LIKELY_EXPLANATION",
+      "source_references": [
+        "workbook Cash Flow - Standardized"
+      ],
+      "analyst_relevance": "Capital allocation / investment intensity change.",
+      "status": "open",
+      "is_data_discrepancy": false
+    },
+    {
+      "statement": "cash_flow",
+      "metric": "Operating Cash Flow",
+      "period": "FY2025",
+      "severity": "WATCH",
+      "observation": "CFO changed 38.8% YoY (96 \u2192 133)",
+      "quantitative_evidence": {
+        "prior_value": 95.761,
+        "current_value": 132.91,
+        "yoy_change": 0.3879
+      },
+      "sec_explanation": null,
+      "explanation_status": "UNEXPLAINED_REVIEW_REQUIRED",
+      "source_references": [
+        "workbook Cash Flow - Standardized"
+      ],
+      "analyst_relevance": "Inspect WC swings, deferred taxes, and non-cash items.",
+      "status": "open",
+      "is_data_discrepancy": false
+    },
+    {
+      "statement": "balance_sheet",
+      "metric": "Cash",
+      "period": "FY2018",
+      "severity": "WATCH",
+      "observation": "Cash changed 32.2% YoY (122 \u2192 161 USD millions)",
+      "quantitative_evidence": {
+        "prior_value": 121.62,
+        "current_value": 160.787,
+        "yoy_change": 0.322,
+        "absolute_change": 39.17
+      },
+      "sec_explanation": null,
+      "explanation_status": "UNEXPLAINED_REVIEW_REQUIRED",
+      "source_references": [
+        "workbook Balance Sheet - Standardized"
+      ],
+      "analyst_relevance": "Review debt activity, acquisitions, buybacks, and working capital notes.",
+      "status": "open",
+      "is_data_discrepancy": false
+    },
+    {
+      "statement": "balance_sheet",
+      "metric": "Cash",
+      "period": "FY2025",
+      "severity": "WATCH",
+      "observation": "Cash changed 31.3% YoY (191 \u2192 251 USD millions)",
+      "quantitative_evidence": {
+        "prior_value": 190.879,
+        "current_value": 250.575,
+        "yoy_change": 0.3127,
+        "absolute_change": 59.7
+      },
+      "sec_explanation": null,
+      "explanation_status": "UNEXPLAINED_REVIEW_REQUIRED",
+      "source_references": [
+        "workbook Balance Sheet - Standardized"
+      ],
+      "analyst_relevance": "Review debt activity, acquisitions, buybacks, and working capital notes.",
+      "status": "open",
+      "is_data_discrepancy": false
+    },
+    {
+      "statement": "balance_sheet",
+      "metric": "Cash",
+      "period": "FY2019",
+      "severity": "WATCH",
+      "observation": "Cash changed -20.9% YoY (161 \u2192 127 USD millions)",
+      "quantitative_evidence": {
+        "prior_value": 160.787,
+        "current_value": 127.204,
+        "yoy_change": -0.2089,
+        "absolute_change": -33.58
+      },
+      "sec_explanation": null,
+      "explanation_status": "UNEXPLAINED_REVIEW_REQUIRED",
+      "source_references": [
+        "workbook Balance Sheet - Standardized"
+      ],
+      "analyst_relevance": "Review debt activity, acquisitions, buybacks, and working capital notes.",
+      "status": "open",
+      "is_data_discrepancy": false
+    },
+    {
+      "statement": "balance_sheet",
+      "metric": "Cash",
+      "period": "FY2017",
+      "severity": "WATCH",
+      "observation": "Cash changed 20.1% YoY (101 \u2192 122 USD millions)",
+      "quantitative_evidence": {
+        "prior_value": 101.246,
+        "current_value": 121.62,
+        "yoy_change": 0.2012,
+        "absolute_change": 20.37
+      },
+      "sec_explanation": null,
+      "explanation_status": "UNEXPLAINED_REVIEW_REQUIRED",
+      "source_references": [
+        "workbook Balance Sheet - Standardized"
+      ],
+      "analyst_relevance": "Review debt activity, acquisitions, buybacks, and working capital notes.",
+      "status": "open",
+      "is_data_discrepancy": false
+    },
+    {
+      "statement": "income_statement",
+      "metric": "Revenue",
+      "period": "FY2021",
+      "severity": "WATCH",
+      "observation": "Revenue growth of 19.6% YoY (FY2020: 475 \u2192 FY2021: 568 USD millions)",
+      "quantitative_evidence": {
+        "prior_period": "FY2020",
+        "prior_value": 474.692,
+        "current_value": 567.646,
+        "yoy_change": 0.1958
+      },
+      "sec_explanation": "If both periods VALIDATED against SEC, this is a business-performance finding \u2014 not a fiscal-period or data-identity error.",
+      "explanation_status": "LIKELY_EXPLANATION",
+      "source_references": [
+        "workbook Income - GAAP",
+        "SEC companyfacts revenue"
+      ],
+      "analyst_relevance": "Investigate drivers in MD&A / segment notes for this FY.",
+      "status": "open",
+      "is_data_discrepancy": false
+    },
+    {
+      "statement": "income_statement",
+      "metric": "Revenue",
+      "period": "FY2019",
+      "severity": "WATCH",
+      "observation": "Revenue decline of -18.9% YoY (FY2018: 548 \u2192 FY2019: 444 USD millions)",
+      "quantitative_evidence": {
+        "prior_period": "FY2018",
+        "prior_value": 547.705,
+        "current_value": 444.072,
+        "yoy_change": -0.1892
+      },
+      "sec_explanation": "If both periods VALIDATED against SEC, this is a business-performance finding \u2014 not a fiscal-period or data-identity error.",
+      "explanation_status": "LIKELY_EXPLANATION",
+      "source_references": [
+        "workbook Income - GAAP",
+        "SEC companyfacts revenue"
+      ],
+      "analyst_relevance": "Investigate drivers in MD&A / segment notes for this FY.",
+      "status": "open",
+      "is_data_discrepancy": false
+    },
+    {
+      "statement": "income_statement",
+      "metric": "Operating Margin",
+      "period": "FY2019",
+      "severity": "WATCH",
+      "observation": "Operating margin moved -6 bps (FY2018: 7.0% \u2192 FY2019: 1.4%)",
+      "quantitative_evidence": {
+        "prior_operating_margin": 0.0704,
+        "current_operating_margin": 0.0138,
+        "delta": -0.0566
+      },
+      "sec_explanation": null,
+      "explanation_status": "UNEXPLAINED_REVIEW_REQUIRED",
+      "source_references": [
+        "workbook Income - GAAP"
+      ],
+      "analyst_relevance": "Check opex, R&D, SG&A, and one-time operating items.",
+      "status": "open",
+      "is_data_discrepancy": false
+    },
+    {
+      "statement": "cash_flow",
+      "metric": "Cash conversion",
+      "period": "FY2022",
+      "severity": "WATCH",
+      "observation": "CFO/|Net Income| = 0.05 (CFO 3, NI 65)",
+      "quantitative_evidence": {
+        "cfo": 3.048,
+        "net_income": 65.469,
+        "cfo_to_ni": 0.047
+      },
+      "sec_explanation": null,
+      "explanation_status": "UNEXPLAINED_REVIEW_REQUIRED",
+      "source_references": [
+        "workbook Income - GAAP",
+        "Cash Flow - Standardized"
+      ],
+      "analyst_relevance": "Earnings vs cash divergence warrants WC/quality review.",
+      "status": "open",
+      "is_data_discrepancy": false
+    }
+  ],
+  "material_count": 19,
+  "watch_count": 18,
+  "info_count": 0,
+  "summary": "Analyst review: 19 MATERIAL, 18 WATCH, 0 INFO (37 ranked findings; validation discrepancies kept separate)."
+}

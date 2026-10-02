@@ -1,0 +1,31 @@
+{
+  "analysis_id": "17feded2-1785-4807-8560-1716c7cfa34c",
+  "ticker": "LNN",
+  "status": "ok",
+  "gates": {
+    "A_template_period": "pass",
+    "A_sec_coverage": "pass",
+    "B_statements": "pass",
+    "C_pe10": "pass",
+    "D_tax": "pass",
+    "E_rd": "pass",
+    "F_leases": "pass",
+    "F_lease_rate": "pass",
+    "G_buybacks": "pass",
+    "H_current": "pass",
+    "I_projection": "pass",
+    "J_recalc": "pass",
+    "K_valuation": "pass",
+    "L_valuation_judgment": "pass",
+    "report_authorization": "authorized"
+  },
+  "blockers": [],
+  "warnings": [
+    "PE10_PERIOD_NOTE: fiscal year-end dates not supplied; nearest-date matching assumes calendar 31 Dec unless a dated CRF series is used.",
+    "PE10_PERIOD_NOTE: current PE10 and fiscal-year PE10 differ because they represent different as-of dates \u2014 informational, not a mismatch.",
+    "RD_USEFUL_LIFE_AGENT_SELECTED",
+    "LEASE_RATE_AUTONOMOUS_AGENT_DECISION"
+  ],
+  "report_authorized": true,
+  "summary": "New Company gates=ok; blockers=0; warnings=4; authorized=True."
+}

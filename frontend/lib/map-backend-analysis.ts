@@ -16,16 +16,22 @@ export function mapPipelineToStatus(
   isComplete: boolean,
   status: string,
 ): AnalysisStatus {
-  if (isComplete || pipelineState === "complete") {
-    return "Complete";
-  }
-  if (pipelineState === "failed" || status === "failed") {
+  if (status === "failed" || pipelineState === "failed") {
     return "Failed";
+  }
+  if (status === "awaiting_analyst_review" || status === "needs_review") {
+    return "Review";
+  }
+  if (status === "recalculating") {
+    return "Running";
+  }
+  if (isComplete || (pipelineState === "complete" && status === "complete")) {
+    return "Complete";
   }
   if (pipelineState === "idle" && status === "uploaded") {
     return "Queued";
   }
-  if (pipelineState === "processing") {
+  if (pipelineState === "processing" || status === "processing") {
     return "Running";
   }
   return "Queued";
@@ -61,6 +67,7 @@ export function mapSummaryToAnalysisDetail(summary: AnalysisSummary): AnalysisDe
     isComplete: summary.is_complete,
     recommendation: summary.recommendation,
     recommendationLabel: summary.recommendation_label,
+    finalRecommendation: summary.final_recommendation ?? null,
     businessQualityScore: summary.business_quality_score,
     investmentAttractivenessScore: summary.investment_attractiveness_score,
     decisionLog: [],

@@ -1,0 +1,31 @@
+{
+  "status": "ok",
+  "method": "excel_com_calculate_full_rebuild",
+  "cells_checked": [
+    "Expected Returns & Buybacks!E14",
+    "Expected Returns & Buybacks!F14",
+    "Enterprise Value!B20",
+    "Enterprise Value!B27",
+    "Enterprise Value!B32",
+    "Enterprise Value!B42",
+    "Enterprise Value!B47",
+    "Enterprise Value!B48",
+    "Enterprise Value!B6",
+    "Enterprise Value!C6",
+    "Tax!L15",
+    "Tax!L25",
+    "R&D!N2",
+    "R&D!N3",
+    "R&D!N4",
+    "Final Metrics!L5",
+    "Final Metrics!L8",
+    "IC & NOPAT & ROIC !L7",
+    "IC & NOPAT & ROIC !L20",
+    "IC & NOPAT & ROIC !L23"
+  ],
+  "missing_cached_values": [],
+  "formula_errors": [],
+  "error": null,
+  "summary": "Excel recalc ok: method=excel_com_calculate_full_rebuild; checked=20; missing=0; errors=0; 6.7s.",
+  "com_invoked": true
+}

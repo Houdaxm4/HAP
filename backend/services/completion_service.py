@@ -128,61 +128,32 @@ class CompletionService:
                 # --- Per-statement quarterly presentation gate ---
                 if section in _QUARTERLY_SECTIONS and per_q_decisions:
                     stmt_decision = per_q_decisions.get(section.value)
-                    sheet_info = (quarterly_health or {}).get("per_sheet", {}).get(
-                        intent.sheet, {}
-                    )
-                    if stmt_decision == "YAHOO_BASIC_TEMPLATE_REQUIRED":
+                    if stmt_decision and stmt_decision != "BLOOMBERG_PRESERVE":
+                        # Incomplete input, including legacy fill/rebuild labels.
+                        # Those labels are not permission to write the statement.
                         wb_val, _ = self._read_cell(workbook, intent.sheet, intent.cell)
                         entries.append(
                             self._entry(
                                 intent,
-                                CompletionDecision.YAHOO_QUARTERLY_FALLBACK_REQUIRED,
+                                CompletionDecision.BLOCKED,
                                 workbook_value=wb_val,
                                 reason=(
-                                    f"YAHOO_BASIC_TEMPLATE_REQUIRED for {section.value}: "
-                                    f"{sheet_info.get('decision', stmt_decision)} — "
-                                    f"Yahoo basic template handles this statement"
+                                    f"STATEMENT_INCOMPLETE — {intent.sheet}!{intent.cell} "
+                                    f"({section.value}, classifier={stmt_decision}). "
+                                    "Upstream must supply the financial statement. HAP did not fill it."
                                 ),
                                 analysis_type=mode_label,
                                 workbook_section=section.value,
                                 required_for_mode=True,
-                                source_authority="market_internet:yahoo",
+                                source_authority=authority,
                             )
                         )
                         fill_intents.append(
                             intent.model_copy(
                                 update={
                                     "decision": IntentDecision.SKIP,
-                                    "write_policy_result": "yahoo_basic_template_required",
-                                    "reason": "Yahoo basic template replacement handles this statement",
-                                }
-                            )
-                        )
-                        continue
-                    if stmt_decision == "SEC_10Q_PRESENTATION_REQUIRED":
-                        wb_val, _ = self._read_cell(workbook, intent.sheet, intent.cell)
-                        entries.append(
-                            self._entry(
-                                intent,
-                                CompletionDecision.SEC_QUARTERLY_FALLBACK_REQUIRED,
-                                workbook_value=wb_val,
-                                reason=(
-                                    f"SEC_10Q_PRESENTATION_REQUIRED for {section.value}: "
-                                    f"{sheet_info.get('decision', stmt_decision)} — "
-                                    f"no Bloomberg-cell SEC patching"
-                                ),
-                                analysis_type=mode_label,
-                                workbook_section=section.value,
-                                required_for_mode=True,
-                                source_authority="sec_edgar_10q",
-                            )
-                        )
-                        fill_intents.append(
-                            intent.model_copy(
-                                update={
-                                    "decision": IntentDecision.SKIP,
-                                    "write_policy_result": "sec_10q_presentation_required",
-                                    "reason": "SEC layout replacement handles this statement",
+                                    "write_policy_result": "statement_incomplete_upstream",
+                                    "reason": "STATEMENT_INCOMPLETE — financial statements are not populated by HAP",
                                 }
                             )
                         )
@@ -219,8 +190,8 @@ class CompletionService:
                                 CompletionDecision.ALREADY_PRESENT,
                                 workbook_value=wb_val,
                                 reason=(
-                                    "BLOOMBERG_PRESERVE — blank non-critical cell left untouched "
-                                    "(isolated fills require BLOOMBERG_FILL_GAPS)"
+                                    "BLOOMBERG_PRESERVE — blank non-critical cell left untouched. "
+                                    "HAP does not fill statement gaps."
                                 ),
                                 analysis_type=mode_label,
                                 workbook_section=section.value,
@@ -238,7 +209,6 @@ class CompletionService:
                             )
                         )
                         continue
-                    # BLOOMBERG_FILL_GAPS / BLOCKED fall through to normal in-scope logic
 
                 # --- In-scope M3 BLOCK ---
                 if intent.decision == IntentDecision.BLOCK:
@@ -417,6 +387,41 @@ class CompletionService:
                     )
                     continue
 
+                if section in {
+                    WorkbookSection.ANNUAL_INCOME,
+                    WorkbookSection.ANNUAL_BALANCE_SHEET,
+                    WorkbookSection.ANNUAL_CASH_FLOW,
+                    WorkbookSection.QUARTERLY_INCOME,
+                    WorkbookSection.QUARTERLY_BALANCE_SHEET,
+                    WorkbookSection.QUARTERLY_CASH_FLOW,
+                } and _is_blank_or_unusable(wb_val, dtype):
+                    entries.append(
+                        self._entry(
+                            intent,
+                            CompletionDecision.BLOCKED,
+                            workbook_value=wb_val,
+                            reason=(
+                                f"STATEMENT_INCOMPLETE — {intent.sheet}!{intent.cell} "
+                                f"({intent.metric} @ {intent.period}) is blank. "
+                                "Upstream must supply the financial statement. HAP did not fill it."
+                            ),
+                            analysis_type=mode_label,
+                            workbook_section=section.value,
+                            required_for_mode=True,
+                            source_authority=authority,
+                        )
+                    )
+                    fill_intents.append(
+                        intent.model_copy(
+                            update={
+                                "decision": IntentDecision.SKIP,
+                                "write_policy_result": "statement_incomplete_upstream",
+                                "reason": "STATEMENT_INCOMPLETE — financial statements are not populated by HAP",
+                            }
+                        )
+                    )
+                    continue
+
                 if not _is_blank_or_unusable(wb_val, dtype):
                     entries.append(
                         self._entry(
@@ -505,12 +510,12 @@ class CompletionService:
             ),
             quarterly_health=quarterly_health,
             assumptions=[
-                "Blank cells are filled only when required_for_mode and a valid source exists.",
+                "Blank analytical cells are filled only when required_for_mode and a valid source exists.",
+                "Financial-statement cells are never filled or reconstructed by HAP.",
                 "new_company completion scope: tax, PE10, current_data only.",
-                "annual_update completion scope: new FY statements + tax/PE10/current for that year.",
-                "quarterly_update completion scope: current_data + quarterly statements.",
-                "Materially broken Bloomberg quarterly tabs emit YAHOO_QUARTERLY_FALLBACK_REQUIRED "
-                "(Yahoo basic template; SEC secondary).",
+                "annual_update completion scope: tax/PE10/current for the new year. Blank statements block.",
+                "quarterly_update completion scope: current_data. Blank quarterly statements block.",
+                "A supplied statement that conflicts with SEC is flagged, not overwritten.",
                 "Valid prefilled in-scope values are ALREADY_PRESENT; never silently overwritten.",
             ],
         )

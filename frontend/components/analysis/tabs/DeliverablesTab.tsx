@@ -54,7 +54,12 @@ function describe(name: string): string {
     if (lower.includes("annual")) return "Annual update memo";
     return "Research and recommendation memo";
   }
-  if (lower.includes("fa") || /\d{4}\s+[a-z]{1,5}\s+fa/i.test(name)) {
+  if (
+    lower.includes("fa")
+    || /\d{4}\s+[a-z]{1,5}\s+fa/i.test(name)
+    || /\d{4}\s+q[1-4]\s+/i.test(name)
+    || /fiscal year/i.test(name)
+  ) {
     return "Finished financial model";
   }
   if (GENERIC_WORKBOOK_NAMES.has(lower)) {

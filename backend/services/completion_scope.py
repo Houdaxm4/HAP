@@ -55,6 +55,20 @@ QUARTERLY_MATERIAL_EMPTY_RATIO = 0.20
 QUARTERLY_SUBSTANTIAL_RATIO = 0.40
 
 
+# Interim fiscal quarters. A latest period of Q4 is the fiscal year itself (covered by the 10-K).
+INTERIM_QUARTERS = (1, 2, 3)
+
+
+def quarterly_analysis_required(analysis_type: str | None, latest_quarter: int | None) -> bool:
+    """Single rule for when last-quarter statements must be supplied and validated.
+
+    New Company: required when the latest period is an interim quarter (Q1-Q3).
+    Annual Update: never (it focuses on the last 10-K).
+    Quarterly Update: is itself the quarterly workflow and handles its own presentation.
+    """
+    return normalize_analysis_type(analysis_type) == AnalysisTypeMode.NEW_COMPANY and latest_quarter in INTERIM_QUARTERS
+
+
 def normalize_analysis_type(raw: str | None) -> AnalysisTypeMode:
     """Map free-form analysis_type strings to the three supported modes."""
     if not raw:
@@ -113,9 +127,18 @@ def classify_workbook_section(
     if sheet_l == "Inputs":
         if path_l.startswith("inputs.tax") or "tax" in metric_l:
             return WorkbookSection.TAX
-        if "pe10" in blob or path_l in {"inputs.pe10", "inputs.e10"} or metric_l in {
+        if "pe10" in blob or path_l in {
+            "inputs.pe10",
+            "inputs.e10",
+            "inputs.eps_10y_growth",
+            "inputs.eps_10y_direction",
+            "inputs.revenue_10y_growth",
+        } or metric_l in {
             "pe10",
             "e10",
+            "eps 10-year growth",
+            "eps 10-year direction",
+            "revenue 10-year growth",
         }:
             return WorkbookSection.PE10
         if path_l.startswith("inputs.current") or path_l.startswith("inputs.max") or path_l.startswith(
@@ -338,7 +361,6 @@ def assess_quarterly_bloomberg_health(
     assessments = assess_all_quarterly_statements(workbook)
     per_sheet: dict[str, dict[str, Any]] = {}
     ratios: list[float] = []
-    any_sec = False
     all_preserve = True
     reasons: list[str] = []
     for health, decision in assessments:
@@ -355,20 +377,15 @@ def assess_quarterly_bloomberg_health(
             "major_totals_present": health.major_totals_present,
         }
         reasons.append(f"{decision.value}: {health.reason}")
-        if decision == PresentationDecision.SEC_10Q_PRESENTATION_REQUIRED:
-            any_sec = True
-            all_preserve = False
-        elif decision == PresentationDecision.YAHOO_BASIC_TEMPLATE_REQUIRED:
-            any_sec = True  # may still use SEC as secondary
-            all_preserve = False
-        elif decision != PresentationDecision.BLOOMBERG_PRESERVE:
+        # Missing statements are incomplete input. They are not an SEC fill request.
+        if decision != PresentationDecision.BLOOMBERG_PRESERVE:
             all_preserve = False
 
     min_ratio = min(ratios) if ratios else 0.0
     avg_ratio = (sum(ratios) / len(ratios)) if ratios else 0.0
     return {
-        "sec_quarterly_fallback_required": any_sec,
-        "substantially_populated": all_preserve and not any_sec,
+        "sec_quarterly_fallback_required": False,
+        "substantially_populated": all_preserve,
         "min_fill_ratio": round(min_ratio, 4),
         "avg_fill_ratio": round(avg_ratio, 4),
         "per_sheet": per_sheet,

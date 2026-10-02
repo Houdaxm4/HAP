@@ -1,0 +1,200 @@
+{
+  "analysis_id": "3bc7b27e-fa52-42e2-947c-9d9d4c5aee57",
+  "ticker": "LNN",
+  "schema_version": "1.0.0",
+  "milestone": "expected_return_review",
+  "workbook_path": "C:\\Users\\Soulaymane Kachani\\Downloads\\HAP2\\backend\\storage\\outputs\\3bc7b27e-fa52-42e2-947c-9d9d4c5aee57\\completed_workbook.xlsx",
+  "methodology": {
+    "sheet": "Expected Returns & Buybacks",
+    "eps_source": "Income - GAAP row 71 Diluted EPS, GAAP (via Inputs!row41 \u2192 Final Metrics row29)",
+    "historical_growth_cell": "Expected Returns!B5 = Final Metrics!L31",
+    "historical_growth_formula": "EPS 10Y CAGR = (EPS_end/EPS_start)^(1/9)-1 (ending column)",
+    "expected_annual_return_cell": "Expected Returns!E14",
+    "expected_annual_return_formula": "(Price_in_10y / Current_Price)^(1/10)-1",
+    "price_in_10y": "C14 = EPS_in_10y * MaxPE10 (E2)",
+    "eps_in_10y": "B14 = BV_in_10y * Average_ROE (A14)",
+    "bv_growth": "A11 = RetainedEarningsAvg% * AverageROE (C5*A14)",
+    "current_price": "A2 = Final Metrics!B51 = Inputs!B63",
+    "bloomberg_alternate": "Inputs!B69 / Final Metrics!B57 Expected Return @ Current Price",
+    "analyst_adjustment_cells": "Inputs EPS growth sinks C59:L60 (often Bloomberg); ER projection uses ROE/BV path",
+    "sample_formulas": {
+      "B5": "='Final Metrics'!L31",
+      "E14": "=(C14/A2)^((1/10))-1",
+      "L31": "=(L29/C29)^(1/9)-1"
+    },
+    "no_workbook_writes": true
+  },
+  "eps_history": [
+    {
+      "period": "FY2016",
+      "workbook_eps": 1.85,
+      "sec_eps": 1.85,
+      "workbook_cell": "Income - GAAP!C71",
+      "decision": "VALIDATED",
+      "reason": "Workbook EPS matches SEC diluted EPS",
+      "yoy_growth": null,
+      "split_adjusted_comparable": true
+    },
+    {
+      "period": "FY2017",
+      "workbook_eps": 2.17,
+      "sec_eps": 2.17,
+      "workbook_cell": "Income - GAAP!D71",
+      "decision": "VALIDATED",
+      "reason": "Workbook EPS matches SEC diluted EPS",
+      "yoy_growth": 0.17297297297297298,
+      "split_adjusted_comparable": true
+    },
+    {
+      "period": "FY2018",
+      "workbook_eps": 1.88,
+      "sec_eps": 1.88,
+      "workbook_cell": "Income - GAAP!E71",
+      "decision": "VALIDATED",
+      "reason": "Workbook EPS matches SEC diluted EPS",
+      "yoy_growth": -0.13364055299539168,
+      "split_adjusted_comparable": true
+    },
+    {
+      "period": "FY2019",
+      "workbook_eps": 0.2,
+      "sec_eps": 0.2,
+      "workbook_cell": "Income - GAAP!F71",
+      "decision": "VALIDATED",
+      "reason": "Workbook EPS matches SEC diluted EPS",
+      "yoy_growth": -0.8936170212765957,
+      "split_adjusted_comparable": true
+    },
+    {
+      "period": "FY2020",
+      "workbook_eps": 3.56,
+      "sec_eps": 3.56,
+      "workbook_cell": "Income - GAAP!G71",
+      "decision": "VALIDATED",
+      "reason": "Workbook EPS matches SEC diluted EPS",
+      "yoy_growth": 16.8,
+      "split_adjusted_comparable": true
+    },
+    {
+      "period": "FY2021",
+      "workbook_eps": 3.88,
+      "sec_eps": 3.88,
+      "workbook_cell": "Income - GAAP!H71",
+      "decision": "VALIDATED",
+      "reason": "Workbook EPS matches SEC diluted EPS",
+      "yoy_growth": 0.0898876404494382,
+      "split_adjusted_comparable": true
+    },
+    {
+      "period": "FY2022",
+      "workbook_eps": 5.94,
+      "sec_eps": 5.94,
+      "workbook_cell": "Income - GAAP!I71",
+      "decision": "VALIDATED",
+      "reason": "Workbook EPS matches SEC diluted EPS",
+      "yoy_growth": 0.5309278350515465,
+      "split_adjusted_comparable": true
+    },
+    {
+      "period": "FY2023",
+      "workbook_eps": 6.54,
+      "sec_eps": 6.54,
+      "workbook_cell": "Income - GAAP!J71",
+      "decision": "VALIDATED",
+      "reason": "Workbook EPS matches SEC diluted EPS",
+      "yoy_growth": 0.101010101010101,
+      "split_adjusted_comparable": true
+    },
+    {
+      "period": "FY2024",
+      "workbook_eps": 6.01,
+      "sec_eps": 6.01,
+      "workbook_cell": "Income - GAAP!K71",
+      "decision": "VALIDATED",
+      "reason": "Workbook EPS matches SEC diluted EPS",
+      "yoy_growth": -0.08103975535168195,
+      "split_adjusted_comparable": true
+    },
+    {
+      "period": "FY2025",
+      "workbook_eps": 6.78,
+      "sec_eps": 6.78,
+      "workbook_cell": "Income - GAAP!L71",
+      "decision": "VALIDATED",
+      "reason": "Workbook EPS matches SEC diluted EPS",
+      "yoy_growth": 0.1281198003327788,
+      "split_adjusted_comparable": true
+    }
+  ],
+  "outliers": [
+    {
+      "period": "FY2019",
+      "reported_eps": 0.2,
+      "proposed_normalized_eps": null,
+      "yoy_growth": -0.8936170212765957,
+      "quantitative_impact": {
+        "abs_yoy": 0.8936170212765957
+      },
+      "reason": "Statistical YoY outlier (-89%) without concrete one-time filing evidence \u2014 do not adjust EPS automatically.",
+      "sec_evidence": null,
+      "confidence": 0.7,
+      "necessity": "NOT_JUSTIFIED",
+      "decision": "WATCH"
+    },
+    {
+      "period": "FY2020",
+      "reported_eps": 3.56,
+      "proposed_normalized_eps": null,
+      "yoy_growth": 16.8,
+      "quantitative_impact": {
+        "abs_yoy": 16.8
+      },
+      "reason": "Statistical YoY outlier (1680%) without concrete one-time filing evidence \u2014 do not adjust EPS automatically.",
+      "sec_evidence": null,
+      "confidence": 0.7,
+      "necessity": "NOT_JUSTIFIED",
+      "decision": "WATCH"
+    },
+    {
+      "period": "FY2022",
+      "reported_eps": 5.94,
+      "proposed_normalized_eps": null,
+      "yoy_growth": 0.5309278350515465,
+      "quantitative_impact": {
+        "abs_yoy": 0.5309278350515465
+      },
+      "reason": "Statistical YoY outlier (53%) without concrete one-time filing evidence \u2014 do not adjust EPS automatically.",
+      "sec_evidence": null,
+      "confidence": 0.7,
+      "necessity": "NOT_JUSTIFIED",
+      "decision": "WATCH"
+    }
+  ],
+  "growth": {
+    "workbook_eps_cagr": null,
+    "independent_eps_cagr": 0.155242365869817,
+    "recent_5y_cagr": 0.13751187507821183,
+    "workbook_growth_assumption": null,
+    "independent_growth_low": 0.10313390630865887,
+    "independent_growth_high": 0.155242365869817,
+    "growth_decision": "REVIEW_REQUIRED",
+    "growth_explanation": "Insufficient EPS history for growth assessment."
+  },
+  "current_price": 116.59,
+  "max_pe10": null,
+  "workbook_expected_return": null,
+  "independent_expected_return": null,
+  "expected_return_difference": null,
+  "expected_return_decision": "SOURCE_MISSING",
+  "expected_return_explanation": "Expected return outputs unavailable (price or terminal value inputs incomplete). Bloomberg Inputs!B69 ER=34.0% present as alternate sink.",
+  "attractiveness": "indeterminate",
+  "overall_decision": "REVIEW_REQUIRED",
+  "summary": "Expected Return review LNN: EPS points=10, growth=REVIEW_REQUIRED, ER=SOURCE_MISSING, attractiveness=indeterminate. Expected return outputs unavailable (price or terminal value inputs incomplete). Bloomberg Inputs!B69 ER=34.0% present as alternate sink.",
+  "evidence": {
+    "terminal_price": null,
+    "bloomberg_er": 0.3397116139345524,
+    "treasury_yield": null,
+    "growth_assumption": null,
+    "er_e14_formula": "=(C14/A2)^((1/10))-1"
+  }
+}

@@ -50,8 +50,12 @@ def _mini_workbook(path: Path, *, tax_blank: bool = True) -> None:
     ev = wb.create_sheet("Enterprise Value")
     ev["A6"] = "Owners Earnings Growth Rate"
     ev["B6"] = 0.45
+    ev["C6"] = "=(B6+1)^(1/9)-1"
+    ev["B8"] = 1
+    ev["B9"] = "='Final Metrics'!$L$10*(1+$C$6)^B8"
     ev["A41"] = "EPS 10 Year CAGR"
     ev["B41"] = 0.06
+    ev["B42"] = "=(B51+(B41*100*B52))*B40"
 
     inc = wb.create_sheet("Income - GAAP")
     inc["A7"] = "Line"
@@ -121,7 +125,7 @@ def test_tax_research_computes_etr_from_sec():
     assert questions[0].unsuccessful is False
 
 
-def test_judgment_context_classifies_aggressive_oe(tmp_path: Path):
+def test_judgment_context_uses_c6_and_ignores_c31(tmp_path: Path):
     wb_path = tmp_path / "wb.xlsx"
     _mini_workbook(wb_path)
     ctx = AnnualAnalystIntelligenceService().build_judgment_context(
@@ -129,8 +133,15 @@ def test_judgment_context_classifies_aggressive_oe(tmp_path: Path):
         ticker="ZZ",
         workbook_path=wb_path,
     )
-    assert ctx["oe_classification"] in {"AGGRESSIVE", "VERY_AGGRESSIVE", "DISTORTED"}
-    assert ctx.get("normalized_oe_growth") is not None
+    oe = ctx["oe_analysis"]
+    gr = ctx["graham_analysis"]
+    assert oe["actual_formula_driver"] in {"Enterprise Value!C6", None} or (
+        oe["existing_assumption_source"] or ""
+    ).endswith("C6")
+    assert oe["historical_observations"].get("oe_total_change_b6") == pytest.approx(0.45)
+    assert gr["historical_observations"].get("fm_c31_ignored") == pytest.approx(0.05)
+    assert ctx.get("eps_growth_5y") != pytest.approx(0.05) or ctx.get("eps_growth_5y") is None
+    assert 0.08 not in (oe.get("selected_prospective_rate"), gr.get("selected_prospective_rate"), ctx.get("normalized_oe_growth"))
 
 
 def test_judgment_writes_only_assumption_cells(tmp_path: Path):
@@ -150,7 +161,11 @@ def test_judgment_writes_only_assumption_cells(tmp_path: Path):
             "assumption_cells": {"er_growth": "Expected Returns & Buybacks!B12"},
         },
     )
-    wb = load_workbook(wb_path, data_only=True)
-    assert wb["Expected Returns & Buybacks"]["B12"].value == pytest.approx(0.03)
+    wb = load_workbook(wb_path, data_only=False)
+    assert wb["Expected Returns & Buybacks"]["B5"].value == pytest.approx(0.06)
+    assert wb["Expected Returns & Buybacks"]["B12"].value in (None, "")
+    assert wb["Enterprise Value"]["B6"].value == pytest.approx(0.45)
     assert judge.owner_earnings_growth and judge.owner_earnings_growth.adjusted
+    assert judge.hap_analysis_cells
+    assert "Expected Returns & Buybacks!B5" in (judge.original_cells_preserved or [])
     wb.close()

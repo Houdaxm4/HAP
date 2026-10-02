@@ -34,6 +34,22 @@ _TAX_COMPONENT_TAGS: dict[str, list[str]] = {
     ],
 }
 
+# Prefer already-rate ETR reconciliation tags over USD ÷ pretax.
+_TAX_RATE_TAGS: dict[str, list[str]] = {
+    "statutory_federal": [
+        "EffectiveIncomeTaxRateReconciliationAtFederalStatutoryIncomeTaxRate",
+    ],
+    "state": [
+        "EffectiveIncomeTaxRateReconciliationStateAndLocalIncomeTaxes",
+    ],
+    "foreign": [
+        "EffectiveIncomeTaxRateReconciliationForeignIncomeTaxRateDifferential",
+    ],
+    "credits": [
+        "EffectiveIncomeTaxRateReconciliationTaxCreditsResearch",
+    ],
+}
+
 _PRETAX_TAGS = [
     "IncomeLossFromContinuingOperationsBeforeIncomeTaxesExtraordinaryItemsNoncontrollingInterest",
     "IncomeLossFromContinuingOperationsBeforeIncomeTaxesMinorityInterestAndIncomeLossFromEquityMethodInvestments",
@@ -147,7 +163,32 @@ class AnnualTaxResearchService:
 
         components: list[dict[str, Any]] = []
         locations: list[str] = []
+        used_houses: set[str] = set()
+        for house, tags in _TAX_RATE_TAGS.items():
+            for tag in tags:
+                entry = _find_10k_fy_entry(company_facts, tag, fy)
+                val = None
+                label = tag
+                accn = None
+                if entry is not None and entry.get("val") is not None:
+                    val = float(entry["val"])
+                    accn = entry.get("accn")
+                else:
+                    fact = sec.find_fact(company_facts, tag, period, xbrl_tag_hint=tag)
+                    if fact is not None and fact.value is not None:
+                        val = float(fact.value)
+                        label = fact.label or tag
+                        accn = fact.accession_number
+                if val is None:
+                    continue
+                rate = val / 100.0 if abs(val) > 1.5 else val
+                components.append({"label": label, "rate": rate, "house": house, "accession": accn})
+                locations.append(f"SEC {tag} FY{fy} 10-K rate table")
+                used_houses.add(house)
+                break
         for house, tags in _TAX_COMPONENT_TAGS.items():
+            if house in used_houses or house == "deferred":
+                continue
             for tag in tags:
                 entry = _find_10k_fy_entry(company_facts, tag, fy)
                 if entry is None:
@@ -158,12 +199,14 @@ class AnnualTaxResearchService:
                         continue
                     rate = float(fact.value) / pretax
                     label = fact.label or tag
+                    accn = fact.accession_number
                 else:
                     if pretax is None or abs(pretax) < 1:
                         continue
                     rate = float(entry["val"]) / pretax
                     label = tag
-                components.append({"label": label, "rate": rate, "house": house})
+                    accn = entry.get("accn")
+                components.append({"label": label, "rate": rate, "house": house, "accession": accn})
                 locations.append(f"SEC {tag} FY{fy} 10-K")
                 break
 
@@ -199,7 +242,12 @@ class AnnualTaxResearchService:
         payload: dict[str, Any] = {
             "reported_effective_rate": etr,
             "components": [
-                {"label": c["label"], "rate": c["rate"], "house": c["house"]}
+                {
+                    "label": c["label"],
+                    "rate": c["rate"],
+                    "house": c["house"],
+                    "accession": c.get("accession"),
+                }
                 for c in components
             ],
             "source": etr_source or "sec_edgar_10k",

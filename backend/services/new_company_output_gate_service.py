@@ -1,0 +1,366 @@
+"""New Company output-readiness gates A–L."""
+
+from __future__ import annotations
+
+from pathlib import Path
+from typing import Any
+
+from models.new_company import (
+    LeaseRateReview,
+    NewCompanyBuybackReport,
+    NewCompanyCurrentDataReport,
+    NewCompanyLeaseReport,
+    NewCompanyOutputGateReport,
+    NewCompanyPe10Report,
+    NewCompanyProjectionReport,
+    NewCompanyRdReport,
+    NewCompanyStatementValidationReport,
+    NewCompanyTaxReport,
+    NewCompanyValuationReport,
+    ProjectionConfidence,
+    RdUsefulLifeDecision,
+    TenYearPeriodReport,
+    TenYearSourceCoverageReport,
+)
+from models.annual_update import AnnualValuationOutputs
+from services.completion_scope import quarterly_analysis_required
+from services.excel_recalc_service import ExcelRecalcReport, genuine_excel_com_recalc
+
+
+class NewCompanyOutputGateService:
+    def evaluate(
+        self,
+        *,
+        analysis_id: str,
+        ticker: str,
+        periods: TenYearPeriodReport | None,
+        coverage: TenYearSourceCoverageReport | None,
+        statements: NewCompanyStatementValidationReport | None,
+        pe10: NewCompanyPe10Report | None,
+        tax: NewCompanyTaxReport | None,
+        rd_decision: RdUsefulLifeDecision | None,
+        rd: NewCompanyRdReport | None,
+        leases: NewCompanyLeaseReport | None,
+        lease_review: LeaseRateReview | None,
+        buybacks: NewCompanyBuybackReport | None,
+        current: NewCompanyCurrentDataReport | None,
+        projection: NewCompanyProjectionReport | None,
+        recalc: ExcelRecalcReport | None,
+        valuation: AnnualValuationOutputs | None,
+        valuation_judgment: NewCompanyValuationReport | None = None,
+        word_authorized_attempt: bool = False,
+        quarterly_unresolved_dependencies: list | None = None,
+        quarterly_statement_blockers: list[str] | None = None,
+        data_unavailable_flags: list[str] | None = None,
+        material_differences: int = 0,
+    ) -> NewCompanyOutputGateReport:
+        blockers: list[str] = []
+        warnings: list[str] = []
+        gates: dict[str, str] = {}
+
+        # Gate A — template and period integrity
+        if (
+            periods is None
+            or periods.template_family != "industrial_template"
+            or len(periods.fiscal_years) != 10
+            or not periods.chronology_ok
+        ):
+            blockers.append("NEW_COMPANY_ANNUAL_PERIOD_RANGE_INVALID")
+            gates["A_template_period"] = "fail"
+        elif periods.latest_quarter is None:
+            blockers.append("NEW_COMPANY_QUARTER_NOT_IDENTIFIED")
+            gates["A_template_period"] = "fail"
+        else:
+            gates["A_template_period"] = "pass"
+        if coverage is not None and not coverage.complete:
+            blockers.append("TEN_YEAR_SEC_COVERAGE_INCOMPLETE")
+            gates["A_sec_coverage"] = "fail"
+        else:
+            gates["A_sec_coverage"] = "pass" if coverage and coverage.complete else "fail"
+            if coverage is None:
+                blockers.append("TEN_YEAR_SEC_COVERAGE_INCOMPLETE")
+        if coverage is not None and not coverage.lookback_complete:
+            warnings.append("RD_LOOKBACK_COVERAGE_INCOMPLETE")
+
+        # Gate B — financial-statement completeness
+        if statements is None:
+            blockers.append("NEW_COMPANY_ANNUAL_PERIOD_RANGE_INVALID")
+            gates["B_statements"] = "fail"
+        elif statements.unresolved_material:
+            # Material differences from SEC are flagged for the analyst (shaded cells and the report's Flags section);
+            # the supplied values stay, and they do not block the report.
+            gates["B_statements"] = "warn"
+            warnings.append(
+                f"MATERIAL_DIFFERENCE: {len(statements.unresolved_material)} workbook value(s) differ materially from SEC; "
+                "kept as supplied and flagged for review."
+            )
+        else:
+            gates["B_statements"] = "pass"
+
+        # Gate C — PE10/E10
+        if pe10 is None or any(o.missing for o in pe10.fiscal_year_pe10):
+            blockers.append("TEN_YEAR_PE10_COVERAGE_INCOMPLETE")
+            gates["C_pe10"] = "fail"
+        elif any(o.missing for o in pe10.fiscal_year_e10):
+            blockers.append("TEN_YEAR_E10_COVERAGE_INCOMPLETE")
+            gates["C_pe10"] = "fail"
+        else:
+            gates["C_pe10"] = "pass"
+        if pe10:
+            if pe10.current_pe10 is None or pe10.current_pe10.value is None:
+                blockers.append("TEN_YEAR_PE10_COVERAGE_INCOMPLETE")
+                gates["C_pe10"] = "fail"
+            if pe10.current_e10 is None or pe10.current_e10.value is None:
+                warnings.append("TEN_YEAR_E10_COVERAGE_INCOMPLETE: current E10 missing")
+            for w in pe10.warnings:
+                if "PE10_FISCAL_DATE_MISMATCH" in w:
+                    warnings.append(w)
+                elif "PE10_PERIOD_NOTE" in w:
+                    warnings.append(w)
+
+        # Gate D — tax
+        if tax is None or not tax.complete:
+            blockers.append("TEN_YEAR_TAX_COVERAGE_INCOMPLETE")
+            gates["D_tax"] = "fail"
+        else:
+            gates["D_tax"] = "pass"
+            if any(y.reconciliation_status not in {"ok", ""} for y in tax.years):
+                warnings.append("TAX_RECONCILIATION_FAILED")
+                if any(
+                    y.reconciliation_status == "TAX_EFFECTIVE_RATE_RECONCILIATION_FAILED"
+                    for y in tax.years
+                ):
+                    blockers.append("TAX_RECONCILIATION_FAILED")
+                    gates["D_tax"] = "fail"
+
+        # Gate E — R&D useful life and capitalization (autonomous; optional override)
+        if rd_decision is None or rd_decision.selected_useful_life is None:
+            blockers.append("RD_USEFUL_LIFE_EVIDENCE_WEAK")
+            gates["E_rd"] = "fail"
+        else:
+            warnings.append("RD_USEFUL_LIFE_AGENT_SELECTED")
+            for r in rd_decision.blocking_reasons or []:
+                warnings.append(r)
+            gates["E_rd"] = "pass"
+            if rd_decision.analyst_override is not None:
+                warnings.append("RD_USEFUL_LIFE_ANALYST_OVERRIDE")
+        if rd is None or not rd.lookback_complete:
+            blockers.append("RD_LOOKBACK_COVERAGE_INCOMPLETE")
+            gates["E_rd"] = "fail"
+        elif not rd.capitalization_ok:
+            blockers.append("RD_CAPITALIZATION_FAILED")
+            gates["E_rd"] = "fail"
+
+        # Gate F — leases: supported, documented, applied. Not a human-approval gate.
+        if leases is None or not leases.complete:
+            blockers.append("LEASE_HISTORY_INCOMPLETE")
+            gates["F_leases"] = "fail"
+        else:
+            gates["F_leases"] = "pass"
+        review = lease_review or (leases.review if leases else None)
+        selected = None
+        if review is not None:
+            selected = review.selected_rate if review.selected_rate is not None else review.proposed_rate
+        classification = getattr(review, "classification", None) if review is not None else None
+        decision_class = getattr(review, "decision_class", None) if review is not None else None
+        status = getattr(review, "status", None) if review is not None else None
+        if review is None or selected is None or status == "LEASE_RATE_EVIDENCE_INSUFFICIENT" or classification == "insufficient":
+            blockers.append("LEASE_RATE_EVIDENCE_INSUFFICIENT")
+            gates["F_lease_rate"] = "fail"
+        elif review.blocking or status == "LEASE_RATE_REVIEW_PENDING":
+            blockers.append("LEASE_RATE_REVIEW_PENDING")
+            warnings.append("LEASE_RATE_MORE_EVIDENCE_REQUESTED")
+            gates["F_lease_rate"] = "fail"
+        else:
+            proposal = getattr(review, "proposal", None)
+            methodology = getattr(proposal, "methodology", None) if proposal is not None else None
+            raw_evidence = getattr(review, "supporting_evidence", None)
+            evidence = list(raw_evidence) if isinstance(raw_evidence, (list, tuple)) else []
+            if not evidence and not methodology:
+                blockers.append("LEASE_RATE_PROVENANCE_MISSING")
+                gates["F_lease_rate"] = "fail"
+            else:
+                gates["F_lease_rate"] = "pass"
+                written = getattr(leases, "cells_written", None) if leases is not None else None
+                if isinstance(written, list) and not any("Leases!" in str(c) for c in written):
+                    warnings.append("LEASE_RATE_CELL_NOT_CONFIRMED")
+                notes = getattr(review, "notes_written", None)
+                if isinstance(notes, list) and not notes:
+                    warnings.append("LEASE_RATE_NOTES_MISSING")
+                if decision_class == "ANALYST_OVERRIDE" or review.analyst_action == "correct":
+                    warnings.append("LEASE_RATE_ANALYST_OVERRIDE")
+                elif decision_class == "AUTONOMOUS_AGENT_DECISION":
+                    warnings.append("LEASE_RATE_AUTONOMOUS_AGENT_DECISION")
+
+        # Gate G — buybacks
+        if buybacks is None:
+            blockers.append("BUYBACK_DOLLARS_COVERAGE_INCOMPLETE")
+            gates["G_buybacks"] = "fail"
+        else:
+            dollar_gap = any(
+                y.dollars is None and (y.absence_class is None or y.absence_class.value == "unresolved")
+                for y in buybacks.years
+            )
+            share_gap = any(
+                y.shares is None
+                and not y.shares_derived
+                and (y.absence_class is None or y.absence_class.value == "unresolved")
+                for y in buybacks.years
+            )
+            if dollar_gap:
+                blockers.append("BUYBACK_DOLLARS_COVERAGE_INCOMPLETE")
+                gates["G_buybacks"] = "fail"
+            elif share_gap:
+                blockers.append("BUYBACK_SHARES_COVERAGE_INCOMPLETE")
+                gates["G_buybacks"] = "fail"
+            else:
+                gates["G_buybacks"] = "pass"
+            for w in buybacks.warnings:
+                if "DERIVED" in w:
+                    warnings.append(w)
+                elif "RECONCILIATION" in w:
+                    warnings.append("BUYBACK_RECONCILIATION_FAILED")
+
+        if material_differences:
+            warnings.append(
+                f"MATERIAL_DIFFERENCE: {material_differences} quarterly value(s) differ materially from SEC; "
+                "kept as supplied and flagged for review."
+            )
+        for flag in (data_unavailable_flags or [])[:20]:
+            warnings.append(f"DATA_UNAVAILABLE: {flag}")
+        if quarterly_statement_blockers:
+            blockers.append("STATEMENT_INCOMPLETE")
+            blockers.extend(quarterly_statement_blockers[:8])
+            gates["quarterly_statements"] = "fail"
+        elif periods is not None and quarterly_analysis_required("new_company", periods.latest_quarter):
+            gates["quarterly_statements"] = "pass"
+        if quarterly_unresolved_dependencies:
+            blockers.append("QUARTERLY_DEPENDENCY_UNRESOLVED")
+            gates["quarterly_dependencies"] = "fail"
+        elif periods is not None and quarterly_analysis_required("new_company", periods.latest_quarter):
+            gates["quarterly_dependencies"] = "pass"
+
+        # Gate H — current data
+        if current is not None and current.as_of_mismatch:
+            warnings.append("CURRENT_DATA_AS_OF_DATE_MISMATCH")
+            gates["H_current"] = "warn"
+        else:
+            gates["H_current"] = "pass" if current else "warn"
+            if current is None:
+                warnings.append("CURRENT_DATA_REFRESH_NOT_RUN")
+
+        # Gate I — projection integrity (Q2/Q3)
+        q = periods.latest_quarter if periods else None
+        if q in {2, 3}:
+            if projection is None or projection.seasonality_adjusted_roic is None:
+                blockers.append("PROJECTED_ROIC_FAILED")
+                gates["I_projection"] = "fail"
+            elif projection.seasonality_adjusted_roce is None:
+                blockers.append("PROJECTED_ROCE_FAILED")
+                gates["I_projection"] = "fail"
+            elif projection.confidence == ProjectionConfidence.UNRELIABLE:
+                blockers.append("SEASONALITY_PROJECTION_UNRELIABLE")
+                gates["I_projection"] = "fail"
+            else:
+                gates["I_projection"] = "pass"
+                if projection.confidence == ProjectionConfidence.LOW:
+                    warnings.append("SEASONALITY_HISTORY_INSUFFICIENT")
+            if projection is not None and projection.wacc is None and q in {2, 3}:
+                warnings.append("WACC_NOT_SUPPLIED")
+        else:
+            gates["I_projection"] = "n/a"
+
+        # Gate J — recalculation (genuine Excel COM only; do not bypass)
+        if not genuine_excel_com_recalc(recalc):
+            blockers.append("WORKBOOK_RECALCULATION_INCOMPLETE")
+            gates["J_recalc"] = "fail"
+        else:
+            gates["J_recalc"] = "pass"
+
+        # Gate K — valuation and report authorization
+        if valuation is None:
+            blockers.append("NEW_COMPANY_REPORT_NOT_AUTHORIZED")
+            gates["K_valuation"] = "fail"
+        else:
+            required = [
+                valuation.expected_annual_return,
+                valuation.expected_return_with_dividends,
+                valuation.current_graham_intrinsic_value,
+                valuation.nopat,
+                valuation.invested_capital,
+                valuation.roic,
+            ]
+            if any(v is None for v in required):
+                blockers.append("NEW_COMPANY_REPORT_NOT_AUTHORIZED")
+                gates["K_valuation"] = "fail"
+            else:
+                gates["K_valuation"] = "pass"
+
+        # Gate L — certified ER/EV/OE/Graham judgment after genuine COM.
+        # INSUFFICIENT_EVIDENCE is a valid decision, not a failure.
+        if not genuine_excel_com_recalc(recalc):
+            gates["L_valuation_judgment"] = "n/a"
+        elif valuation_judgment is None:
+            blockers.append("VALUATION_JUDGMENT_INCOMPLETE")
+            gates["L_valuation_judgment"] = "fail"
+        elif not valuation_judgment.original_assumptions_preserved:
+            blockers.append("ORIGINAL_VALUATION_ASSUMPTIONS_OVERWRITTEN")
+            gates["L_valuation_judgment"] = "fail"
+        elif valuation_judgment.hap_introduced_circular_count:
+            blockers.append("HAP_INTRODUCED_CIRCULAR_REFERENCE")
+            gates["L_valuation_judgment"] = "fail"
+        elif valuation_judgment.status == "BLOCKING_STRUCTURAL_ERROR":
+            blockers.append("HAP_INTRODUCED_CIRCULAR_REFERENCE")
+            gates["L_valuation_judgment"] = "fail"
+        elif valuation_judgment.status == "BLOCKED":
+            blockers.append("VALUATION_JUDGMENT_INCOMPLETE")
+            gates["L_valuation_judgment"] = "fail"
+        else:
+            gates["L_valuation_judgment"] = "pass"
+            if valuation_judgment.status == "PRE_EXISTING_REVIEW":
+                warnings.append("PRE_EXISTING_CIRCULAR_REFERENCE")
+            for decision, label in (
+                (valuation_judgment.er_decision, "ER"),
+                (valuation_judgment.oe_decision, "OE"),
+                (valuation_judgment.graham_decision, "Graham"),
+                (valuation_judgment.normalized_base_decision, "OE-base"),
+            ):
+                if decision == "INSUFFICIENT_EVIDENCE":
+                    warnings.append(f"VALUATION_{label}_INSUFFICIENT_EVIDENCE")
+
+        seen: set[str] = set()
+        uniq: list[str] = []
+        for b in blockers:
+            if b not in seen:
+                seen.add(b)
+                uniq.append(b)
+        blockers = uniq
+        authorized = not blockers
+        if not authorized:
+            if "NEW_COMPANY_REPORT_NOT_AUTHORIZED" not in blockers:
+                blockers.append("NEW_COMPANY_REPORT_NOT_AUTHORIZED")
+            gates["report_authorization"] = "blocked"
+            status = "NEEDS_REVIEW"
+            if "LEASE_RATE_REVIEW_PENDING" in blockers:
+                status = "AWAITING_ANALYST_REVIEW"
+            elif "LEASE_RATE_EVIDENCE_INSUFFICIENT" in blockers:
+                status = "NEEDS_REVIEW"
+        else:
+            gates["report_authorization"] = "authorized"
+            status = "ok"
+        if word_authorized_attempt and not authorized:
+            warnings.append("NEW_COMPANY_REPORT_NOT_AUTHORIZED")
+
+        return NewCompanyOutputGateReport(
+            analysis_id=analysis_id,
+            ticker=ticker,
+            status=status,
+            gates=gates,
+            blockers=blockers,
+            warnings=warnings,
+            report_authorized=authorized,
+            summary=(
+                f"New Company gates={status}; blockers={len(blockers)}; "
+                f"warnings={len(warnings)}; authorized={authorized}."
+            ),
+        )

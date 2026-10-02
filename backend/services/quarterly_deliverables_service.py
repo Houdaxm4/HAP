@@ -1,9 +1,10 @@
-"""Primary quarterly deliverables: FA.xlsx + Quarterly Update.docx."""
+"""Primary quarterly deliverables: period-named Excel + Quarterly Update.docx."""
 
 from __future__ import annotations
 
 import shutil
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 from openpyxl import load_workbook
@@ -13,12 +14,22 @@ from models.quarterly_update import (
     QuarterlyProjectionReport,
     QuarterlyResearchReport,
     QuarterlyReviewReport,
+    QuarterlyValuationReport,
 )
+from services.report_flags import collect_flags, write_flags_section
+from services.report_opinion import write_assessment_sections
 
 
 def deliverable_stems(fiscal_year: int, fiscal_quarter: int, ticker: str) -> tuple[str, str]:
+    from services.deliverable_naming import excel_deliverable_name
+
     t = ticker.upper()
-    excel = f"{fiscal_year} Q{fiscal_quarter} {t} FA.xlsx"
+    excel = excel_deliverable_name(
+        fiscal_year=fiscal_year,
+        ticker=t,
+        analysis_type="Quarterly Update",
+        fiscal_quarter=fiscal_quarter,
+    )
     word = f"{fiscal_year} Q{fiscal_quarter} {t} Quarterly Update.docx"
     return excel, word
 
@@ -35,10 +46,20 @@ def _fmt_num(v: float | None, *, money: bool = False, pct: bool = False) -> str:
     if pct:
         return f"{v * 100:.2f}%"
     if money:
-        if abs(v) >= 1000:
-            return f"${v:,.1f}M"
-        return f"${v:,.2f}"
+        return f"${v:,.1f}M"  # workbook statements are in millions; always say so
     return f"{v:,.2f}"
+
+
+def _is_blank_pair(comp) -> bool:
+    """Both sides missing or both exactly zero: nothing to report."""
+    a, b = comp.compare_value, comp.baseline_value
+    return (a is None and b is None) or (a == 0 and b == 0)
+
+
+def _is_suspect_identical(comp) -> bool:
+    """A flow metric identical to the cent in both periods almost always means the prior column was not populated."""
+    a, b = comp.compare_value, comp.baseline_value
+    return a is not None and b is not None and a != 0 and a == b
 
 
 def _find_comp(review: QuarterlyReviewReport | None, statement: str, metric: str, ctype: str):
@@ -65,6 +86,9 @@ class QuarterlyDeliverablesService:
         projection: QuarterlyProjectionReport | None = None,
         review: QuarterlyReviewReport | None = None,
         research: QuarterlyResearchReport | None = None,
+        valuation: QuarterlyValuationReport | None = None,
+        judgment: Any = None,
+        authorize_word: bool = True,
     ) -> QuarterlyDeliverablesReport:
         fy = fiscal_year or (projection.fiscal_year if projection else None) or 0
         q = fiscal_quarter or (projection.fiscal_quarter if projection else None) or 0
@@ -76,6 +100,7 @@ class QuarterlyDeliverablesService:
         word_path = output_dir / word_name
 
         shutil.copy2(completed_workbook_path, excel_path)
+        # The Word report is always produced; when the dependency gate failed its Flags section says so.
         self._write_word(
             word_path,
             ticker=ticker,
@@ -85,6 +110,9 @@ class QuarterlyDeliverablesService:
             projection=projection,
             review=review,
             research=research,
+            valuation=valuation,
+            judgment=judgment,
+            authorized=authorize_word,
         )
         return QuarterlyDeliverablesReport(
             analysis_id=analysis_id,
@@ -95,7 +123,8 @@ class QuarterlyDeliverablesService:
             excel_path=str(excel_path),
             word_filename=word_name,
             word_path=str(word_path),
-            summary=f"Deliverables: {excel_name}; {word_name}",
+            summary=f"Deliverables: {excel_name}; {word_name}"
+            + ("" if authorize_word else " (NOT AUTHORIZED: see the Flags section)"),
         )
 
     def _infer_fy_q(self, path: Path) -> tuple[int, int]:
@@ -130,6 +159,9 @@ class QuarterlyDeliverablesService:
         projection: QuarterlyProjectionReport | None,
         review: QuarterlyReviewReport | None,
         research: QuarterlyResearchReport | None = None,
+        valuation: QuarterlyValuationReport | None = None,
+        judgment: Any = None,
+        authorized: bool = True,
     ) -> None:
         try:
             from docx import Document
@@ -145,6 +177,9 @@ class QuarterlyDeliverablesService:
 
         title = doc.add_heading(f"{ticker.upper()} — {fiscal_year} Q{fiscal_quarter} Quarterly Update", level=0)
         _ = title
+
+        # Flags come first: what was filled, corrected, decided by the agent, or is missing.
+        write_flags_section(doc, collect_flags(path.parent, authorized=authorized))
 
         # Q2/Q3 projection section BEFORE Financial Highlights
         if fiscal_quarter in (2, 3) and projection and projection.status != "NOT_APPLICABLE":
@@ -217,7 +252,13 @@ class QuarterlyDeliverablesService:
         for metric in ("Revenue", "Net Income", "Operating Income", "Gross Margin", "Operating Margin", "Net Margin"):
             ctype = "yoy_quarter"
             comp = _find_comp(review, "income_statement", metric, ctype)
-            if comp and comp.compare_value is not None:
+            if comp and comp.compare_value is not None and _is_suspect_identical(comp) and "margin" not in metric.lower():
+                doc.add_paragraph(
+                    f"Data check: {metric} is identical in both periods ({_fmt_num(comp.compare_value, money=True)}). "
+                    "The prior-year quarter was probably not populated in the workbook; verify before relying on this comparison.",
+                    style="List Bullet",
+                )
+            elif comp and comp.compare_value is not None:
                 money = "margin" not in metric.lower()
                 line = (
                     f"{metric} {_pct(comp.compare_value, comp.baseline_value)} "
@@ -233,6 +274,8 @@ class QuarterlyDeliverablesService:
             )
             for metric in ("Revenue", "Operating Income", "Net Income"):
                 comp = _find_comp(review, "income_statement", metric, "ytd")
+                if comp and comp.baseline_value is None:
+                    continue  # prior-year YTD not populated; reported once below
                 if comp and comp.compare_value is not None:
                     doc.add_paragraph(
                         f"YTD {metric} {_pct(comp.compare_value, comp.baseline_value)} "
@@ -241,18 +284,28 @@ class QuarterlyDeliverablesService:
                         style="List Bullet",
                     )
 
+        missing_ytd = [
+            m for m in ("Revenue", "Operating Income", "Net Income")
+            if (c := _find_comp(review, "income_statement", m, "ytd")) is not None and c.baseline_value is None
+        ] if fiscal_quarter in (2, 3) else []
+        if missing_ytd:
+            doc.add_paragraph(
+                "YTD comparison unavailable for " + ", ".join(missing_ytd) + ": the prior-year YTD figures are not in the workbook.",
+                style="List Bullet",
+            )
+
         cfo = _find_comp(review, "cash_flow", "CFO", "ytd")
         if cfo and cfo.compare_value is not None:
             doc.add_paragraph(
                 f"Cash from Ops {_fmt_num(cfo.compare_value, money=True)} vs. "
-                f"{_fmt_num(cfo.baseline_value, money=True)} (YTD)",
+                + (f"{_fmt_num(cfo.baseline_value, money=True)} (YTD)" if cfo.baseline_value is not None else "prior-year YTD not available"),
                 style="List Bullet",
             )
 
         doc.add_heading("Comparison Last Quarter to Quarter Right Before", level=1)
         for metric in ("Cash", "Total assets", "Equity", "Inventory", "Receivables", "Accounts payable"):
             comp = _find_comp(review, "balance_sheet", metric, "qoq")
-            if comp and comp.compare_value is not None:
+            if comp and comp.compare_value is not None and not _is_blank_pair(comp):
                 doc.add_paragraph(
                     f"{metric} {_pct(comp.compare_value, comp.baseline_value)} "
                     f"({_fmt_num(comp.compare_value, money=True)} vs. "
@@ -282,10 +335,60 @@ class QuarterlyDeliverablesService:
                 f"Graham entry target price: {_fmt_num(metrics.get('graham_entry'), money=True)}"
             )
 
+        doc.add_heading("HAP Valuation Analysis (Annual-parity services)", level=1)
+        doc.add_paragraph(
+            "Original analyst growth-rate cells and valuation formulas were not overwritten. "
+            "Any HAP alternative appears as HAP ANALYSIS only and is not the applied model output."
+        )
+        if valuation and valuation.period_context:
+            doc.add_paragraph(valuation.period_context)
+        if judgment is not None:
+            er = getattr(judgment, "expected_return", None) or getattr(judgment, "er_analysis", None)
+            oe = getattr(judgment, "oe_analysis", None)
+            gr = getattr(judgment, "graham_analysis", None)
+            for rec, title in ((er, "Expected Returns"), (oe, "Owner Earnings"), (gr, "Graham")):
+                if rec is None:
+                    continue
+                decision = getattr(rec, "decision", None)
+                rationale = getattr(rec, "rationale", None) or getattr(rec, "reason", None) or ""
+                existing = getattr(rec, "existing_assumption", None) or getattr(rec, "original_rate", None)
+                hap_rate = getattr(rec, "selected_prospective_rate", None) or getattr(rec, "hap_rate", None)
+                line = f"{title}: {decision or 'n/a'}"
+                if existing is not None:
+                    line += f" | original {existing}"
+                if hap_rate is not None and decision == "ADJUST":
+                    line += f" | HAP suggested {hap_rate} (not applied to original cell)"
+                doc.add_paragraph(line, style="List Bullet")
+                if rationale:
+                    doc.add_paragraph(str(rationale)[:500], style="List Bullet")
+            oe_base = getattr(judgment, "oe_base_analysis", None)
+            disclosure = getattr(oe_base, "disclosure", None) if oe_base is not None else None
+            if isinstance(oe_base, dict):
+                disclosure = (oe_base.get("disclosure") or {})
+                word_text = disclosure.get("word_text") if isinstance(disclosure, dict) else None
+            else:
+                word_text = getattr(disclosure, "word_text", None) if disclosure is not None else None
+            if word_text:
+                doc.add_paragraph("Normalized earnings-power disclosure (HAP ANALYSIS, not established fact):")
+                doc.add_paragraph(str(word_text)[:1200])
+        elif valuation:
+            doc.add_paragraph(valuation.summary)
+
+        assessment_inputs = SimpleNamespace(
+            current_price=metrics.get("current_price"),
+            enterprise_mos=metrics.get("ev_mos"),
+            company_value_per_share=None,
+            current_pe10=None,
+            expected_annual_return=metrics.get("expected_return"),
+            roic_wacc=getattr(projection, "projected_roic_wacc", None) if projection else None,
+            roce=getattr(projection, "projected_roce", None) if projection else None,
+        )
+        write_assessment_sections(doc, path.parent, assessment_inputs)
+
         doc.add_heading("Sources", level=1)
         doc.add_paragraph(
-            "Primary: completed HAP Excel model (Bloomberg LQ statements, Yahoo basic fallback, "
-            "SEC secondary gap fill, CRF current data, Yahoo live price)."
+            "Primary: completed HAP Excel model (SEC EDGAR authoritative for reported statements, "
+            "Yahoo supplementary with source attribution, CRF current data, Yahoo live price)."
         )
         if research and research.sources:
             for src in research.sources[:10]:

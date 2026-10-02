@@ -35,9 +35,16 @@ export default function AnalysisHeader({
           </div>
           <p className="mt-1 text-sm text-hap-muted">
             {analysis.type}
-            {analysis.recommendationLabel
-              ? ` · ${analysis.recommendationLabel}`
-              : ""}
+            {analysis.finalRecommendation
+              ? ` · Final: ${analysis.finalRecommendation}${
+                  analysis.recommendationLabel &&
+                  analysis.recommendation?.toUpperCase() !== analysis.finalRecommendation.toUpperCase()
+                    ? ` (engine: ${analysis.recommendationLabel})`
+                    : ""
+                }`
+              : analysis.recommendationLabel
+                ? ` · ${analysis.recommendationLabel}`
+                : ""}
             {analysis.businessQualityScore != null
               ? ` · BQ ${formatScore(analysis.businessQualityScore)}`
               : ""}
@@ -45,6 +52,11 @@ export default function AnalysisHeader({
           {(analysis.status === "Running" || analysis.status === "Queued") && (
             <p className="mt-2 text-xs text-hap-info">
               Stage: {formatStageLabel(analysis.currentStage)}
+            </p>
+          )}
+          {analysis.status === "Review" && (
+            <p className="mt-2 text-xs text-amber-300">
+              Analyst review is optional — lease discount rate and R&D useful life were selected autonomously. Override them here if needed.
             </p>
           )}
         </div>

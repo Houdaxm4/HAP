@@ -10,6 +10,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import JSONResponse, Response as StarletteResponse
 
 from hap_auth import (
+    AuthConfigError,
     COOKIE_NAME,
     GENERIC_LOGIN_ERROR,
     SessionPrincipal,
@@ -40,7 +41,10 @@ class LoginBody(BaseModel):
 def client_key(request: Request) -> str:
     forwarded = request.headers.get("x-forwarded-for", "")
     if forwarded:
-        return forwarded.split(",")[0].strip() or "unknown"
+        # The right-most entry is the one appended by our own proxy (e.g. Render).
+        # The left-most entries are client-supplied and can be spoofed to dodge
+        # the login throttle.
+        return forwarded.split(",")[-1].strip() or "unknown"
     if request.client:
         return request.client.host
     return "unknown"

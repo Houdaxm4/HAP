@@ -1,0 +1,5209 @@
+{
+  "analysis_id": "edd8ea8f-534e-4ca9-a78a-bb908abf9692",
+  "ticker": "IDCC",
+  "company": "InterDigital",
+  "analysis_type": "new_company",
+  "reporting_currency": "USD",
+  "periods": [
+    "FY2017",
+    "FY2018",
+    "FY2019",
+    "FY2020",
+    "FY2021",
+    "FY2022",
+    "FY2023",
+    "FY2024",
+    "FY2025",
+    "FY2026"
+  ],
+  "income_statement": {
+    "currency": "USD",
+    "revenue": {
+      "name": "Revenue",
+      "currency": "USD",
+      "points": [
+        {
+          "period": "FY2017",
+          "value": 532938000.0,
+          "currency": "USD",
+          "source": "sec_companyfacts",
+          "confidence": 0.9,
+          "audited": true,
+          "provenance": {
+            "concept": "revenue",
+            "cell_ref": "SEC!revenue!FY2017",
+            "source_document": null,
+            "xbrl_tag": "us-gaap:Revenues",
+            "worksheet": "SEC",
+            "filing_type": "10-K",
+            "accession_number": "0001405495-18-000015"
+          }
+        },
+        {
+          "period": "FY2018",
+          "value": 307404000.0,
+          "currency": "USD",
+          "source": "sec_companyfacts",
+          "confidence": 0.9,
+          "audited": true,
+          "provenance": {
+            "concept": "revenue",
+            "cell_ref": "SEC!revenue!FY2018",
+            "source_document": null,
+            "xbrl_tag": "us-gaap:Revenues",
+            "worksheet": "SEC",
+            "filing_type": "10-K",
+            "accession_number": "0001405495-19-000008"
+          }
+        },
+        {
+          "period": "FY2019",
+          "value": 318924000.0,
+          "currency": "USD",
+          "source": "sec_companyfacts",
+          "confidence": 0.9,
+          "audited": true,
+          "provenance": {
+            "concept": "revenue",
+            "cell_ref": "SEC!revenue!FY2019",
+            "source_document": null,
+            "xbrl_tag": "us-gaap:RevenueFromContractWithCustomerExcludingAssessedTax",
+            "worksheet": "SEC",
+            "filing_type": "10-K",
+            "accession_number": "0001405495-20-000007"
+          }
+        },
+        {
+          "period": "FY2020",
+          "value": 358991000.0,
+          "currency": "USD",
+          "source": "sec_companyfacts",
+          "confidence": 0.9,
+          "audited": true,
+          "provenance": {
+            "concept": "revenue",
+            "cell_ref": "SEC!revenue!FY2020",
+            "source_document": null,
+            "xbrl_tag": "us-gaap:RevenueFromContractWithCustomerExcludingAssessedTax",
+            "worksheet": "SEC",
+            "filing_type": "10-K",
+            "accession_number": "0001405495-21-000013"
+          }
+        },
+        {
+          "period": "FY2021",
+          "value": 425409000.0,
+          "currency": "USD",
+          "source": "sec_companyfacts",
+          "confidence": 0.9,
+          "audited": true,
+          "provenance": {
+            "concept": "revenue",
+            "cell_ref": "SEC!revenue!FY2021",
+            "source_document": null,
+            "xbrl_tag": "us-gaap:RevenueFromContractWithCustomerExcludingAssessedTax",
+            "worksheet": "SEC",
+            "filing_type": "10-K",
+            "accession_number": "0001405495-22-000010"
+          }
+        },
+        {
+          "period": "FY2022",
+          "value": 457794000.0,
+          "currency": "USD",
+          "source": "sec_companyfacts",
+          "confidence": 0.9,
+          "audited": true,
+          "provenance": {
+            "concept": "revenue",
+            "cell_ref": "SEC!revenue!FY2022",
+            "source_document": null,
+            "xbrl_tag": "us-gaap:RevenueFromContractWithCustomerExcludingAssessedTax",
+            "worksheet": "SEC",
+            "filing_type": "10-K",
+            "accession_number": "0001405495-23-000011"
+          }
+        },
+        {
+          "period": "FY2023",
+          "value": 549588000.0,
+          "currency": "USD",
+          "source": "sec_companyfacts",
+          "confidence": 0.9,
+          "audited": true,
+          "provenance": {
+            "concept": "revenue",
+            "cell_ref": "SEC!revenue!FY2023",
+            "source_document": null,
+            "xbrl_tag": "us-gaap:RevenueFromContractWithCustomerExcludingAssessedTax",
+            "worksheet": "SEC",
+            "filing_type": "10-K",
+            "accession_number": "0001405495-24-000052"
+          }
+        },
+        {
+          "period": "FY2024",
+          "value": 868516000.0,
+          "currency": "USD",
+          "source": "sec_companyfacts",
+          "confidence": 0.9,
+          "audited": true,
+          "provenance": {
+            "concept": "revenue",
+            "cell_ref": "SEC!revenue!FY2024",
+            "source_document": null,
+            "xbrl_tag": "us-gaap:RevenueFromContractWithCustomerExcludingAssessedTax",
+            "worksheet": "SEC",
+            "filing_type": "10-K",
+            "accession_number": "0001405495-25-000011"
+          }
+        },
+        {
+          "period": "FY2025",
+          "value": 834015000.0,
+          "currency": "USD",
+          "source": "sec_companyfacts",
+          "confidence": 0.9,
+          "audited": true,
+          "provenance": {
+            "concept": "revenue",
+            "cell_ref": "SEC!revenue!FY2025",
+            "source_document": null,
+            "xbrl_tag": "us-gaap:RevenueFromContractWithCustomerExcludingAssessedTax",
+            "worksheet": "SEC",
+            "filing_type": "10-K",
+            "accession_number": "0001405495-26-000011"
+          }
+        },
+        {
+          "period": "FY2026",
+          "value": 465586000.0,
+          "currency": "USD",
+          "source": "sec_companyfacts",
+          "confidence": 0.9,
+          "audited": false,
+          "provenance": {
+            "concept": "revenue",
+            "cell_ref": "SEC!revenue!FY2026",
+            "source_document": null,
+            "xbrl_tag": "us-gaap:RevenueFromContractWithCustomerExcludingAssessedTax",
+            "worksheet": "SEC",
+            "filing_type": "10-Q",
+            "accession_number": "0001405495-26-000066"
+          }
+        }
+      ]
+    },
+    "cost_of_revenue": {
+      "name": "Cost of Revenue",
+      "currency": "USD",
+      "points": []
+    },
+    "gross_profit": {
+      "name": "Gross Profit",
+      "currency": "USD",
+      "points": []
+    },
+    "operating_income": {
+      "name": "Operating Income",
+      "currency": "USD",
+      "points": [
+        {
+          "period": "FY2017",
+          "value": 301495000.0,
+          "currency": "USD",
+          "source": "sec_companyfacts",
+          "confidence": 0.9,
+          "audited": true,
+          "provenance": {
+            "concept": "operating income",
+            "cell_ref": "SEC!operating income!FY2017",
+            "source_document": null,
+            "xbrl_tag": "us-gaap:OperatingIncomeLoss",
+            "worksheet": "SEC",
+            "filing_type": "10-K",
+            "accession_number": "0001405495-18-000015"
+          }
+        },
+        {
+          "period": "FY2018",
+          "value": 62595000.0,
+          "currency": "USD",
+          "source": "sec_companyfacts",
+          "confidence": 0.9,
+          "audited": true,
+          "provenance": {
+            "concept": "operating income",
+            "cell_ref": "SEC!operating income!FY2018",
+            "source_document": null,
+            "xbrl_tag": "us-gaap:OperatingIncomeLoss",
+            "worksheet": "SEC",
+            "filing_type": "10-K",
+            "accession_number": "0001405495-19-000008"
+          }
+        },
+        {
+          "period": "FY2019",
+          "value": 37835000.0,
+          "currency": "USD",
+          "source": "sec_companyfacts",
+          "confidence": 0.9,
+          "audited": true,
+          "provenance": {
+            "concept": "operating income",
+            "cell_ref": "SEC!operating income!FY2019",
+            "source_document": null,
+            "xbrl_tag": "us-gaap:OperatingIncomeLoss",
+            "worksheet": "SEC",
+            "filing_type": "10-K",
+            "accession_number": "0001405495-20-000007"
+          }
+        },
+        {
+          "period": "FY2020",
+          "value": 55168000.0,
+          "currency": "USD",
+          "source": "sec_companyfacts",
+          "confidence": 0.9,
+          "audited": true,
+          "provenance": {
+            "concept": "operating income",
+            "cell_ref": "SEC!operating income!FY2020",
+            "source_document": null,
+            "xbrl_tag": "us-gaap:OperatingIncomeLoss",
+            "worksheet": "SEC",
+            "filing_type": "10-K",
+            "accession_number": "0001405495-21-000013"
+          }
+        },
+        {
+          "period": "FY2021",
+          "value": 71206000.0,
+          "currency": "USD",
+          "source": "sec_companyfacts",
+          "confidence": 0.9,
+          "audited": true,
+          "provenance": {
+            "concept": "operating income",
+            "cell_ref": "SEC!operating income!FY2021",
+            "source_document": null,
+            "xbrl_tag": "us-gaap:OperatingIncomeLoss",
+            "worksheet": "SEC",
+            "filing_type": "10-K",
+            "accession_number": "0001405495-22-000010"
+          }
+        },
+        {
+          "period": "FY2022",
+          "value": 150516000.0,
+          "currency": "USD",
+          "source": "sec_companyfacts",
+          "confidence": 0.9,
+          "audited": true,
+          "provenance": {
+            "concept": "operating income",
+            "cell_ref": "SEC!operating income!FY2022",
+            "source_document": null,
+            "xbrl_tag": "us-gaap:OperatingIncomeLoss",
+            "worksheet": "SEC",
+            "filing_type": "10-K",
+            "accession_number": "0001405495-23-000011"
+          }
+        },
+        {
+          "period": "FY2023",
+          "value": 221615000.0,
+          "currency": "USD",
+          "source": "sec_companyfacts",
+          "confidence": 0.9,
+          "audited": true,
+          "provenance": {
+            "concept": "operating income",
+            "cell_ref": "SEC!operating income!FY2023",
+            "source_document": null,
+            "xbrl_tag": "us-gaap:OperatingIncomeLoss",
+            "worksheet": "SEC",
+            "filing_type": "10-K",
+            "accession_number": "0001405495-24-000052"
+          }
+        },
+        {
+          "period": "FY2024",
+          "value": 439512000.0,
+          "currency": "USD",
+          "source": "sec_companyfacts",
+          "confidence": 0.9,
+          "audited": true,
+          "provenance": {
+            "concept": "operating income",
+            "cell_ref": "SEC!operating income!FY2024",
+            "source_document": null,
+            "xbrl_tag": "us-gaap:OperatingIncomeLoss",
+            "worksheet": "SEC",
+            "filing_type": "10-K",
+            "accession_number": "0001405495-25-000011"
+          }
+        },
+        {
+          "period": "FY2025",
+          "value": 460853000.0,
+          "currency": "USD",
+          "source": "sec_companyfacts",
+          "confidence": 0.9,
+          "audited": true,
+          "provenance": {
+            "concept": "operating income",
+            "cell_ref": "SEC!operating income!FY2025",
+            "source_document": null,
+            "xbrl_tag": "us-gaap:OperatingIncomeLoss",
+            "worksheet": "SEC",
+            "filing_type": "10-K",
+            "accession_number": "0001405495-26-000011"
+          }
+        },
+        {
+          "period": "FY2026",
+          "value": 221500000.0,
+          "currency": "USD",
+          "source": "sec_companyfacts",
+          "confidence": 0.9,
+          "audited": false,
+          "provenance": {
+            "concept": "operating income",
+            "cell_ref": "SEC!operating income!FY2026",
+            "source_document": null,
+            "xbrl_tag": "us-gaap:OperatingIncomeLoss",
+            "worksheet": "SEC",
+            "filing_type": "10-Q",
+            "accession_number": "0001405495-26-000066"
+          }
+        }
+      ]
+    },
+    "ebit": {
+      "name": "EBIT",
+      "currency": "USD",
+      "points": [
+        {
+          "period": "FY2017",
+          "value": 301495000.0,
+          "currency": "USD",
+          "source": "sec_companyfacts",
+          "confidence": 0.9,
+          "audited": true,
+          "provenance": {
+            "concept": "ebit",
+            "cell_ref": "SEC!ebit!FY2017",
+            "source_document": null,
+            "xbrl_tag": "us-gaap:OperatingIncomeLoss",
+            "worksheet": "SEC",
+            "filing_type": "10-K",
+            "accession_number": "0001405495-18-000015"
+          }
+        },
+        {
+          "period": "FY2018",
+          "value": 62595000.0,
+          "currency": "USD",
+          "source": "sec_companyfacts",
+          "confidence": 0.9,
+          "audited": true,
+          "provenance": {
+            "concept": "ebit",
+            "cell_ref": "SEC!ebit!FY2018",
+            "source_document": null,
+            "xbrl_tag": "us-gaap:OperatingIncomeLoss",
+            "worksheet": "SEC",
+            "filing_type": "10-K",
+            "accession_number": "0001405495-19-000008"
+          }
+        },
+        {
+          "period": "FY2019",
+          "value": 37835000.0,
+          "currency": "USD",
+          "source": "sec_companyfacts",
+          "confidence": 0.9,
+          "audited": true,
+          "provenance": {
+            "concept": "ebit",
+            "cell_ref": "SEC!ebit!FY2019",
+            "source_document": null,
+            "xbrl_tag": "us-gaap:OperatingIncomeLoss",
+            "worksheet": "SEC",
+            "filing_type": "10-K",
+            "accession_number": "0001405495-20-000007"
+          }
+        },
+        {
+          "period": "FY2020",
+          "value": 55168000.0,
+          "currency": "USD",
+          "source": "sec_companyfacts",
+          "confidence": 0.9,
+          "audited": true,
+          "provenance": {
+            "concept": "ebit",
+            "cell_ref": "SEC!ebit!FY2020",
+            "source_document": null,
+            "xbrl_tag": "us-gaap:OperatingIncomeLoss",
+            "worksheet": "SEC",
+            "filing_type": "10-K",
+            "accession_number": "0001405495-21-000013"
+          }
+        },
+        {
+          "period": "FY2021",
+          "value": 71206000.0,
+          "currency": "USD",
+          "source": "sec_companyfacts",
+          "confidence": 0.9,
+          "audited": true,
+          "provenance": {
+            "concept": "ebit",
+            "cell_ref": "SEC!ebit!FY2021",
+            "source_document": null,
+            "xbrl_tag": "us-gaap:OperatingIncomeLoss",
+            "worksheet": "SEC",
+            "filing_type": "10-K",
+            "accession_number": "0001405495-22-000010"
+          }
+        },
+        {
+          "period": "FY2022",
+          "value": 150516000.0,
+          "currency": "USD",
+          "source": "sec_companyfacts",
+          "confidence": 0.9,
+          "audited": true,
+          "provenance": {
+            "concept": "ebit",
+            "cell_ref": "SEC!ebit!FY2022",
+            "source_document": null,
+            "xbrl_tag": "us-gaap:OperatingIncomeLoss",
+            "worksheet": "SEC",
+            "filing_type": "10-K",
+            "accession_number": "0001405495-23-000011"
+          }
+        },
+        {
+          "period": "FY2023",
+          "value": 221615000.0,
+          "currency": "USD",
+          "source": "sec_companyfacts",
+          "confidence": 0.9,
+          "audited": true,
+          "provenance": {
+            "concept": "ebit",
+            "cell_ref": "SEC!ebit!FY2023",
+            "source_document": null,
+            "xbrl_tag": "us-gaap:OperatingIncomeLoss",
+            "worksheet": "SEC",
+            "filing_type": "10-K",
+            "accession_number": "0001405495-24-000052"
+          }
+        },
+        {
+          "period": "FY2024",
+          "value": 439512000.0,
+          "currency": "USD",
+          "source": "sec_companyfacts",
+          "confidence": 0.9,
+          "audited": true,
+          "provenance": {
+            "concept": "ebit",
+            "cell_ref": "SEC!ebit!FY2024",
+            "source_document": null,
+            "xbrl_tag": "us-gaap:OperatingIncomeLoss",
+            "worksheet": "SEC",
+            "filing_type": "10-K",
+            "accession_number": "0001405495-25-000011"
+          }
+        },
+        {
+          "period": "FY2025",
+          "value": 460853000.0,
+          "currency": "USD",
+          "source": "sec_companyfacts",
+          "confidence": 0.9,
+          "audited": true,
+          "provenance": {
+            "concept": "ebit",
+            "cell_ref": "SEC!ebit!FY2025",
+            "source_document": null,
+            "xbrl_tag": "us-gaap:OperatingIncomeLoss",
+            "worksheet": "SEC",
+            "filing_type": "10-K",
+            "accession_number": "0001405495-26-000011"
+          }
+        },
+        {
+          "period": "FY2026",
+          "value": 221500000.0,
+          "currency": "USD",
+          "source": "sec_companyfacts",
+          "confidence": 0.9,
+          "audited": false,
+          "provenance": {
+            "concept": "ebit",
+            "cell_ref": "SEC!ebit!FY2026",
+            "source_document": null,
+            "xbrl_tag": "us-gaap:OperatingIncomeLoss",
+            "worksheet": "SEC",
+            "filing_type": "10-Q",
+            "accession_number": "0001405495-26-000066"
+          }
+        }
+      ]
+    },
+    "ebitda": {
+      "name": "EBITDA",
+      "currency": "USD",
+      "points": []
+    },
+    "interest_expense": {
+      "name": "Interest Expense",
+      "currency": "USD",
+      "points": [
+        {
+          "period": "FY2017",
+          "value": 17845000.0,
+          "currency": "USD",
+          "source": "sec_companyfacts",
+          "confidence": 0.9,
+          "audited": true,
+          "provenance": {
+            "concept": "interest expense",
+            "cell_ref": "SEC!interest expense!FY2017",
+            "source_document": null,
+            "xbrl_tag": "us-gaap:InterestExpense",
+            "worksheet": "SEC",
+            "filing_type": "10-K",
+            "accession_number": "0001405495-18-000015"
+          }
+        },
+        {
+          "period": "FY2018",
+          "value": -35956000.0,
+          "currency": "USD",
+          "source": "sec_companyfacts",
+          "confidence": 0.9,
+          "audited": true,
+          "provenance": {
+            "concept": "interest expense",
+            "cell_ref": "SEC!interest expense!FY2018",
+            "source_document": null,
+            "xbrl_tag": "us-gaap:InterestExpense",
+            "worksheet": "SEC",
+            "filing_type": "10-K",
+            "accession_number": "0001405495-19-000008"
+          }
+        },
+        {
+          "period": "FY2019",
+          "value": 40955000.0,
+          "currency": "USD",
+          "source": "sec_companyfacts",
+          "confidence": 0.9,
+          "audited": true,
+          "provenance": {
+            "concept": "interest expense",
+            "cell_ref": "SEC!interest expense!FY2019",
+            "source_document": null,
+            "xbrl_tag": "us-gaap:InterestExpense",
+            "worksheet": "SEC",
+            "filing_type": "10-K",
+            "accession_number": "0001405495-20-000007"
+          }
+        },
+        {
+          "period": "FY2020",
+          "value": 40799000.0,
+          "currency": "USD",
+          "source": "sec_companyfacts",
+          "confidence": 0.9,
+          "audited": true,
+          "provenance": {
+            "concept": "interest expense",
+            "cell_ref": "SEC!interest expense!FY2020",
+            "source_document": null,
+            "xbrl_tag": "us-gaap:InterestExpense",
+            "worksheet": "SEC",
+            "filing_type": "10-K",
+            "accession_number": "0001405495-21-000013"
+          }
+        },
+        {
+          "period": "FY2021",
+          "value": 25225000.0,
+          "currency": "USD",
+          "source": "sec_companyfacts",
+          "confidence": 0.9,
+          "audited": true,
+          "provenance": {
+            "concept": "interest expense",
+            "cell_ref": "SEC!interest expense!FY2021",
+            "source_document": null,
+            "xbrl_tag": "us-gaap:InterestExpense",
+            "worksheet": "SEC",
+            "filing_type": "10-K",
+            "accession_number": "0001405495-22-000010"
+          }
+        },
+        {
+          "period": "FY2022",
+          "value": 29496000.0,
+          "currency": "USD",
+          "source": "sec_companyfacts",
+          "confidence": 0.9,
+          "audited": true,
+          "provenance": {
+            "concept": "interest expense",
+            "cell_ref": "SEC!interest expense!FY2022",
+            "source_document": null,
+            "xbrl_tag": "us-gaap:InterestExpense",
+            "worksheet": "SEC",
+            "filing_type": "10-K",
+            "accession_number": "0001405495-23-000011"
+          }
+        },
+        {
+          "period": "FY2023",
+          "value": 44817000.0,
+          "currency": "USD",
+          "source": "sec_companyfacts",
+          "confidence": 0.9,
+          "audited": true,
+          "provenance": {
+            "concept": "interest expense",
+            "cell_ref": "SEC!interest expense!FY2023",
+            "source_document": null,
+            "xbrl_tag": "us-gaap:InterestExpense",
+            "worksheet": "SEC",
+            "filing_type": "10-K",
+            "accession_number": "0001405495-24-000052"
+          }
+        },
+        {
+          "period": "FY2024",
+          "value": 11922000.0,
+          "currency": "USD",
+          "source": "sec_companyfacts",
+          "confidence": 0.9,
+          "audited": false,
+          "provenance": {
+            "concept": "interest expense",
+            "cell_ref": "SEC!interest expense!FY2024",
+            "source_document": null,
+            "xbrl_tag": "us-gaap:InterestExpense",
+            "worksheet": "SEC",
+            "filing_type": "10-Q",
+            "accession_number": "0001405495-24-000072"
+          }
+        }
+      ]
+    },
+    "tax_expense": {
+      "name": "Tax Expense",
+      "currency": "USD",
+      "points": [
+        {
+          "period": "FY2017",
+          "value": 121676000.0,
+          "currency": "USD",
+          "source": "sec_companyfacts",
+          "confidence": 0.9,
+          "audited": true,
+          "provenance": {
+            "concept": "tax expense",
+            "cell_ref": "SEC!tax expense!FY2017",
+            "source_document": null,
+            "xbrl_tag": "us-gaap:IncomeTaxExpenseBenefit",
+            "worksheet": "SEC",
+            "filing_type": "10-K",
+            "accession_number": "0001405495-18-000015"
+          }
+        },
+        {
+          "period": "FY2018",
+          "value": -27417000.0,
+          "currency": "USD",
+          "source": "sec_companyfacts",
+          "confidence": 0.9,
+          "audited": true,
+          "provenance": {
+            "concept": "tax expense",
+            "cell_ref": "SEC!tax expense!FY2018",
+            "source_document": null,
+            "xbrl_tag": "us-gaap:IncomeTaxExpenseBenefit",
+            "worksheet": "SEC",
+            "filing_type": "10-K",
+            "accession_number": "0001405495-19-000008"
+          }
+        },
+        {
+          "period": "FY2019",
+          "value": 10991000.0,
+          "currency": "USD",
+          "source": "sec_companyfacts",
+          "confidence": 0.9,
+          "audited": true,
+          "provenance": {
+            "concept": "tax expense",
+            "cell_ref": "SEC!tax expense!FY2019",
+            "source_document": null,
+            "xbrl_tag": "us-gaap:IncomeTaxExpenseBenefit",
+            "worksheet": "SEC",
+            "filing_type": "10-K",
+            "accession_number": "0001405495-20-000007"
+          }
+        },
+        {
+          "period": "FY2020",
+          "value": -6648000.0,
+          "currency": "USD",
+          "source": "sec_companyfacts",
+          "confidence": 0.9,
+          "audited": true,
+          "provenance": {
+            "concept": "tax expense",
+            "cell_ref": "SEC!tax expense!FY2020",
+            "source_document": null,
+            "xbrl_tag": "us-gaap:IncomeTaxExpenseBenefit",
+            "worksheet": "SEC",
+            "filing_type": "10-K",
+            "accession_number": "0001405495-21-000013"
+          }
+        },
+        {
+          "period": "FY2021",
+          "value": 15368000.0,
+          "currency": "USD",
+          "source": "sec_companyfacts",
+          "confidence": 0.9,
+          "audited": true,
+          "provenance": {
+            "concept": "tax expense",
+            "cell_ref": "SEC!tax expense!FY2021",
+            "source_document": null,
+            "xbrl_tag": "us-gaap:IncomeTaxExpenseBenefit",
+            "worksheet": "SEC",
+            "filing_type": "10-K",
+            "accession_number": "0001405495-22-000010"
+          }
+        },
+        {
+          "period": "FY2022",
+          "value": 25502000.0,
+          "currency": "USD",
+          "source": "sec_companyfacts",
+          "confidence": 0.9,
+          "audited": true,
+          "provenance": {
+            "concept": "tax expense",
+            "cell_ref": "SEC!tax expense!FY2022",
+            "source_document": null,
+            "xbrl_tag": "us-gaap:IncomeTaxExpenseBenefit",
+            "worksheet": "SEC",
+            "filing_type": "10-K",
+            "accession_number": "0001405495-23-000011"
+          }
+        },
+        {
+          "period": "FY2023",
+          "value": 23557000.0,
+          "currency": "USD",
+          "source": "sec_companyfacts",
+          "confidence": 0.9,
+          "audited": true,
+          "provenance": {
+            "concept": "tax expense",
+            "cell_ref": "SEC!tax expense!FY2023",
+            "source_document": null,
+            "xbrl_tag": "us-gaap:IncomeTaxExpenseBenefit",
+            "worksheet": "SEC",
+            "filing_type": "10-K",
+            "accession_number": "0001405495-24-000052"
+          }
+        },
+        {
+          "period": "FY2024",
+          "value": 70802000.0,
+          "currency": "USD",
+          "source": "sec_companyfacts",
+          "confidence": 0.9,
+          "audited": true,
+          "provenance": {
+            "concept": "tax expense",
+            "cell_ref": "SEC!tax expense!FY2024",
+            "source_document": null,
+            "xbrl_tag": "us-gaap:IncomeTaxExpenseBenefit",
+            "worksheet": "SEC",
+            "filing_type": "10-K",
+            "accession_number": "0001405495-25-000011"
+          }
+        },
+        {
+          "period": "FY2025",
+          "value": 62788000.0,
+          "currency": "USD",
+          "source": "sec_companyfacts",
+          "confidence": 0.9,
+          "audited": true,
+          "provenance": {
+            "concept": "tax expense",
+            "cell_ref": "SEC!tax expense!FY2025",
+            "source_document": null,
+            "xbrl_tag": "us-gaap:IncomeTaxExpenseBenefit",
+            "worksheet": "SEC",
+            "filing_type": "10-K",
+            "accession_number": "0001405495-26-000011"
+          }
+        },
+        {
+          "period": "FY2026",
+          "value": 31471000.0,
+          "currency": "USD",
+          "source": "sec_companyfacts",
+          "confidence": 0.9,
+          "audited": false,
+          "provenance": {
+            "concept": "tax expense",
+            "cell_ref": "SEC!tax expense!FY2026",
+            "source_document": null,
+            "xbrl_tag": "us-gaap:IncomeTaxExpenseBenefit",
+            "worksheet": "SEC",
+            "filing_type": "10-Q",
+            "accession_number": "0001405495-26-000066"
+          }
+        }
+      ]
+    },
+    "net_income": {
+      "name": "Net Income",
+      "currency": "USD",
+      "points": [
+        {
+          "period": "FY2017",
+          "value": 170714000.0,
+          "currency": "USD",
+          "source": "sec_companyfacts",
+          "confidence": 0.9,
+          "audited": true,
+          "provenance": {
+            "concept": "net income",
+            "cell_ref": "SEC!net income!FY2017",
+            "source_document": null,
+            "xbrl_tag": "us-gaap:NetIncomeLoss",
+            "worksheet": "SEC",
+            "filing_type": "10-K",
+            "accession_number": "0001405495-18-000015"
+          }
+        },
+        {
+          "period": "FY2018",
+          "value": 63868000.0,
+          "currency": "USD",
+          "source": "sec_companyfacts",
+          "confidence": 0.9,
+          "audited": true,
+          "provenance": {
+            "concept": "net income",
+            "cell_ref": "SEC!net income!FY2018",
+            "source_document": null,
+            "xbrl_tag": "us-gaap:NetIncomeLoss",
+            "worksheet": "SEC",
+            "filing_type": "10-K",
+            "accession_number": "0001405495-19-000008"
+          }
+        },
+        {
+          "period": "FY2019",
+          "value": 20928000.0,
+          "currency": "USD",
+          "source": "sec_companyfacts",
+          "confidence": 0.9,
+          "audited": true,
+          "provenance": {
+            "concept": "net income",
+            "cell_ref": "SEC!net income!FY2019",
+            "source_document": null,
+            "xbrl_tag": "us-gaap:NetIncomeLoss",
+            "worksheet": "SEC",
+            "filing_type": "10-K",
+            "accession_number": "0001405495-20-000007"
+          }
+        },
+        {
+          "period": "FY2020",
+          "value": 44801000.0,
+          "currency": "USD",
+          "source": "sec_companyfacts",
+          "confidence": 0.9,
+          "audited": true,
+          "provenance": {
+            "concept": "net income",
+            "cell_ref": "SEC!net income!FY2020",
+            "source_document": null,
+            "xbrl_tag": "us-gaap:NetIncomeLoss",
+            "worksheet": "SEC",
+            "filing_type": "10-K",
+            "accession_number": "0001405495-21-000013"
+          }
+        },
+        {
+          "period": "FY2021",
+          "value": 55295000.0,
+          "currency": "USD",
+          "source": "sec_companyfacts",
+          "confidence": 0.9,
+          "audited": true,
+          "provenance": {
+            "concept": "net income",
+            "cell_ref": "SEC!net income!FY2021",
+            "source_document": null,
+            "xbrl_tag": "us-gaap:NetIncomeLoss",
+            "worksheet": "SEC",
+            "filing_type": "10-K",
+            "accession_number": "0001405495-22-000010"
+          }
+        },
+        {
+          "period": "FY2022",
+          "value": 93693000.0,
+          "currency": "USD",
+          "source": "sec_companyfacts",
+          "confidence": 0.9,
+          "audited": true,
+          "provenance": {
+            "concept": "net income",
+            "cell_ref": "SEC!net income!FY2022",
+            "source_document": null,
+            "xbrl_tag": "us-gaap:NetIncomeLoss",
+            "worksheet": "SEC",
+            "filing_type": "10-K",
+            "accession_number": "0001405495-23-000011"
+          }
+        },
+        {
+          "period": "FY2023",
+          "value": 214069000.0,
+          "currency": "USD",
+          "source": "sec_companyfacts",
+          "confidence": 0.9,
+          "audited": true,
+          "provenance": {
+            "concept": "net income",
+            "cell_ref": "SEC!net income!FY2023",
+            "source_document": null,
+            "xbrl_tag": "us-gaap:NetIncomeLoss",
+            "worksheet": "SEC",
+            "filing_type": "10-K",
+            "accession_number": "0001405495-24-000052"
+          }
+        },
+        {
+          "period": "FY2024",
+          "value": 358614000.0,
+          "currency": "USD",
+          "source": "sec_companyfacts",
+          "confidence": 0.9,
+          "audited": true,
+          "provenance": {
+            "concept": "net income",
+            "cell_ref": "SEC!net income!FY2024",
+            "source_document": null,
+            "xbrl_tag": "us-gaap:NetIncomeLoss",
+            "worksheet": "SEC",
+            "filing_type": "10-K",
+            "accession_number": "0001405495-25-000011"
+          }
+        },
+        {
+          "period": "FY2025",
+          "value": 406644000.0,
+          "currency": "USD",
+          "source": "sec_companyfacts",
+          "confidence": 0.9,
+          "audited": true,
+          "provenance": {
+            "concept": "net income",
+            "cell_ref": "SEC!net income!FY2025",
+            "source_document": null,
+            "xbrl_tag": "us-gaap:ProfitLoss",
+            "worksheet": "SEC",
+            "filing_type": "10-K",
+            "accession_number": "0001405495-26-000011"
+          }
+        },
+        {
+          "period": "FY2026",
+          "value": 191701000.0,
+          "currency": "USD",
+          "source": "sec_companyfacts",
+          "confidence": 0.9,
+          "audited": false,
+          "provenance": {
+            "concept": "net income",
+            "cell_ref": "SEC!net income!FY2026",
+            "source_document": null,
+            "xbrl_tag": "us-gaap:NetIncomeLoss",
+            "worksheet": "SEC",
+            "filing_type": "10-Q",
+            "accession_number": "0001405495-26-000066"
+          }
+        }
+      ]
+    },
+    "diluted_eps": {
+      "name": "Diluted EPS",
+      "currency": "USD",
+      "points": []
+    }
+  },
+  "balance_sheet": {
+    "currency": "USD",
+    "cash": {
+      "name": "Cash",
+      "currency": "USD",
+      "points": [
+        {
+          "period": "FY2017",
+          "value": 433014000.0,
+          "currency": "USD",
+          "source": "sec_companyfacts",
+          "confidence": 0.9,
+          "audited": true,
+          "provenance": {
+            "concept": "cash and cash equivalents",
+            "cell_ref": "SEC!cash and cash equivalents!FY2017",
+            "source_document": null,
+            "xbrl_tag": "us-gaap:CashAndCashEquivalentsAtCarryingValue",
+            "worksheet": "SEC",
+            "filing_type": "10-K",
+            "accession_number": "0001405495-18-000015"
+          }
+        },
+        {
+          "period": "FY2018",
+          "value": 488733000.0,
+          "currency": "USD",
+          "source": "sec_companyfacts",
+          "confidence": 0.9,
+          "audited": true,
+          "provenance": {
+            "concept": "cash and cash equivalents",
+            "cell_ref": "SEC!cash and cash equivalents!FY2018",
+            "source_document": null,
+            "xbrl_tag": "us-gaap:CashAndCashEquivalentsAtCarryingValue",
+            "worksheet": "SEC",
+            "filing_type": "10-K",
+            "accession_number": "0001405495-19-000008"
+          }
+        },
+        {
+          "period": "FY2019",
+          "value": 745491000.0,
+          "currency": "USD",
+          "source": "sec_companyfacts",
+          "confidence": 0.9,
+          "audited": true,
+          "provenance": {
+            "concept": "cash and cash equivalents",
+            "cell_ref": "SEC!cash and cash equivalents!FY2019",
+            "source_document": null,
+            "xbrl_tag": "us-gaap:CashAndCashEquivalentsAtCarryingValue",
+            "worksheet": "SEC",
+            "filing_type": "10-K",
+            "accession_number": "0001405495-20-000007"
+          }
+        },
+        {
+          "period": "FY2020",
+          "value": 473474000.0,
+          "currency": "USD",
+          "source": "sec_companyfacts",
+          "confidence": 0.9,
+          "audited": true,
+          "provenance": {
+            "concept": "cash and cash equivalents",
+            "cell_ref": "SEC!cash and cash equivalents!FY2020",
+            "source_document": null,
+            "xbrl_tag": "us-gaap:CashAndCashEquivalentsAtCarryingValue",
+            "worksheet": "SEC",
+            "filing_type": "10-K",
+            "accession_number": "0001405495-21-000013"
+          }
+        },
+        {
+          "period": "FY2021",
+          "value": 706282000.0,
+          "currency": "USD",
+          "source": "sec_companyfacts",
+          "confidence": 0.9,
+          "audited": true,
+          "provenance": {
+            "concept": "cash and cash equivalents",
+            "cell_ref": "SEC!cash and cash equivalents!FY2021",
+            "source_document": null,
+            "xbrl_tag": "us-gaap:CashAndCashEquivalentsAtCarryingValue",
+            "worksheet": "SEC",
+            "filing_type": "10-K",
+            "accession_number": "0001405495-22-000010"
+          }
+        },
+        {
+          "period": "FY2022",
+          "value": 693479000.0,
+          "currency": "USD",
+          "source": "sec_companyfacts",
+          "confidence": 0.9,
+          "audited": true,
+          "provenance": {
+            "concept": "cash and cash equivalents",
+            "cell_ref": "SEC!cash and cash equivalents!FY2022",
+            "source_document": null,
+            "xbrl_tag": "us-gaap:CashAndCashEquivalentsAtCarryingValue",
+            "worksheet": "SEC",
+            "filing_type": "10-K",
+            "accession_number": "0001405495-23-000011"
+          }
+        },
+        {
+          "period": "FY2023",
+          "value": 437076000.0,
+          "currency": "USD",
+          "source": "sec_companyfacts",
+          "confidence": 0.9,
+          "audited": true,
+          "provenance": {
+            "concept": "cash and cash equivalents",
+            "cell_ref": "SEC!cash and cash equivalents!FY2023",
+            "source_document": null,
+            "xbrl_tag": "us-gaap:CashAndCashEquivalentsAtCarryingValue",
+            "worksheet": "SEC",
+            "filing_type": "10-K",
+            "accession_number": "0001405495-24-000052"
+          }
+        },
+        {
+          "period": "FY2024",
+          "value": 527360000.0,
+          "currency": "USD",
+          "source": "sec_companyfacts",
+          "confidence": 0.9,
+          "audited": true,
+          "provenance": {
+            "concept": "cash and cash equivalents",
+            "cell_ref": "SEC!cash and cash equivalents!FY2024",
+            "source_document": null,
+            "xbrl_tag": "us-gaap:CashAndCashEquivalentsAtCarryingValue",
+            "worksheet": "SEC",
+            "filing_type": "10-K",
+            "accession_number": "0001405495-25-000011"
+          }
+        },
+        {
+          "period": "FY2025",
+          "value": 738960000.0,
+          "currency": "USD",
+          "source": "sec_companyfacts",
+          "confidence": 0.9,
+          "audited": true,
+          "provenance": {
+            "concept": "cash and cash equivalents",
+            "cell_ref": "SEC!cash and cash equivalents!FY2025",
+            "source_document": null,
+            "xbrl_tag": "us-gaap:CashAndCashEquivalentsAtCarryingValue",
+            "worksheet": "SEC",
+            "filing_type": "10-K",
+            "accession_number": "0001405495-26-000011"
+          }
+        },
+        {
+          "period": "FY2026",
+          "value": 615590000.0,
+          "currency": "USD",
+          "source": "sec_companyfacts",
+          "confidence": 0.9,
+          "audited": false,
+          "provenance": {
+            "concept": "cash and cash equivalents",
+            "cell_ref": "SEC!cash and cash equivalents!FY2026",
+            "source_document": null,
+            "xbrl_tag": "us-gaap:CashAndCashEquivalentsAtCarryingValue",
+            "worksheet": "SEC",
+            "filing_type": "10-Q",
+            "accession_number": "0001405495-26-000066"
+          }
+        }
+      ]
+    },
+    "current_assets": {
+      "name": "Current Assets",
+      "currency": "USD",
+      "points": [
+        {
+          "period": "FY2017",
+          "value": 1395794000.0,
+          "currency": "USD",
+          "source": "sec_companyfacts",
+          "confidence": 0.9,
+          "audited": true,
+          "provenance": {
+            "concept": "current assets",
+            "cell_ref": "SEC!current assets!FY2017",
+            "source_document": null,
+            "xbrl_tag": "us-gaap:AssetsCurrent",
+            "worksheet": "SEC",
+            "filing_type": "10-K",
+            "accession_number": "0001405495-18-000015"
+          }
+        },
+        {
+          "period": "FY2018",
+          "value": 1024250000.0,
+          "currency": "USD",
+          "source": "sec_companyfacts",
+          "confidence": 0.9,
+          "audited": true,
+          "provenance": {
+            "concept": "current assets",
+            "cell_ref": "SEC!current assets!FY2018",
+            "source_document": null,
+            "xbrl_tag": "us-gaap:AssetsCurrent",
+            "worksheet": "SEC",
+            "filing_type": "10-K",
+            "accession_number": "0001405495-19-000008"
+          }
+        },
+        {
+          "period": "FY2019",
+          "value": 1016332000.0,
+          "currency": "USD",
+          "source": "sec_companyfacts",
+          "confidence": 0.9,
+          "audited": true,
+          "provenance": {
+            "concept": "current assets",
+            "cell_ref": "SEC!current assets!FY2019",
+            "source_document": null,
+            "xbrl_tag": "us-gaap:AssetsCurrent",
+            "worksheet": "SEC",
+            "filing_type": "10-K",
+            "accession_number": "0001405495-20-000007"
+          }
+        },
+        {
+          "period": "FY2020",
+          "value": 1026879000.0,
+          "currency": "USD",
+          "source": "sec_companyfacts",
+          "confidence": 0.9,
+          "audited": true,
+          "provenance": {
+            "concept": "current assets",
+            "cell_ref": "SEC!current assets!FY2020",
+            "source_document": null,
+            "xbrl_tag": "us-gaap:AssetsCurrent",
+            "worksheet": "SEC",
+            "filing_type": "10-K",
+            "accession_number": "0001405495-21-000013"
+          }
+        },
+        {
+          "period": "FY2021",
+          "value": 1050285000.0,
+          "currency": "USD",
+          "source": "sec_companyfacts",
+          "confidence": 0.9,
+          "audited": true,
+          "provenance": {
+            "concept": "current assets",
+            "cell_ref": "SEC!current assets!FY2021",
+            "source_document": null,
+            "xbrl_tag": "us-gaap:AssetsCurrent",
+            "worksheet": "SEC",
+            "filing_type": "10-K",
+            "accession_number": "0001405495-22-000010"
+          }
+        },
+        {
+          "period": "FY2022",
+          "value": 1344675000.0,
+          "currency": "USD",
+          "source": "sec_companyfacts",
+          "confidence": 0.9,
+          "audited": true,
+          "provenance": {
+            "concept": "current assets",
+            "cell_ref": "SEC!current assets!FY2022",
+            "source_document": null,
+            "xbrl_tag": "us-gaap:AssetsCurrent",
+            "worksheet": "SEC",
+            "filing_type": "10-K",
+            "accession_number": "0001405495-23-000011"
+          }
+        },
+        {
+          "period": "FY2023",
+          "value": 1167624000.0,
+          "currency": "USD",
+          "source": "sec_companyfacts",
+          "confidence": 0.9,
+          "audited": true,
+          "provenance": {
+            "concept": "current assets",
+            "cell_ref": "SEC!current assets!FY2023",
+            "source_document": null,
+            "xbrl_tag": "us-gaap:AssetsCurrent",
+            "worksheet": "SEC",
+            "filing_type": "10-K",
+            "accession_number": "0001405495-24-000052"
+          }
+        },
+        {
+          "period": "FY2024",
+          "value": 1230822000.0,
+          "currency": "USD",
+          "source": "sec_companyfacts",
+          "confidence": 0.9,
+          "audited": true,
+          "provenance": {
+            "concept": "current assets",
+            "cell_ref": "SEC!current assets!FY2024",
+            "source_document": null,
+            "xbrl_tag": "us-gaap:AssetsCurrent",
+            "worksheet": "SEC",
+            "filing_type": "10-K",
+            "accession_number": "0001405495-25-000011"
+          }
+        },
+        {
+          "period": "FY2025",
+          "value": 1387970000.0,
+          "currency": "USD",
+          "source": "sec_companyfacts",
+          "confidence": 0.9,
+          "audited": true,
+          "provenance": {
+            "concept": "current assets",
+            "cell_ref": "SEC!current assets!FY2025",
+            "source_document": null,
+            "xbrl_tag": "us-gaap:AssetsCurrent",
+            "worksheet": "SEC",
+            "filing_type": "10-K",
+            "accession_number": "0001405495-26-000011"
+          }
+        },
+        {
+          "period": "FY2026",
+          "value": 1396563000.0,
+          "currency": "USD",
+          "source": "sec_companyfacts",
+          "confidence": 0.9,
+          "audited": false,
+          "provenance": {
+            "concept": "current assets",
+            "cell_ref": "SEC!current assets!FY2026",
+            "source_document": null,
+            "xbrl_tag": "us-gaap:AssetsCurrent",
+            "worksheet": "SEC",
+            "filing_type": "10-Q",
+            "accession_number": "0001405495-26-000066"
+          }
+        }
+      ]
+    },
+    "total_assets": {
+      "name": "Total Assets",
+      "currency": "USD",
+      "points": [
+        {
+          "period": "FY2017",
+          "value": 1854420000.0,
+          "currency": "USD",
+          "source": "sec_companyfacts",
+          "confidence": 0.9,
+          "audited": true,
+          "provenance": {
+            "concept": "total assets",
+            "cell_ref": "SEC!total assets!FY2017",
+            "source_document": null,
+            "xbrl_tag": "us-gaap:Assets",
+            "worksheet": "SEC",
+            "filing_type": "10-K",
+            "accession_number": "0001405495-18-000015"
+          }
+        },
+        {
+          "period": "FY2018",
+          "value": 1626558000.0,
+          "currency": "USD",
+          "source": "sec_companyfacts",
+          "confidence": 0.9,
+          "audited": true,
+          "provenance": {
+            "concept": "total assets",
+            "cell_ref": "SEC!total assets!FY2018",
+            "source_document": null,
+            "xbrl_tag": "us-gaap:Assets",
+            "worksheet": "SEC",
+            "filing_type": "10-K",
+            "accession_number": "0001405495-19-000008"
+          }
+        },
+        {
+          "period": "FY2019",
+          "value": 1612082000.0,
+          "currency": "USD",
+          "source": "sec_companyfacts",
+          "confidence": 0.9,
+          "audited": true,
+          "provenance": {
+            "concept": "total assets",
+            "cell_ref": "SEC!total assets!FY2019",
+            "source_document": null,
+            "xbrl_tag": "us-gaap:Assets",
+            "worksheet": "SEC",
+            "filing_type": "10-K",
+            "accession_number": "0001405495-20-000007"
+          }
+        },
+        {
+          "period": "FY2020",
+          "value": 1616275000.0,
+          "currency": "USD",
+          "source": "sec_companyfacts",
+          "confidence": 0.9,
+          "audited": true,
+          "provenance": {
+            "concept": "total assets",
+            "cell_ref": "SEC!total assets!FY2020",
+            "source_document": null,
+            "xbrl_tag": "us-gaap:Assets",
+            "worksheet": "SEC",
+            "filing_type": "10-K",
+            "accession_number": "0001405495-21-000013"
+          }
+        },
+        {
+          "period": "FY2021",
+          "value": 1628156000.0,
+          "currency": "USD",
+          "source": "sec_companyfacts",
+          "confidence": 0.9,
+          "audited": true,
+          "provenance": {
+            "concept": "total assets",
+            "cell_ref": "SEC!total assets!FY2021",
+            "source_document": null,
+            "xbrl_tag": "us-gaap:Assets",
+            "worksheet": "SEC",
+            "filing_type": "10-K",
+            "accession_number": "0001405495-22-000010"
+          }
+        },
+        {
+          "period": "FY2022",
+          "value": 1900105000.0,
+          "currency": "USD",
+          "source": "sec_companyfacts",
+          "confidence": 0.9,
+          "audited": true,
+          "provenance": {
+            "concept": "total assets",
+            "cell_ref": "SEC!total assets!FY2022",
+            "source_document": null,
+            "xbrl_tag": "us-gaap:Assets",
+            "worksheet": "SEC",
+            "filing_type": "10-K",
+            "accession_number": "0001405495-23-000011"
+          }
+        },
+        {
+          "period": "FY2023",
+          "value": 1770814000.0,
+          "currency": "USD",
+          "source": "sec_companyfacts",
+          "confidence": 0.9,
+          "audited": true,
+          "provenance": {
+            "concept": "total assets",
+            "cell_ref": "SEC!total assets!FY2023",
+            "source_document": null,
+            "xbrl_tag": "us-gaap:Assets",
+            "worksheet": "SEC",
+            "filing_type": "10-K",
+            "accession_number": "0001405495-24-000052"
+          }
+        },
+        {
+          "period": "FY2024",
+          "value": 1835529000.0,
+          "currency": "USD",
+          "source": "sec_companyfacts",
+          "confidence": 0.9,
+          "audited": true,
+          "provenance": {
+            "concept": "total assets",
+            "cell_ref": "SEC!total assets!FY2024",
+            "source_document": null,
+            "xbrl_tag": "us-gaap:Assets",
+            "worksheet": "SEC",
+            "filing_type": "10-K",
+            "accession_number": "0001405495-25-000011"
+          }
+        },
+        {
+          "period": "FY2025",
+          "value": 2064290000.0,
+          "currency": "USD",
+          "source": "sec_companyfacts",
+          "confidence": 0.9,
+          "audited": true,
+          "provenance": {
+            "concept": "total assets",
+            "cell_ref": "SEC!total assets!FY2025",
+            "source_document": null,
+            "xbrl_tag": "us-gaap:Assets",
+            "worksheet": "SEC",
+            "filing_type": "10-K",
+            "accession_number": "0001405495-26-000011"
+          }
+        },
+        {
+          "period": "FY2026",
+          "value": 2192092000.0,
+          "currency": "USD",
+          "source": "sec_companyfacts",
+          "confidence": 0.9,
+          "audited": false,
+          "provenance": {
+            "concept": "total assets",
+            "cell_ref": "SEC!total assets!FY2026",
+            "source_document": null,
+            "xbrl_tag": "us-gaap:Assets",
+            "worksheet": "SEC",
+            "filing_type": "10-Q",
+            "accession_number": "0001405495-26-000066"
+          }
+        }
+      ]
+    },
+    "current_liabilities": {
+      "name": "Current Liabilities",
+      "currency": "USD",
+      "points": [
+        {
+          "period": "FY2017",
+          "value": 376441000.0,
+          "currency": "USD",
+          "source": "sec_companyfacts",
+          "confidence": 0.9,
+          "audited": true,
+          "provenance": {
+            "concept": "current liabilities",
+            "cell_ref": "SEC!current liabilities!FY2017",
+            "source_document": null,
+            "xbrl_tag": "us-gaap:LiabilitiesCurrent",
+            "worksheet": "SEC",
+            "filing_type": "10-K",
+            "accession_number": "0001405495-18-000015"
+          }
+        },
+        {
+          "period": "FY2018",
+          "value": 179395000.0,
+          "currency": "USD",
+          "source": "sec_companyfacts",
+          "confidence": 0.9,
+          "audited": true,
+          "provenance": {
+            "concept": "current liabilities",
+            "cell_ref": "SEC!current liabilities!FY2018",
+            "source_document": null,
+            "xbrl_tag": "us-gaap:LiabilitiesCurrent",
+            "worksheet": "SEC",
+            "filing_type": "10-K",
+            "accession_number": "0001405495-19-000008"
+          }
+        },
+        {
+          "period": "FY2019",
+          "value": 305558000.0,
+          "currency": "USD",
+          "source": "sec_companyfacts",
+          "confidence": 0.9,
+          "audited": true,
+          "provenance": {
+            "concept": "current liabilities",
+            "cell_ref": "SEC!current liabilities!FY2019",
+            "source_document": null,
+            "xbrl_tag": "us-gaap:LiabilitiesCurrent",
+            "worksheet": "SEC",
+            "filing_type": "10-K",
+            "accession_number": "0001405495-20-000007"
+          }
+        },
+        {
+          "period": "FY2020",
+          "value": 295762000.0,
+          "currency": "USD",
+          "source": "sec_companyfacts",
+          "confidence": 0.9,
+          "audited": true,
+          "provenance": {
+            "concept": "current liabilities",
+            "cell_ref": "SEC!current liabilities!FY2020",
+            "source_document": null,
+            "xbrl_tag": "us-gaap:LiabilitiesCurrent",
+            "worksheet": "SEC",
+            "filing_type": "10-K",
+            "accession_number": "0001405495-21-000013"
+          }
+        },
+        {
+          "period": "FY2021",
+          "value": 371561000.0,
+          "currency": "USD",
+          "source": "sec_companyfacts",
+          "confidence": 0.9,
+          "audited": true,
+          "provenance": {
+            "concept": "current liabilities",
+            "cell_ref": "SEC!current liabilities!FY2021",
+            "source_document": null,
+            "xbrl_tag": "us-gaap:LiabilitiesCurrent",
+            "worksheet": "SEC",
+            "filing_type": "10-K",
+            "accession_number": "0001405495-22-000010"
+          }
+        },
+        {
+          "period": "FY2022",
+          "value": 271346000.0,
+          "currency": "USD",
+          "source": "sec_companyfacts",
+          "confidence": 0.9,
+          "audited": true,
+          "provenance": {
+            "concept": "current liabilities",
+            "cell_ref": "SEC!current liabilities!FY2022",
+            "source_document": null,
+            "xbrl_tag": "us-gaap:LiabilitiesCurrent",
+            "worksheet": "SEC",
+            "filing_type": "10-K",
+            "accession_number": "0001405495-23-000011"
+          }
+        },
+        {
+          "period": "FY2023",
+          "value": 881128000.0,
+          "currency": "USD",
+          "source": "sec_companyfacts",
+          "confidence": 0.9,
+          "audited": true,
+          "provenance": {
+            "concept": "current liabilities",
+            "cell_ref": "SEC!current liabilities!FY2023",
+            "source_document": null,
+            "xbrl_tag": "us-gaap:LiabilitiesCurrent",
+            "worksheet": "SEC",
+            "filing_type": "10-K",
+            "accession_number": "0001405495-24-000052"
+          }
+        },
+        {
+          "period": "FY2024",
+          "value": 725810000.0,
+          "currency": "USD",
+          "source": "sec_companyfacts",
+          "confidence": 0.9,
+          "audited": true,
+          "provenance": {
+            "concept": "current liabilities",
+            "cell_ref": "SEC!current liabilities!FY2024",
+            "source_document": null,
+            "xbrl_tag": "us-gaap:LiabilitiesCurrent",
+            "worksheet": "SEC",
+            "filing_type": "10-K",
+            "accession_number": "0001405495-25-000011"
+          }
+        },
+        {
+          "period": "FY2025",
+          "value": 752502000.0,
+          "currency": "USD",
+          "source": "sec_companyfacts",
+          "confidence": 0.9,
+          "audited": true,
+          "provenance": {
+            "concept": "current liabilities",
+            "cell_ref": "SEC!current liabilities!FY2025",
+            "source_document": null,
+            "xbrl_tag": "us-gaap:LiabilitiesCurrent",
+            "worksheet": "SEC",
+            "filing_type": "10-K",
+            "accession_number": "0001405495-26-000011"
+          }
+        },
+        {
+          "period": "FY2026",
+          "value": 801070000.0,
+          "currency": "USD",
+          "source": "sec_companyfacts",
+          "confidence": 0.9,
+          "audited": false,
+          "provenance": {
+            "concept": "current liabilities",
+            "cell_ref": "SEC!current liabilities!FY2026",
+            "source_document": null,
+            "xbrl_tag": "us-gaap:LiabilitiesCurrent",
+            "worksheet": "SEC",
+            "filing_type": "10-Q",
+            "accession_number": "0001405495-26-000066"
+          }
+        }
+      ]
+    },
+    "total_liabilities": {
+      "name": "Total Liabilities",
+      "currency": "USD",
+      "points": [
+        {
+          "period": "FY2017",
+          "value": 981272000.0,
+          "currency": "USD",
+          "source": "sec_companyfacts",
+          "confidence": 0.9,
+          "audited": true,
+          "provenance": {
+            "concept": "total liabilities",
+            "cell_ref": "SEC!total liabilities!FY2017",
+            "source_document": null,
+            "xbrl_tag": "us-gaap:Liabilities",
+            "worksheet": "SEC",
+            "filing_type": "10-K",
+            "accession_number": "0001405495-18-000015"
+          }
+        },
+        {
+          "period": "FY2018",
+          "value": 688545000.0,
+          "currency": "USD",
+          "source": "sec_companyfacts",
+          "confidence": 0.9,
+          "audited": true,
+          "provenance": {
+            "concept": "total liabilities",
+            "cell_ref": "SEC!total liabilities!FY2018",
+            "source_document": null,
+            "xbrl_tag": "us-gaap:Liabilities",
+            "worksheet": "SEC",
+            "filing_type": "10-K",
+            "accession_number": "0001405495-19-000008"
+          }
+        },
+        {
+          "period": "FY2019",
+          "value": 825801000.0,
+          "currency": "USD",
+          "source": "sec_companyfacts",
+          "confidence": 0.9,
+          "audited": true,
+          "provenance": {
+            "concept": "total liabilities",
+            "cell_ref": "SEC!total liabilities!FY2019",
+            "source_document": null,
+            "xbrl_tag": "us-gaap:Liabilities",
+            "worksheet": "SEC",
+            "filing_type": "10-K",
+            "accession_number": "0001405495-20-000007"
+          }
+        },
+        {
+          "period": "FY2020",
+          "value": 819709000.0,
+          "currency": "USD",
+          "source": "sec_companyfacts",
+          "confidence": 0.9,
+          "audited": true,
+          "provenance": {
+            "concept": "total liabilities",
+            "cell_ref": "SEC!total liabilities!FY2020",
+            "source_document": null,
+            "xbrl_tag": "us-gaap:Liabilities",
+            "worksheet": "SEC",
+            "filing_type": "10-K",
+            "accession_number": "0001405495-21-000013"
+          }
+        },
+        {
+          "period": "FY2021",
+          "value": 875239000.0,
+          "currency": "USD",
+          "source": "sec_companyfacts",
+          "confidence": 0.9,
+          "audited": true,
+          "provenance": {
+            "concept": "total liabilities",
+            "cell_ref": "SEC!total liabilities!FY2021",
+            "source_document": null,
+            "xbrl_tag": "us-gaap:Liabilities",
+            "worksheet": "SEC",
+            "filing_type": "10-K",
+            "accession_number": "0001405495-22-000010"
+          }
+        },
+        {
+          "period": "FY2022",
+          "value": 1169592000.0,
+          "currency": "USD",
+          "source": "sec_companyfacts",
+          "confidence": 0.9,
+          "audited": true,
+          "provenance": {
+            "concept": "total liabilities",
+            "cell_ref": "SEC!total liabilities!FY2022",
+            "source_document": null,
+            "xbrl_tag": "us-gaap:Liabilities",
+            "worksheet": "SEC",
+            "filing_type": "10-K",
+            "accession_number": "0001405495-23-000011"
+          }
+        },
+        {
+          "period": "FY2023",
+          "value": 1189265000.0,
+          "currency": "USD",
+          "source": "sec_companyfacts",
+          "confidence": 0.9,
+          "audited": true,
+          "provenance": {
+            "concept": "total liabilities",
+            "cell_ref": "SEC!total liabilities!FY2023",
+            "source_document": null,
+            "xbrl_tag": "us-gaap:Liabilities",
+            "worksheet": "SEC",
+            "filing_type": "10-K",
+            "accession_number": "0001405495-24-000052"
+          }
+        },
+        {
+          "period": "FY2024",
+          "value": 978314000.0,
+          "currency": "USD",
+          "source": "sec_companyfacts",
+          "confidence": 0.9,
+          "audited": true,
+          "provenance": {
+            "concept": "total liabilities",
+            "cell_ref": "SEC!total liabilities!FY2024",
+            "source_document": null,
+            "xbrl_tag": "us-gaap:Liabilities",
+            "worksheet": "SEC",
+            "filing_type": "10-K",
+            "accession_number": "0001405495-25-000011"
+          }
+        },
+        {
+          "period": "FY2025",
+          "value": 963170000.0,
+          "currency": "USD",
+          "source": "sec_companyfacts",
+          "confidence": 0.9,
+          "audited": true,
+          "provenance": {
+            "concept": "total liabilities",
+            "cell_ref": "SEC!total liabilities!FY2025",
+            "source_document": null,
+            "xbrl_tag": "us-gaap:Liabilities",
+            "worksheet": "SEC",
+            "filing_type": "10-K",
+            "accession_number": "0001405495-26-000011"
+          }
+        },
+        {
+          "period": "FY2026",
+          "value": 989923000.0,
+          "currency": "USD",
+          "source": "sec_companyfacts",
+          "confidence": 0.9,
+          "audited": false,
+          "provenance": {
+            "concept": "total liabilities",
+            "cell_ref": "SEC!total liabilities!FY2026",
+            "source_document": null,
+            "xbrl_tag": "us-gaap:Liabilities",
+            "worksheet": "SEC",
+            "filing_type": "10-Q",
+            "accession_number": "0001405495-26-000066"
+          }
+        }
+      ]
+    },
+    "total_debt": {
+      "name": "Total Debt",
+      "currency": "USD",
+      "points": [
+        {
+          "period": "FY2017",
+          "value": 285126000.0,
+          "currency": "USD",
+          "source": "sec_companyfacts",
+          "confidence": 0.9,
+          "audited": true,
+          "provenance": {
+            "concept": "total debt",
+            "cell_ref": "SEC!total debt!FY2017",
+            "source_document": null,
+            "xbrl_tag": "us-gaap:LongTermDebtNoncurrent",
+            "worksheet": "SEC",
+            "filing_type": "10-K",
+            "accession_number": "0001405495-18-000015"
+          }
+        },
+        {
+          "period": "FY2018",
+          "value": 317377000.0,
+          "currency": "USD",
+          "source": "sec_companyfacts",
+          "confidence": 0.9,
+          "audited": true,
+          "provenance": {
+            "concept": "total debt",
+            "cell_ref": "SEC!total debt!FY2018",
+            "source_document": null,
+            "xbrl_tag": "us-gaap:LongTermDebtNoncurrent",
+            "worksheet": "SEC",
+            "filing_type": "10-K",
+            "accession_number": "0001405495-19-000008"
+          }
+        },
+        {
+          "period": "FY2019",
+          "value": 350588000.0,
+          "currency": "USD",
+          "source": "sec_companyfacts",
+          "confidence": 0.9,
+          "audited": true,
+          "provenance": {
+            "concept": "total debt",
+            "cell_ref": "SEC!total debt!FY2019",
+            "source_document": null,
+            "xbrl_tag": "us-gaap:LongTermDebtNoncurrent",
+            "worksheet": "SEC",
+            "filing_type": "10-K",
+            "accession_number": "0001405495-20-000007"
+          }
+        },
+        {
+          "period": "FY2020",
+          "value": 367992000.0,
+          "currency": "USD",
+          "source": "sec_companyfacts",
+          "confidence": 0.9,
+          "audited": true,
+          "provenance": {
+            "concept": "total debt",
+            "cell_ref": "SEC!total debt!FY2020",
+            "source_document": null,
+            "xbrl_tag": "us-gaap:LongTermDebtNoncurrent",
+            "worksheet": "SEC",
+            "filing_type": "10-K",
+            "accession_number": "0001405495-21-000013"
+          }
+        },
+        {
+          "period": "FY2021",
+          "value": 422745000.0,
+          "currency": "USD",
+          "source": "sec_companyfacts",
+          "confidence": 0.9,
+          "audited": true,
+          "provenance": {
+            "concept": "total debt",
+            "cell_ref": "SEC!total debt!FY2021",
+            "source_document": null,
+            "xbrl_tag": "us-gaap:LongTermDebtNoncurrent",
+            "worksheet": "SEC",
+            "filing_type": "10-K",
+            "accession_number": "0001405495-22-000010"
+          }
+        },
+        {
+          "period": "FY2022",
+          "value": 607066000.0,
+          "currency": "USD",
+          "source": "sec_companyfacts",
+          "confidence": 0.9,
+          "audited": true,
+          "provenance": {
+            "concept": "total debt",
+            "cell_ref": "SEC!total debt!FY2022",
+            "source_document": null,
+            "xbrl_tag": "us-gaap:LongTermDebtNoncurrent",
+            "worksheet": "SEC",
+            "filing_type": "10-K",
+            "accession_number": "0001405495-23-000011"
+          }
+        },
+        {
+          "period": "FY2023",
+          "value": 29019000.0,
+          "currency": "USD",
+          "source": "sec_companyfacts",
+          "confidence": 0.9,
+          "audited": true,
+          "provenance": {
+            "concept": "total debt",
+            "cell_ref": "SEC!total debt!FY2023",
+            "source_document": null,
+            "xbrl_tag": "us-gaap:LongTermDebtNoncurrent",
+            "worksheet": "SEC",
+            "filing_type": "10-K",
+            "accession_number": "0001405495-24-000052"
+          }
+        },
+        {
+          "period": "FY2024",
+          "value": 15443000.0,
+          "currency": "USD",
+          "source": "sec_companyfacts",
+          "confidence": 0.9,
+          "audited": true,
+          "provenance": {
+            "concept": "total debt",
+            "cell_ref": "SEC!total debt!FY2024",
+            "source_document": null,
+            "xbrl_tag": "us-gaap:LongTermDebtNoncurrent",
+            "worksheet": "SEC",
+            "filing_type": "10-K",
+            "accession_number": "0001405495-25-000011"
+          }
+        },
+        {
+          "period": "FY2025",
+          "value": 16292000.0,
+          "currency": "USD",
+          "source": "sec_companyfacts",
+          "confidence": 0.9,
+          "audited": true,
+          "provenance": {
+            "concept": "total debt",
+            "cell_ref": "SEC!total debt!FY2025",
+            "source_document": null,
+            "xbrl_tag": "us-gaap:LongTermDebtNoncurrent",
+            "worksheet": "SEC",
+            "filing_type": "10-K",
+            "accession_number": "0001405495-26-000011"
+          }
+        },
+        {
+          "period": "FY2026",
+          "value": 10861000.0,
+          "currency": "USD",
+          "source": "sec_companyfacts",
+          "confidence": 0.9,
+          "audited": false,
+          "provenance": {
+            "concept": "total debt",
+            "cell_ref": "SEC!total debt!FY2026",
+            "source_document": null,
+            "xbrl_tag": "us-gaap:LongTermDebtNoncurrent",
+            "worksheet": "SEC",
+            "filing_type": "10-Q",
+            "accession_number": "0001405495-26-000066"
+          }
+        }
+      ]
+    },
+    "shareholders_equity": {
+      "name": "Shareholders Equity",
+      "currency": "USD",
+      "points": [
+        {
+          "period": "FY2017",
+          "value": 855267000.0,
+          "currency": "USD",
+          "source": "sec_companyfacts",
+          "confidence": 0.9,
+          "audited": true,
+          "provenance": {
+            "concept": "stockholders equity",
+            "cell_ref": "SEC!stockholders equity!FY2017",
+            "source_document": null,
+            "xbrl_tag": "us-gaap:StockholdersEquity",
+            "worksheet": "SEC",
+            "filing_type": "10-K",
+            "accession_number": "0001405495-18-000015"
+          }
+        },
+        {
+          "period": "FY2018",
+          "value": 927025000.0,
+          "currency": "USD",
+          "source": "sec_companyfacts",
+          "confidence": 0.9,
+          "audited": true,
+          "provenance": {
+            "concept": "stockholders equity",
+            "cell_ref": "SEC!stockholders equity!FY2018",
+            "source_document": null,
+            "xbrl_tag": "us-gaap:StockholdersEquity",
+            "worksheet": "SEC",
+            "filing_type": "10-K",
+            "accession_number": "0001405495-19-000008"
+          }
+        },
+        {
+          "period": "FY2019",
+          "value": 761557000.0,
+          "currency": "USD",
+          "source": "sec_companyfacts",
+          "confidence": 0.9,
+          "audited": true,
+          "provenance": {
+            "concept": "stockholders equity",
+            "cell_ref": "SEC!stockholders equity!FY2019",
+            "source_document": null,
+            "xbrl_tag": "us-gaap:StockholdersEquity",
+            "worksheet": "SEC",
+            "filing_type": "10-K",
+            "accession_number": "0001405495-20-000007"
+          }
+        },
+        {
+          "period": "FY2020",
+          "value": 773369000.0,
+          "currency": "USD",
+          "source": "sec_companyfacts",
+          "confidence": 0.9,
+          "audited": true,
+          "provenance": {
+            "concept": "stockholders equity",
+            "cell_ref": "SEC!stockholders equity!FY2020",
+            "source_document": null,
+            "xbrl_tag": "us-gaap:StockholdersEquity",
+            "worksheet": "SEC",
+            "filing_type": "10-K",
+            "accession_number": "0001405495-21-000013"
+          }
+        },
+        {
+          "period": "FY2021",
+          "value": 745239000.0,
+          "currency": "USD",
+          "source": "sec_companyfacts",
+          "confidence": 0.9,
+          "audited": true,
+          "provenance": {
+            "concept": "stockholders equity",
+            "cell_ref": "SEC!stockholders equity!FY2021",
+            "source_document": null,
+            "xbrl_tag": "us-gaap:StockholdersEquity",
+            "worksheet": "SEC",
+            "filing_type": "10-K",
+            "accession_number": "0001405495-22-000010"
+          }
+        },
+        {
+          "period": "FY2022",
+          "value": 724895000.0,
+          "currency": "USD",
+          "source": "sec_companyfacts",
+          "confidence": 0.9,
+          "audited": true,
+          "provenance": {
+            "concept": "stockholders equity",
+            "cell_ref": "SEC!stockholders equity!FY2022",
+            "source_document": null,
+            "xbrl_tag": "us-gaap:StockholdersEquity",
+            "worksheet": "SEC",
+            "filing_type": "10-K",
+            "accession_number": "0001405495-23-000011"
+          }
+        },
+        {
+          "period": "FY2023",
+          "value": 581549000.0,
+          "currency": "USD",
+          "source": "sec_companyfacts",
+          "confidence": 0.9,
+          "audited": true,
+          "provenance": {
+            "concept": "stockholders equity",
+            "cell_ref": "SEC!stockholders equity!FY2023",
+            "source_document": null,
+            "xbrl_tag": "us-gaap:StockholdersEquity",
+            "worksheet": "SEC",
+            "filing_type": "10-K",
+            "accession_number": "0001405495-24-000052"
+          }
+        },
+        {
+          "period": "FY2024",
+          "value": 857215000.0,
+          "currency": "USD",
+          "source": "sec_companyfacts",
+          "confidence": 0.9,
+          "audited": true,
+          "provenance": {
+            "concept": "stockholders equity",
+            "cell_ref": "SEC!stockholders equity!FY2024",
+            "source_document": null,
+            "xbrl_tag": "us-gaap:StockholdersEquity",
+            "worksheet": "SEC",
+            "filing_type": "10-K",
+            "accession_number": "0001405495-25-000011"
+          }
+        },
+        {
+          "period": "FY2025",
+          "value": 1101120000.0,
+          "currency": "USD",
+          "source": "sec_companyfacts",
+          "confidence": 0.9,
+          "audited": true,
+          "provenance": {
+            "concept": "stockholders equity",
+            "cell_ref": "SEC!stockholders equity!FY2025",
+            "source_document": null,
+            "xbrl_tag": "us-gaap:StockholdersEquity",
+            "worksheet": "SEC",
+            "filing_type": "10-K",
+            "accession_number": "0001405495-26-000011"
+          }
+        },
+        {
+          "period": "FY2026",
+          "value": 1202169000.0,
+          "currency": "USD",
+          "source": "sec_companyfacts",
+          "confidence": 0.9,
+          "audited": false,
+          "provenance": {
+            "concept": "stockholders equity",
+            "cell_ref": "SEC!stockholders equity!FY2026",
+            "source_document": null,
+            "xbrl_tag": "us-gaap:StockholdersEquity",
+            "worksheet": "SEC",
+            "filing_type": "10-Q",
+            "accession_number": "0001405495-26-000066"
+          }
+        }
+      ]
+    },
+    "invested_capital": {
+      "name": "Invested Capital",
+      "currency": "USD",
+      "points": []
+    }
+  },
+  "cash_flow_statement": {
+    "currency": "USD",
+    "operating_cash_flow": {
+      "name": "Operating Cash Flow",
+      "currency": "USD",
+      "points": [
+        {
+          "period": "FY2017",
+          "value": 315800000.0,
+          "currency": "USD",
+          "source": "sec_companyfacts",
+          "confidence": 0.9,
+          "audited": true,
+          "provenance": {
+            "concept": "operating cash flow",
+            "cell_ref": "SEC!operating cash flow!FY2017",
+            "source_document": null,
+            "xbrl_tag": "us-gaap:NetCashProvidedByUsedInOperatingActivities",
+            "worksheet": "SEC",
+            "filing_type": "10-K",
+            "accession_number": "0001405495-18-000015"
+          }
+        },
+        {
+          "period": "FY2018",
+          "value": 146792000.0,
+          "currency": "USD",
+          "source": "sec_companyfacts",
+          "confidence": 0.9,
+          "audited": true,
+          "provenance": {
+            "concept": "operating cash flow",
+            "cell_ref": "SEC!operating cash flow!FY2018",
+            "source_document": null,
+            "xbrl_tag": "us-gaap:NetCashProvidedByUsedInOperatingActivities",
+            "worksheet": "SEC",
+            "filing_type": "10-K",
+            "accession_number": "0001405495-19-000008"
+          }
+        },
+        {
+          "period": "FY2019",
+          "value": 89433000.0,
+          "currency": "USD",
+          "source": "sec_companyfacts",
+          "confidence": 0.9,
+          "audited": true,
+          "provenance": {
+            "concept": "operating cash flow",
+            "cell_ref": "SEC!operating cash flow!FY2019",
+            "source_document": null,
+            "xbrl_tag": "us-gaap:NetCashProvidedByUsedInOperatingActivities",
+            "worksheet": "SEC",
+            "filing_type": "10-K",
+            "accession_number": "0001405495-20-000007"
+          }
+        },
+        {
+          "period": "FY2020",
+          "value": 163467000.0,
+          "currency": "USD",
+          "source": "sec_companyfacts",
+          "confidence": 0.9,
+          "audited": true,
+          "provenance": {
+            "concept": "operating cash flow",
+            "cell_ref": "SEC!operating cash flow!FY2020",
+            "source_document": null,
+            "xbrl_tag": "us-gaap:NetCashProvidedByUsedInOperatingActivities",
+            "worksheet": "SEC",
+            "filing_type": "10-K",
+            "accession_number": "0001405495-21-000013"
+          }
+        },
+        {
+          "period": "FY2021",
+          "value": 130392000.0,
+          "currency": "USD",
+          "source": "sec_companyfacts",
+          "confidence": 0.9,
+          "audited": true,
+          "provenance": {
+            "concept": "operating cash flow",
+            "cell_ref": "SEC!operating cash flow!FY2021",
+            "source_document": null,
+            "xbrl_tag": "us-gaap:NetCashProvidedByUsedInOperatingActivities",
+            "worksheet": "SEC",
+            "filing_type": "10-K",
+            "accession_number": "0001405495-22-000010"
+          }
+        },
+        {
+          "period": "FY2022",
+          "value": 286039000.0,
+          "currency": "USD",
+          "source": "sec_companyfacts",
+          "confidence": 0.9,
+          "audited": true,
+          "provenance": {
+            "concept": "operating cash flow",
+            "cell_ref": "SEC!operating cash flow!FY2022",
+            "source_document": null,
+            "xbrl_tag": "us-gaap:NetCashProvidedByUsedInOperatingActivities",
+            "worksheet": "SEC",
+            "filing_type": "10-K",
+            "accession_number": "0001405495-23-000011"
+          }
+        },
+        {
+          "period": "FY2023",
+          "value": 213733000.0,
+          "currency": "USD",
+          "source": "sec_companyfacts",
+          "confidence": 0.9,
+          "audited": true,
+          "provenance": {
+            "concept": "operating cash flow",
+            "cell_ref": "SEC!operating cash flow!FY2023",
+            "source_document": null,
+            "xbrl_tag": "us-gaap:NetCashProvidedByUsedInOperatingActivities",
+            "worksheet": "SEC",
+            "filing_type": "10-K",
+            "accession_number": "0001405495-24-000052"
+          }
+        },
+        {
+          "period": "FY2024",
+          "value": 271528000.0,
+          "currency": "USD",
+          "source": "sec_companyfacts",
+          "confidence": 0.9,
+          "audited": true,
+          "provenance": {
+            "concept": "operating cash flow",
+            "cell_ref": "SEC!operating cash flow!FY2024",
+            "source_document": null,
+            "xbrl_tag": "us-gaap:NetCashProvidedByUsedInOperatingActivities",
+            "worksheet": "SEC",
+            "filing_type": "10-K",
+            "accession_number": "0001405495-25-000011"
+          }
+        },
+        {
+          "period": "FY2025",
+          "value": 544450000.0,
+          "currency": "USD",
+          "source": "sec_companyfacts",
+          "confidence": 0.9,
+          "audited": true,
+          "provenance": {
+            "concept": "operating cash flow",
+            "cell_ref": "SEC!operating cash flow!FY2025",
+            "source_document": null,
+            "xbrl_tag": "us-gaap:NetCashProvidedByUsedInOperatingActivities",
+            "worksheet": "SEC",
+            "filing_type": "10-K",
+            "accession_number": "0001405495-26-000011"
+          }
+        },
+        {
+          "period": "FY2026",
+          "value": 98617000.0,
+          "currency": "USD",
+          "source": "sec_companyfacts",
+          "confidence": 0.9,
+          "audited": false,
+          "provenance": {
+            "concept": "operating cash flow",
+            "cell_ref": "SEC!operating cash flow!FY2026",
+            "source_document": null,
+            "xbrl_tag": "us-gaap:NetCashProvidedByUsedInOperatingActivities",
+            "worksheet": "SEC",
+            "filing_type": "10-Q",
+            "accession_number": "0001405495-26-000066"
+          }
+        }
+      ]
+    },
+    "capital_expenditures": {
+      "name": "Capital Expenditures",
+      "currency": "USD",
+      "points": [
+        {
+          "period": "FY2017",
+          "value": 2071000.0,
+          "currency": "USD",
+          "source": "sec_companyfacts",
+          "confidence": 0.9,
+          "audited": true,
+          "provenance": {
+            "concept": "capital expenditures",
+            "cell_ref": "SEC!capital expenditures!FY2017",
+            "source_document": null,
+            "xbrl_tag": "us-gaap:PaymentsToAcquirePropertyPlantAndEquipment",
+            "worksheet": "SEC",
+            "filing_type": "10-K",
+            "accession_number": "0001405495-18-000015"
+          }
+        },
+        {
+          "period": "FY2018",
+          "value": 2576000.0,
+          "currency": "USD",
+          "source": "sec_companyfacts",
+          "confidence": 0.9,
+          "audited": true,
+          "provenance": {
+            "concept": "capital expenditures",
+            "cell_ref": "SEC!capital expenditures!FY2018",
+            "source_document": null,
+            "xbrl_tag": "us-gaap:PaymentsToAcquirePropertyPlantAndEquipment",
+            "worksheet": "SEC",
+            "filing_type": "10-K",
+            "accession_number": "0001405495-19-000008"
+          }
+        },
+        {
+          "period": "FY2019",
+          "value": 4509000.0,
+          "currency": "USD",
+          "source": "sec_companyfacts",
+          "confidence": 0.9,
+          "audited": true,
+          "provenance": {
+            "concept": "capital expenditures",
+            "cell_ref": "SEC!capital expenditures!FY2019",
+            "source_document": null,
+            "xbrl_tag": "us-gaap:PaymentsToAcquirePropertyPlantAndEquipment",
+            "worksheet": "SEC",
+            "filing_type": "10-K",
+            "accession_number": "0001405495-20-000007"
+          }
+        },
+        {
+          "period": "FY2020",
+          "value": 11793000.0,
+          "currency": "USD",
+          "source": "sec_companyfacts",
+          "confidence": 0.9,
+          "audited": true,
+          "provenance": {
+            "concept": "capital expenditures",
+            "cell_ref": "SEC!capital expenditures!FY2020",
+            "source_document": null,
+            "xbrl_tag": "us-gaap:PaymentsToAcquirePropertyPlantAndEquipment",
+            "worksheet": "SEC",
+            "filing_type": "10-K",
+            "accession_number": "0001405495-21-000013"
+          }
+        },
+        {
+          "period": "FY2021",
+          "value": 2511000.0,
+          "currency": "USD",
+          "source": "sec_companyfacts",
+          "confidence": 0.9,
+          "audited": true,
+          "provenance": {
+            "concept": "capital expenditures",
+            "cell_ref": "SEC!capital expenditures!FY2021",
+            "source_document": null,
+            "xbrl_tag": "us-gaap:PaymentsToAcquirePropertyPlantAndEquipment",
+            "worksheet": "SEC",
+            "filing_type": "10-K",
+            "accession_number": "0001405495-22-000010"
+          }
+        },
+        {
+          "period": "FY2022",
+          "value": 3156000.0,
+          "currency": "USD",
+          "source": "sec_companyfacts",
+          "confidence": 0.9,
+          "audited": true,
+          "provenance": {
+            "concept": "capital expenditures",
+            "cell_ref": "SEC!capital expenditures!FY2022",
+            "source_document": null,
+            "xbrl_tag": "us-gaap:PaymentsToAcquirePropertyPlantAndEquipment",
+            "worksheet": "SEC",
+            "filing_type": "10-K",
+            "accession_number": "0001405495-23-000011"
+          }
+        },
+        {
+          "period": "FY2023",
+          "value": 4268000.0,
+          "currency": "USD",
+          "source": "sec_companyfacts",
+          "confidence": 0.9,
+          "audited": true,
+          "provenance": {
+            "concept": "capital expenditures",
+            "cell_ref": "SEC!capital expenditures!FY2023",
+            "source_document": null,
+            "xbrl_tag": "us-gaap:PaymentsToAcquirePropertyPlantAndEquipment",
+            "worksheet": "SEC",
+            "filing_type": "10-K",
+            "accession_number": "0001405495-24-000052"
+          }
+        },
+        {
+          "period": "FY2024",
+          "value": 5849000.0,
+          "currency": "USD",
+          "source": "sec_companyfacts",
+          "confidence": 0.9,
+          "audited": true,
+          "provenance": {
+            "concept": "capital expenditures",
+            "cell_ref": "SEC!capital expenditures!FY2024",
+            "source_document": null,
+            "xbrl_tag": "us-gaap:PaymentsToAcquirePropertyPlantAndEquipment",
+            "worksheet": "SEC",
+            "filing_type": "10-K",
+            "accession_number": "0001405495-25-000011"
+          }
+        },
+        {
+          "period": "FY2025",
+          "value": 15888000.0,
+          "currency": "USD",
+          "source": "sec_companyfacts",
+          "confidence": 0.9,
+          "audited": true,
+          "provenance": {
+            "concept": "capital expenditures",
+            "cell_ref": "SEC!capital expenditures!FY2025",
+            "source_document": null,
+            "xbrl_tag": "us-gaap:PaymentsToAcquirePropertyPlantAndEquipment",
+            "worksheet": "SEC",
+            "filing_type": "10-K",
+            "accession_number": "0001405495-26-000011"
+          }
+        },
+        {
+          "period": "FY2026",
+          "value": 2549000.0,
+          "currency": "USD",
+          "source": "sec_companyfacts",
+          "confidence": 0.9,
+          "audited": false,
+          "provenance": {
+            "concept": "capital expenditures",
+            "cell_ref": "SEC!capital expenditures!FY2026",
+            "source_document": null,
+            "xbrl_tag": "us-gaap:PaymentsToAcquirePropertyPlantAndEquipment",
+            "worksheet": "SEC",
+            "filing_type": "10-Q",
+            "accession_number": "0001405495-26-000066"
+          }
+        }
+      ]
+    },
+    "free_cash_flow": {
+      "name": "Free Cash Flow",
+      "currency": "USD",
+      "points": [
+        {
+          "period": "FY2017",
+          "value": 313729000.0,
+          "currency": "USD",
+          "source": "sec_derived",
+          "confidence": 0.85,
+          "audited": true,
+          "provenance": {
+            "concept": "free cash flow",
+            "cell_ref": "SEC!free cash flow!FY2017",
+            "source_document": null,
+            "xbrl_tag": null,
+            "worksheet": "SEC",
+            "filing_type": "10-K",
+            "accession_number": null
+          }
+        },
+        {
+          "period": "FY2018",
+          "value": 144216000.0,
+          "currency": "USD",
+          "source": "sec_derived",
+          "confidence": 0.85,
+          "audited": true,
+          "provenance": {
+            "concept": "free cash flow",
+            "cell_ref": "SEC!free cash flow!FY2018",
+            "source_document": null,
+            "xbrl_tag": null,
+            "worksheet": "SEC",
+            "filing_type": "10-K",
+            "accession_number": null
+          }
+        },
+        {
+          "period": "FY2019",
+          "value": 84924000.0,
+          "currency": "USD",
+          "source": "sec_derived",
+          "confidence": 0.85,
+          "audited": true,
+          "provenance": {
+            "concept": "free cash flow",
+            "cell_ref": "SEC!free cash flow!FY2019",
+            "source_document": null,
+            "xbrl_tag": null,
+            "worksheet": "SEC",
+            "filing_type": "10-K",
+            "accession_number": null
+          }
+        },
+        {
+          "period": "FY2020",
+          "value": 151674000.0,
+          "currency": "USD",
+          "source": "sec_derived",
+          "confidence": 0.85,
+          "audited": true,
+          "provenance": {
+            "concept": "free cash flow",
+            "cell_ref": "SEC!free cash flow!FY2020",
+            "source_document": null,
+            "xbrl_tag": null,
+            "worksheet": "SEC",
+            "filing_type": "10-K",
+            "accession_number": null
+          }
+        },
+        {
+          "period": "FY2021",
+          "value": 127881000.0,
+          "currency": "USD",
+          "source": "sec_derived",
+          "confidence": 0.85,
+          "audited": true,
+          "provenance": {
+            "concept": "free cash flow",
+            "cell_ref": "SEC!free cash flow!FY2021",
+            "source_document": null,
+            "xbrl_tag": null,
+            "worksheet": "SEC",
+            "filing_type": "10-K",
+            "accession_number": null
+          }
+        },
+        {
+          "period": "FY2022",
+          "value": 282883000.0,
+          "currency": "USD",
+          "source": "sec_derived",
+          "confidence": 0.85,
+          "audited": true,
+          "provenance": {
+            "concept": "free cash flow",
+            "cell_ref": "SEC!free cash flow!FY2022",
+            "source_document": null,
+            "xbrl_tag": null,
+            "worksheet": "SEC",
+            "filing_type": "10-K",
+            "accession_number": null
+          }
+        },
+        {
+          "period": "FY2023",
+          "value": 209465000.0,
+          "currency": "USD",
+          "source": "sec_derived",
+          "confidence": 0.85,
+          "audited": true,
+          "provenance": {
+            "concept": "free cash flow",
+            "cell_ref": "SEC!free cash flow!FY2023",
+            "source_document": null,
+            "xbrl_tag": null,
+            "worksheet": "SEC",
+            "filing_type": "10-K",
+            "accession_number": null
+          }
+        },
+        {
+          "period": "FY2024",
+          "value": 265679000.0,
+          "currency": "USD",
+          "source": "sec_derived",
+          "confidence": 0.85,
+          "audited": true,
+          "provenance": {
+            "concept": "free cash flow",
+            "cell_ref": "SEC!free cash flow!FY2024",
+            "source_document": null,
+            "xbrl_tag": null,
+            "worksheet": "SEC",
+            "filing_type": "10-K",
+            "accession_number": null
+          }
+        },
+        {
+          "period": "FY2025",
+          "value": 528562000.0,
+          "currency": "USD",
+          "source": "sec_derived",
+          "confidence": 0.85,
+          "audited": true,
+          "provenance": {
+            "concept": "free cash flow",
+            "cell_ref": "SEC!free cash flow!FY2025",
+            "source_document": null,
+            "xbrl_tag": null,
+            "worksheet": "SEC",
+            "filing_type": "10-K",
+            "accession_number": null
+          }
+        },
+        {
+          "period": "FY2026",
+          "value": 96068000.0,
+          "currency": "USD",
+          "source": "sec_derived",
+          "confidence": 0.85,
+          "audited": true,
+          "provenance": {
+            "concept": "free cash flow",
+            "cell_ref": "SEC!free cash flow!FY2026",
+            "source_document": null,
+            "xbrl_tag": null,
+            "worksheet": "SEC",
+            "filing_type": "10-K",
+            "accession_number": null
+          }
+        }
+      ]
+    },
+    "dividends": {
+      "name": "Dividends",
+      "currency": "USD",
+      "points": [
+        {
+          "period": "FY2017",
+          "value": 43255000.0,
+          "currency": "USD",
+          "source": "sec_companyfacts",
+          "confidence": 0.9,
+          "audited": true,
+          "provenance": {
+            "concept": "dividends",
+            "cell_ref": "SEC!dividends!FY2017",
+            "source_document": null,
+            "xbrl_tag": "us-gaap:PaymentsOfDividends",
+            "worksheet": "SEC",
+            "filing_type": "10-K",
+            "accession_number": "0001405495-18-000015"
+          }
+        },
+        {
+          "period": "FY2018",
+          "value": 48468000.0,
+          "currency": "USD",
+          "source": "sec_companyfacts",
+          "confidence": 0.9,
+          "audited": true,
+          "provenance": {
+            "concept": "dividends",
+            "cell_ref": "SEC!dividends!FY2018",
+            "source_document": null,
+            "xbrl_tag": "us-gaap:PaymentsOfDividends",
+            "worksheet": "SEC",
+            "filing_type": "10-K",
+            "accession_number": "0001405495-19-000008"
+          }
+        },
+        {
+          "period": "FY2019",
+          "value": 44580000.0,
+          "currency": "USD",
+          "source": "sec_companyfacts",
+          "confidence": 0.9,
+          "audited": true,
+          "provenance": {
+            "concept": "dividends",
+            "cell_ref": "SEC!dividends!FY2019",
+            "source_document": null,
+            "xbrl_tag": "us-gaap:PaymentsOfDividends",
+            "worksheet": "SEC",
+            "filing_type": "10-K",
+            "accession_number": "0001405495-20-000007"
+          }
+        },
+        {
+          "period": "FY2020",
+          "value": 43072000.0,
+          "currency": "USD",
+          "source": "sec_companyfacts",
+          "confidence": 0.9,
+          "audited": true,
+          "provenance": {
+            "concept": "dividends",
+            "cell_ref": "SEC!dividends!FY2020",
+            "source_document": null,
+            "xbrl_tag": "us-gaap:PaymentsOfDividends",
+            "worksheet": "SEC",
+            "filing_type": "10-K",
+            "accession_number": "0001405495-21-000013"
+          }
+        },
+        {
+          "period": "FY2021",
+          "value": 43058000.0,
+          "currency": "USD",
+          "source": "sec_companyfacts",
+          "confidence": 0.9,
+          "audited": true,
+          "provenance": {
+            "concept": "dividends",
+            "cell_ref": "SEC!dividends!FY2021",
+            "source_document": null,
+            "xbrl_tag": "us-gaap:PaymentsOfDividends",
+            "worksheet": "SEC",
+            "filing_type": "10-K",
+            "accession_number": "0001405495-22-000010"
+          }
+        },
+        {
+          "period": "FY2022",
+          "value": 42306000.0,
+          "currency": "USD",
+          "source": "sec_companyfacts",
+          "confidence": 0.9,
+          "audited": true,
+          "provenance": {
+            "concept": "dividends",
+            "cell_ref": "SEC!dividends!FY2022",
+            "source_document": null,
+            "xbrl_tag": "us-gaap:PaymentsOfDividends",
+            "worksheet": "SEC",
+            "filing_type": "10-K",
+            "accession_number": "0001405495-23-000011"
+          }
+        },
+        {
+          "period": "FY2023",
+          "value": 39454000.0,
+          "currency": "USD",
+          "source": "sec_companyfacts",
+          "confidence": 0.9,
+          "audited": true,
+          "provenance": {
+            "concept": "dividends",
+            "cell_ref": "SEC!dividends!FY2023",
+            "source_document": null,
+            "xbrl_tag": "us-gaap:PaymentsOfDividends",
+            "worksheet": "SEC",
+            "filing_type": "10-K",
+            "accession_number": "0001405495-24-000052"
+          }
+        },
+        {
+          "period": "FY2024",
+          "value": 41799000.0,
+          "currency": "USD",
+          "source": "sec_companyfacts",
+          "confidence": 0.9,
+          "audited": true,
+          "provenance": {
+            "concept": "dividends",
+            "cell_ref": "SEC!dividends!FY2024",
+            "source_document": null,
+            "xbrl_tag": "us-gaap:PaymentsOfDividends",
+            "worksheet": "SEC",
+            "filing_type": "10-K",
+            "accession_number": "0001405495-25-000011"
+          }
+        },
+        {
+          "period": "FY2025",
+          "value": 60682000.0,
+          "currency": "USD",
+          "source": "sec_companyfacts",
+          "confidence": 0.9,
+          "audited": true,
+          "provenance": {
+            "concept": "dividends",
+            "cell_ref": "SEC!dividends!FY2025",
+            "source_document": null,
+            "xbrl_tag": "us-gaap:PaymentsOfDividends",
+            "worksheet": "SEC",
+            "filing_type": "10-K",
+            "accession_number": "0001405495-26-000011"
+          }
+        },
+        {
+          "period": "FY2026",
+          "value": 36086000.0,
+          "currency": "USD",
+          "source": "sec_companyfacts",
+          "confidence": 0.9,
+          "audited": false,
+          "provenance": {
+            "concept": "dividends",
+            "cell_ref": "SEC!dividends!FY2026",
+            "source_document": null,
+            "xbrl_tag": "us-gaap:PaymentsOfDividends",
+            "worksheet": "SEC",
+            "filing_type": "10-Q",
+            "accession_number": "0001405495-26-000066"
+          }
+        }
+      ]
+    },
+    "share_repurchases": {
+      "name": "Share Repurchases",
+      "currency": "USD",
+      "points": [
+        {
+          "period": "FY2017",
+          "value": 7693000.0,
+          "currency": "USD",
+          "source": "sec_companyfacts",
+          "confidence": 0.9,
+          "audited": true,
+          "provenance": {
+            "concept": "share repurchase",
+            "cell_ref": "SEC!share repurchase!FY2017",
+            "source_document": null,
+            "xbrl_tag": "us-gaap:PaymentsForRepurchaseOfCommonStock",
+            "worksheet": "SEC",
+            "filing_type": "10-K",
+            "accession_number": "0001405495-18-000015"
+          }
+        },
+        {
+          "period": "FY2018",
+          "value": 110505000.0,
+          "currency": "USD",
+          "source": "sec_companyfacts",
+          "confidence": 0.9,
+          "audited": true,
+          "provenance": {
+            "concept": "share repurchase",
+            "cell_ref": "SEC!share repurchase!FY2018",
+            "source_document": null,
+            "xbrl_tag": "us-gaap:PaymentsForRepurchaseOfCommonStock",
+            "worksheet": "SEC",
+            "filing_type": "10-K",
+            "accession_number": "0001405495-19-000008"
+          }
+        },
+        {
+          "period": "FY2019",
+          "value": 196269000.0,
+          "currency": "USD",
+          "source": "sec_companyfacts",
+          "confidence": 0.9,
+          "audited": true,
+          "provenance": {
+            "concept": "share repurchase",
+            "cell_ref": "SEC!share repurchase!FY2019",
+            "source_document": null,
+            "xbrl_tag": "us-gaap:PaymentsForRepurchaseOfCommonStock",
+            "worksheet": "SEC",
+            "filing_type": "10-K",
+            "accession_number": "0001405495-20-000007"
+          }
+        },
+        {
+          "period": "FY2020",
+          "value": 349000.0,
+          "currency": "USD",
+          "source": "sec_companyfacts",
+          "confidence": 0.9,
+          "audited": true,
+          "provenance": {
+            "concept": "share repurchase",
+            "cell_ref": "SEC!share repurchase!FY2020",
+            "source_document": null,
+            "xbrl_tag": "us-gaap:PaymentsForRepurchaseOfCommonStock",
+            "worksheet": "SEC",
+            "filing_type": "10-K",
+            "accession_number": "0001405495-21-000013"
+          }
+        },
+        {
+          "period": "FY2021",
+          "value": 30000000.0,
+          "currency": "USD",
+          "source": "sec_companyfacts",
+          "confidence": 0.9,
+          "audited": true,
+          "provenance": {
+            "concept": "share repurchase",
+            "cell_ref": "SEC!share repurchase!FY2021",
+            "source_document": null,
+            "xbrl_tag": "us-gaap:PaymentsForRepurchaseOfCommonStock",
+            "worksheet": "SEC",
+            "filing_type": "10-K",
+            "accession_number": "0001405495-22-000010"
+          }
+        },
+        {
+          "period": "FY2022",
+          "value": 74445000.0,
+          "currency": "USD",
+          "source": "sec_companyfacts",
+          "confidence": 0.9,
+          "audited": true,
+          "provenance": {
+            "concept": "share repurchase",
+            "cell_ref": "SEC!share repurchase!FY2022",
+            "source_document": null,
+            "xbrl_tag": "us-gaap:PaymentsForRepurchaseOfCommonStock",
+            "worksheet": "SEC",
+            "filing_type": "10-K",
+            "accession_number": "0001405495-23-000011"
+          }
+        },
+        {
+          "period": "FY2023",
+          "value": 339704000.0,
+          "currency": "USD",
+          "source": "sec_companyfacts",
+          "confidence": 0.9,
+          "audited": true,
+          "provenance": {
+            "concept": "share repurchase",
+            "cell_ref": "SEC!share repurchase!FY2023",
+            "source_document": null,
+            "xbrl_tag": "us-gaap:PaymentsForRepurchaseOfCommonStock",
+            "worksheet": "SEC",
+            "filing_type": "10-K",
+            "accession_number": "0001405495-24-000052"
+          }
+        },
+        {
+          "period": "FY2024",
+          "value": 66726000.0,
+          "currency": "USD",
+          "source": "sec_companyfacts",
+          "confidence": 0.9,
+          "audited": true,
+          "provenance": {
+            "concept": "share repurchase",
+            "cell_ref": "SEC!share repurchase!FY2024",
+            "source_document": null,
+            "xbrl_tag": "us-gaap:PaymentsForRepurchaseOfCommonStock",
+            "worksheet": "SEC",
+            "filing_type": "10-K",
+            "accession_number": "0001405495-25-000011"
+          }
+        },
+        {
+          "period": "FY2025",
+          "value": 102319000.0,
+          "currency": "USD",
+          "source": "sec_companyfacts",
+          "confidence": 0.9,
+          "audited": true,
+          "provenance": {
+            "concept": "share repurchase",
+            "cell_ref": "SEC!share repurchase!FY2025",
+            "source_document": null,
+            "xbrl_tag": "us-gaap:PaymentsForRepurchaseOfCommonStock",
+            "worksheet": "SEC",
+            "filing_type": "10-K",
+            "accession_number": "0001405495-26-000011"
+          }
+        },
+        {
+          "period": "FY2026",
+          "value": 31146000.0,
+          "currency": "USD",
+          "source": "sec_companyfacts",
+          "confidence": 0.9,
+          "audited": false,
+          "provenance": {
+            "concept": "share repurchase",
+            "cell_ref": "SEC!share repurchase!FY2026",
+            "source_document": null,
+            "xbrl_tag": "us-gaap:PaymentsForRepurchaseOfCommonStock",
+            "worksheet": "SEC",
+            "filing_type": "10-Q",
+            "accession_number": "0001405495-26-000066"
+          }
+        }
+      ]
+    },
+    "financing_cash_flow": {
+      "name": "Financing Cash Flow",
+      "currency": "USD",
+      "points": []
+    },
+    "investing_cash_flow": {
+      "name": "Investing Cash Flow",
+      "currency": "USD",
+      "points": []
+    }
+  },
+  "market_data": {
+    "currency": "USD",
+    "as_of_date": null,
+    "share_price": 341.88,
+    "shares_outstanding": 34260000.0,
+    "market_cap": 8822.55767316,
+    "enterprise_value": 465586000.0,
+    "beta": null,
+    "dividend_yield": 0.00819000819000819
+  },
+  "valuation_inputs": {
+    "currency": "USD",
+    "risk_free_rate": null,
+    "equity_risk_premium": null,
+    "cost_of_equity": null,
+    "cost_of_debt": null,
+    "tax_rate": null,
+    "wacc": 0.127681,
+    "terminal_growth_rate": 0.03,
+    "forecast_years": null,
+    "net_debt": null,
+    "minority_interest": null,
+    "preferred_equity": null,
+    "extras": {}
+  },
+  "workbook_metrics": {
+    "metrics": [
+      {
+        "code": "PE10",
+        "name": "Current PE10",
+        "value": 51.95559556039492,
+        "period": null,
+        "unit": "USD",
+        "is_formula": false,
+        "cell_ref": null,
+        "formula": null,
+        "source": "custom_run_filter",
+        "confidence": 0.95,
+        "module_hint": null,
+        "provenance": null
+      },
+      {
+        "code": "E10",
+        "name": "Current E10",
+        "value": 6.580234454296405,
+        "period": null,
+        "unit": "ratio",
+        "is_formula": false,
+        "cell_ref": null,
+        "formula": null,
+        "source": "custom_run_filter",
+        "confidence": 0.95,
+        "module_hint": null,
+        "provenance": null
+      },
+      {
+        "code": "FINAL_SCORE",
+        "name": "Final Score",
+        "value": 2.0,
+        "period": null,
+        "unit": "ratio",
+        "is_formula": false,
+        "cell_ref": null,
+        "formula": null,
+        "source": "custom_run_filter",
+        "confidence": 0.95,
+        "module_hint": null,
+        "provenance": null
+      },
+      {
+        "code": "FRANCHISE_POWER",
+        "name": "Franchise Power",
+        "value": 1.0,
+        "period": null,
+        "unit": "ratio",
+        "is_formula": false,
+        "cell_ref": null,
+        "formula": null,
+        "source": "custom_run_filter",
+        "confidence": 0.95,
+        "module_hint": null,
+        "provenance": null
+      },
+      {
+        "code": "ROCE",
+        "name": "ROCE",
+        "value": 0.2545230765862018,
+        "period": null,
+        "unit": "ratio",
+        "is_formula": false,
+        "cell_ref": null,
+        "formula": null,
+        "source": "custom_run_filter",
+        "confidence": 0.95,
+        "module_hint": null,
+        "provenance": null
+      },
+      {
+        "code": "INTRINSIC_VALUE",
+        "name": "Current Graham Intrinsic Value",
+        "value": 178.9031310122755,
+        "period": null,
+        "unit": "USD",
+        "is_formula": false,
+        "cell_ref": null,
+        "formula": null,
+        "source": "custom_run_filter",
+        "confidence": 0.95,
+        "module_hint": null,
+        "provenance": null
+      },
+      {
+        "code": "EXPECTED_CAGR",
+        "name": "Expected Return @ Current Price",
+        "value": -0.6196197260830585,
+        "period": null,
+        "unit": "ratio",
+        "is_formula": false,
+        "cell_ref": null,
+        "formula": null,
+        "source": "custom_run_filter",
+        "confidence": 0.95,
+        "module_hint": null,
+        "provenance": null
+      }
+    ]
+  },
+  "inputs": {
+    "pe10": {
+      "name": "PE10",
+      "currency": "USD",
+      "points": [
+        {
+          "period": "FY2011",
+          "value": 24.84989191325871,
+          "currency": "USD",
+          "source": "bloomberg_custom_run",
+          "confidence": 0.95,
+          "audited": false,
+          "provenance": {
+            "concept": "PE10",
+            "cell_ref": null,
+            "source_document": "Custom_Run_Filter_2026-09-09-_14-38_-IDCC.xlsx",
+            "xbrl_tag": null,
+            "worksheet": null,
+            "filing_type": null,
+            "accession_number": null
+          }
+        },
+        {
+          "period": "FY2012",
+          "value": 20.99612710104408,
+          "currency": "USD",
+          "source": "bloomberg_custom_run",
+          "confidence": 0.95,
+          "audited": false,
+          "provenance": {
+            "concept": "PE10",
+            "cell_ref": null,
+            "source_document": "Custom_Run_Filter_2026-09-09-_14-38_-IDCC.xlsx",
+            "xbrl_tag": null,
+            "worksheet": null,
+            "filing_type": null,
+            "accession_number": null
+          }
+        },
+        {
+          "period": "FY2013",
+          "value": 14.8537057970829,
+          "currency": "USD",
+          "source": "bloomberg_custom_run",
+          "confidence": 0.95,
+          "audited": false,
+          "provenance": {
+            "concept": "PE10",
+            "cell_ref": null,
+            "source_document": "Custom_Run_Filter_2026-09-09-_14-38_-IDCC.xlsx",
+            "xbrl_tag": null,
+            "worksheet": null,
+            "filing_type": null,
+            "accession_number": null
+          }
+        },
+        {
+          "period": "FY2014",
+          "value": 21.3347122410134,
+          "currency": "USD",
+          "source": "bloomberg_custom_run",
+          "confidence": 0.95,
+          "audited": false,
+          "provenance": {
+            "concept": "PE10",
+            "cell_ref": null,
+            "source_document": "Custom_Run_Filter_2026-09-09-_14-38_-IDCC.xlsx",
+            "xbrl_tag": null,
+            "worksheet": null,
+            "filing_type": null,
+            "accession_number": null
+          }
+        },
+        {
+          "period": "FY2015",
+          "value": 20.06478907394849,
+          "currency": "USD",
+          "source": "bloomberg_custom_run",
+          "confidence": 0.95,
+          "audited": false,
+          "provenance": {
+            "concept": "PE10",
+            "cell_ref": null,
+            "source_document": "Custom_Run_Filter_2026-09-09-_14-38_-IDCC.xlsx",
+            "xbrl_tag": null,
+            "worksheet": null,
+            "filing_type": null,
+            "accession_number": null
+          }
+        },
+        {
+          "period": "FY2016",
+          "value": 27.12708737963396,
+          "currency": "USD",
+          "source": "bloomberg_custom_run",
+          "confidence": 0.95,
+          "audited": false,
+          "provenance": {
+            "concept": "PE10",
+            "cell_ref": null,
+            "source_document": "Custom_Run_Filter_2026-09-09-_14-38_-IDCC.xlsx",
+            "xbrl_tag": null,
+            "worksheet": null,
+            "filing_type": null,
+            "accession_number": null
+          }
+        },
+        {
+          "period": "FY2017",
+          "value": 20.56118442809563,
+          "currency": "USD",
+          "source": "bloomberg_custom_run",
+          "confidence": 0.95,
+          "audited": false,
+          "provenance": {
+            "concept": "PE10",
+            "cell_ref": null,
+            "source_document": "Custom_Run_Filter_2026-09-09-_14-38_-IDCC.xlsx",
+            "xbrl_tag": null,
+            "worksheet": null,
+            "filing_type": null,
+            "accession_number": null
+          }
+        },
+        {
+          "period": "FY2018",
+          "value": 17.4631903272007,
+          "currency": "USD",
+          "source": "bloomberg_custom_run",
+          "confidence": 0.95,
+          "audited": false,
+          "provenance": {
+            "concept": "PE10",
+            "cell_ref": null,
+            "source_document": "Custom_Run_Filter_2026-09-09-_14-38_-IDCC.xlsx",
+            "xbrl_tag": null,
+            "worksheet": null,
+            "filing_type": null,
+            "accession_number": null
+          }
+        },
+        {
+          "period": "FY2019",
+          "value": 12.77286303166557,
+          "currency": "USD",
+          "source": "bloomberg_custom_run",
+          "confidence": 0.95,
+          "audited": false,
+          "provenance": {
+            "concept": "PE10",
+            "cell_ref": null,
+            "source_document": "Custom_Run_Filter_2026-09-09-_14-38_-IDCC.xlsx",
+            "xbrl_tag": null,
+            "worksheet": null,
+            "filing_type": null,
+            "accession_number": null
+          }
+        },
+        {
+          "period": "FY2020",
+          "value": 18.94126449190984,
+          "currency": "USD",
+          "source": "bloomberg_custom_run",
+          "confidence": 0.95,
+          "audited": false,
+          "provenance": {
+            "concept": "PE10",
+            "cell_ref": null,
+            "source_document": "Custom_Run_Filter_2026-09-09-_14-38_-IDCC.xlsx",
+            "xbrl_tag": null,
+            "worksheet": null,
+            "filing_type": null,
+            "accession_number": null
+          }
+        },
+        {
+          "period": "FY2021",
+          "value": 16.62775410295144,
+          "currency": "USD",
+          "source": "bloomberg_custom_run",
+          "confidence": 0.95,
+          "audited": false,
+          "provenance": {
+            "concept": "PE10",
+            "cell_ref": null,
+            "source_document": "Custom_Run_Filter_2026-09-09-_14-38_-IDCC.xlsx",
+            "xbrl_tag": null,
+            "worksheet": null,
+            "filing_type": null,
+            "accession_number": null
+          }
+        },
+        {
+          "period": "FY2022",
+          "value": 20.80792838523555,
+          "currency": "USD",
+          "source": "bloomberg_custom_run",
+          "confidence": 0.95,
+          "audited": false,
+          "provenance": {
+            "concept": "PE10",
+            "cell_ref": null,
+            "source_document": "Custom_Run_Filter_2026-09-09-_14-38_-IDCC.xlsx",
+            "xbrl_tag": null,
+            "worksheet": null,
+            "filing_type": null,
+            "accession_number": null
+          }
+        },
+        {
+          "period": "FY2023",
+          "value": 24.24201359907431,
+          "currency": "USD",
+          "source": "bloomberg_custom_run",
+          "confidence": 0.95,
+          "audited": false,
+          "provenance": {
+            "concept": "PE10",
+            "cell_ref": null,
+            "source_document": "Custom_Run_Filter_2026-09-09-_14-38_-IDCC.xlsx",
+            "xbrl_tag": null,
+            "worksheet": null,
+            "filing_type": null,
+            "accession_number": null
+          }
+        },
+        {
+          "period": "FY2024",
+          "value": 39.71741011873278,
+          "currency": "USD",
+          "source": "bloomberg_custom_run",
+          "confidence": 0.95,
+          "audited": false,
+          "provenance": {
+            "concept": "PE10",
+            "cell_ref": null,
+            "source_document": "Custom_Run_Filter_2026-09-09-_14-38_-IDCC.xlsx",
+            "xbrl_tag": null,
+            "worksheet": null,
+            "filing_type": null,
+            "accession_number": null
+          }
+        },
+        {
+          "period": "FY2025",
+          "value": 57.35807024177758,
+          "currency": "USD",
+          "source": "bloomberg_custom_run",
+          "confidence": 0.95,
+          "audited": false,
+          "provenance": {
+            "concept": "PE10",
+            "cell_ref": null,
+            "source_document": "Custom_Run_Filter_2026-09-09-_14-38_-IDCC.xlsx",
+            "xbrl_tag": null,
+            "worksheet": null,
+            "filing_type": null,
+            "accession_number": null
+          }
+        },
+        {
+          "period": "FY2026",
+          "value": 51.13644867302084,
+          "currency": "USD",
+          "source": "bloomberg_custom_run",
+          "confidence": 0.95,
+          "audited": false,
+          "provenance": {
+            "concept": "PE10",
+            "cell_ref": null,
+            "source_document": "Custom_Run_Filter_2026-09-09-_14-38_-IDCC.xlsx",
+            "xbrl_tag": null,
+            "worksheet": null,
+            "filing_type": null,
+            "accession_number": null
+          }
+        }
+      ]
+    },
+    "e10": {
+      "name": "E10",
+      "currency": "USD",
+      "points": [
+        {
+          "period": "FY2011",
+          "value": 1.423655062247124,
+          "currency": "USD",
+          "source": "bloomberg_custom_run",
+          "confidence": 0.95,
+          "audited": false,
+          "provenance": {
+            "concept": "E10",
+            "cell_ref": null,
+            "source_document": "Custom_Run_Filter_2026-09-09-_14-38_-IDCC.xlsx",
+            "xbrl_tag": null,
+            "worksheet": null,
+            "filing_type": null,
+            "accession_number": null
+          }
+        },
+        {
+          "period": "FY2012",
+          "value": 2.139643278306706,
+          "currency": "USD",
+          "source": "bloomberg_custom_run",
+          "confidence": 0.95,
+          "audited": false,
+          "provenance": {
+            "concept": "E10",
+            "cell_ref": null,
+            "source_document": "Custom_Run_Filter_2026-09-09-_14-38_-IDCC.xlsx",
+            "xbrl_tag": null,
+            "worksheet": null,
+            "filing_type": null,
+            "accession_number": null
+          }
+        },
+        {
+          "period": "FY2013",
+          "value": 2.18982665071463,
+          "currency": "USD",
+          "source": "bloomberg_custom_run",
+          "confidence": 0.95,
+          "audited": false,
+          "provenance": {
+            "concept": "E10",
+            "cell_ref": null,
+            "source_document": "Custom_Run_Filter_2026-09-09-_14-38_-IDCC.xlsx",
+            "xbrl_tag": null,
+            "worksheet": null,
+            "filing_type": null,
+            "accession_number": null
+          }
+        },
+        {
+          "period": "FY2014",
+          "value": 2.462545908275058,
+          "currency": "USD",
+          "source": "bloomberg_custom_run",
+          "confidence": 0.95,
+          "audited": false,
+          "provenance": {
+            "concept": "E10",
+            "cell_ref": null,
+            "source_document": "Custom_Run_Filter_2026-09-09-_14-38_-IDCC.xlsx",
+            "xbrl_tag": null,
+            "worksheet": null,
+            "filing_type": null,
+            "accession_number": null
+          }
+        },
+        {
+          "period": "FY2015",
+          "value": 2.695695989089582,
+          "currency": "USD",
+          "source": "bloomberg_custom_run",
+          "confidence": 0.95,
+          "audited": false,
+          "provenance": {
+            "concept": "E10",
+            "cell_ref": null,
+            "source_document": "Custom_Run_Filter_2026-09-09-_14-38_-IDCC.xlsx",
+            "xbrl_tag": null,
+            "worksheet": null,
+            "filing_type": null,
+            "accession_number": null
+          }
+        },
+        {
+          "period": "FY2016",
+          "value": 3.156145894189276,
+          "currency": "USD",
+          "source": "bloomberg_custom_run",
+          "confidence": 0.95,
+          "audited": false,
+          "provenance": {
+            "concept": "E10",
+            "cell_ref": null,
+            "source_document": "Custom_Run_Filter_2026-09-09-_14-38_-IDCC.xlsx",
+            "xbrl_tag": null,
+            "worksheet": null,
+            "filing_type": null,
+            "accession_number": null
+          }
+        },
+        {
+          "period": "FY2017",
+          "value": 3.66621964048012,
+          "currency": "USD",
+          "source": "bloomberg_custom_run",
+          "confidence": 0.95,
+          "audited": false,
+          "provenance": {
+            "concept": "E10",
+            "cell_ref": null,
+            "source_document": "Custom_Run_Filter_2026-09-09-_14-38_-IDCC.xlsx",
+            "xbrl_tag": null,
+            "worksheet": null,
+            "filing_type": null,
+            "accession_number": null
+          }
+        },
+        {
+          "period": "FY2018",
+          "value": 3.850524888047222,
+          "currency": "USD",
+          "source": "bloomberg_custom_run",
+          "confidence": 0.95,
+          "audited": false,
+          "provenance": {
+            "concept": "E10",
+            "cell_ref": null,
+            "source_document": "Custom_Run_Filter_2026-09-09-_14-38_-IDCC.xlsx",
+            "xbrl_tag": null,
+            "worksheet": null,
+            "filing_type": null,
+            "accession_number": null
+          }
+        },
+        {
+          "period": "FY2019",
+          "value": 3.769710822125781,
+          "currency": "USD",
+          "source": "bloomberg_custom_run",
+          "confidence": 0.95,
+          "audited": false,
+          "provenance": {
+            "concept": "E10",
+            "cell_ref": null,
+            "source_document": "Custom_Run_Filter_2026-09-09-_14-38_-IDCC.xlsx",
+            "xbrl_tag": null,
+            "worksheet": null,
+            "filing_type": null,
+            "accession_number": null
+          }
+        },
+        {
+          "period": "FY2020",
+          "value": 3.555210646783768,
+          "currency": "USD",
+          "source": "bloomberg_custom_run",
+          "confidence": 0.95,
+          "audited": false,
+          "provenance": {
+            "concept": "E10",
+            "cell_ref": null,
+            "source_document": "Custom_Run_Filter_2026-09-09-_14-38_-IDCC.xlsx",
+            "xbrl_tag": null,
+            "worksheet": null,
+            "filing_type": null,
+            "accession_number": null
+          }
+        },
+        {
+          "period": "FY2021",
+          "value": 3.744081130373951,
+          "currency": "USD",
+          "source": "bloomberg_custom_run",
+          "confidence": 0.95,
+          "audited": false,
+          "provenance": {
+            "concept": "E10",
+            "cell_ref": null,
+            "source_document": "Custom_Run_Filter_2026-09-09-_14-38_-IDCC.xlsx",
+            "xbrl_tag": null,
+            "worksheet": null,
+            "filing_type": null,
+            "accession_number": null
+          }
+        },
+        {
+          "period": "FY2022",
+          "value": 3.474619303329133,
+          "currency": "USD",
+          "source": "bloomberg_custom_run",
+          "confidence": 0.95,
+          "audited": false,
+          "provenance": {
+            "concept": "E10",
+            "cell_ref": null,
+            "source_document": "Custom_Run_Filter_2026-09-09-_14-38_-IDCC.xlsx",
+            "xbrl_tag": null,
+            "worksheet": null,
+            "filing_type": null,
+            "accession_number": null
+          }
+        },
+        {
+          "period": "FY2023",
+          "value": 4.227114763635749,
+          "currency": "USD",
+          "source": "bloomberg_custom_run",
+          "confidence": 0.95,
+          "audited": false,
+          "provenance": {
+            "concept": "E10",
+            "cell_ref": null,
+            "source_document": "Custom_Run_Filter_2026-09-09-_14-38_-IDCC.xlsx",
+            "xbrl_tag": null,
+            "worksheet": null,
+            "filing_type": null,
+            "accession_number": null
+          }
+        },
+        {
+          "period": "FY2024",
+          "value": 5.214468209147195,
+          "currency": "USD",
+          "source": "bloomberg_custom_run",
+          "confidence": 0.95,
+          "audited": false,
+          "provenance": {
+            "concept": "E10",
+            "cell_ref": null,
+            "source_document": "Custom_Run_Filter_2026-09-09-_14-38_-IDCC.xlsx",
+            "xbrl_tag": null,
+            "worksheet": null,
+            "filing_type": null,
+            "accession_number": null
+          }
+        },
+        {
+          "period": "FY2025",
+          "value": 6.107919021666947,
+          "currency": "USD",
+          "source": "bloomberg_custom_run",
+          "confidence": 0.95,
+          "audited": false,
+          "provenance": {
+            "concept": "E10",
+            "cell_ref": null,
+            "source_document": "Custom_Run_Filter_2026-09-09-_14-38_-IDCC.xlsx",
+            "xbrl_tag": null,
+            "worksheet": null,
+            "filing_type": null,
+            "accession_number": null
+          }
+        },
+        {
+          "period": "FY2026",
+          "value": 6.580234454296405,
+          "currency": "USD",
+          "source": "bloomberg_custom_run",
+          "confidence": 0.95,
+          "audited": false,
+          "provenance": {
+            "concept": "E10",
+            "cell_ref": null,
+            "source_document": "Custom_Run_Filter_2026-09-09-_14-38_-IDCC.xlsx",
+            "xbrl_tag": null,
+            "worksheet": null,
+            "filing_type": null,
+            "accession_number": null
+          }
+        }
+      ]
+    },
+    "eps_10y_growth": {
+      "name": "EPS 10-Year Growth",
+      "currency": "USD",
+      "points": [
+        {
+          "period": "FY2011",
+          "value": 51.25089966229999,
+          "currency": "USD",
+          "source": "bloomberg_custom_run",
+          "confidence": 0.95,
+          "audited": false,
+          "provenance": {
+            "concept": "EPS 10-Year Growth",
+            "cell_ref": null,
+            "source_document": "Custom_Run_Filter_2026-09-09-_14-38_-IDCC.xlsx",
+            "xbrl_tag": null,
+            "worksheet": null,
+            "filing_type": null,
+            "accession_number": null
+          }
+        },
+        {
+          "period": "FY2012",
+          "value": 6.868978241784747,
+          "currency": "USD",
+          "source": "bloomberg_custom_run",
+          "confidence": 0.95,
+          "audited": false,
+          "provenance": {
+            "concept": "EPS 10-Year Growth",
+            "cell_ref": null,
+            "source_document": "Custom_Run_Filter_2026-09-09-_14-38_-IDCC.xlsx",
+            "xbrl_tag": null,
+            "worksheet": null,
+            "filing_type": null,
+            "accession_number": null
+          }
+        },
+        {
+          "period": "FY2013",
+          "value": 0.8922818043715819,
+          "currency": "USD",
+          "source": "bloomberg_custom_run",
+          "confidence": 0.95,
+          "audited": false,
+          "provenance": {
+            "concept": "EPS 10-Year Growth",
+            "cell_ref": null,
+            "source_document": "Custom_Run_Filter_2026-09-09-_14-38_-IDCC.xlsx",
+            "xbrl_tag": null,
+            "worksheet": null,
+            "filing_type": null,
+            "accession_number": null
+          }
+        },
+        {
+          "period": "FY2014",
+          "value": 0.8740972428488132,
+          "currency": "USD",
+          "source": "bloomberg_custom_run",
+          "confidence": 0.95,
+          "audited": false,
+          "provenance": {
+            "concept": "EPS 10-Year Growth",
+            "cell_ref": null,
+            "source_document": "Custom_Run_Filter_2026-09-09-_14-38_-IDCC.xlsx",
+            "xbrl_tag": null,
+            "worksheet": null,
+            "filing_type": null,
+            "accession_number": null
+          }
+        },
+        {
+          "period": "FY2015",
+          "value": 0.3746734225505588,
+          "currency": "USD",
+          "source": "bloomberg_custom_run",
+          "confidence": 0.95,
+          "audited": false,
+          "provenance": {
+            "concept": "EPS 10-Year Growth",
+            "cell_ref": null,
+            "source_document": "Custom_Run_Filter_2026-09-09-_14-38_-IDCC.xlsx",
+            "xbrl_tag": null,
+            "worksheet": null,
+            "filing_type": null,
+            "accession_number": null
+          }
+        },
+        {
+          "period": "FY2016",
+          "value": 3.98082234685677,
+          "currency": "USD",
+          "source": "bloomberg_custom_run",
+          "confidence": 0.95,
+          "audited": false,
+          "provenance": {
+            "concept": "EPS 10-Year Growth",
+            "cell_ref": null,
+            "source_document": "Custom_Run_Filter_2026-09-09-_14-38_-IDCC.xlsx",
+            "xbrl_tag": null,
+            "worksheet": null,
+            "filing_type": null,
+            "accession_number": null
+          }
+        },
+        {
+          "period": "FY2017",
+          "value": 1.822301880530886,
+          "currency": "USD",
+          "source": "bloomberg_custom_run",
+          "confidence": 0.95,
+          "audited": false,
+          "provenance": {
+            "concept": "EPS 10-Year Growth",
+            "cell_ref": null,
+            "source_document": "Custom_Run_Filter_2026-09-09-_14-38_-IDCC.xlsx",
+            "xbrl_tag": null,
+            "worksheet": null,
+            "filing_type": null,
+            "accession_number": null
+          }
+        },
+        {
+          "period": "FY2018",
+          "value": 1.096615720815339,
+          "currency": "USD",
+          "source": "bloomberg_custom_run",
+          "confidence": 0.95,
+          "audited": false,
+          "provenance": {
+            "concept": "EPS 10-Year Growth",
+            "cell_ref": null,
+            "source_document": "Custom_Run_Filter_2026-09-09-_14-38_-IDCC.xlsx",
+            "xbrl_tag": null,
+            "worksheet": null,
+            "filing_type": null,
+            "accession_number": null
+          }
+        },
+        {
+          "period": "FY2019",
+          "value": -0.3761517606328969,
+          "currency": "USD",
+          "source": "bloomberg_custom_run",
+          "confidence": 0.95,
+          "audited": false,
+          "provenance": {
+            "concept": "EPS 10-Year Growth",
+            "cell_ref": null,
+            "source_document": "Custom_Run_Filter_2026-09-09-_14-38_-IDCC.xlsx",
+            "xbrl_tag": null,
+            "worksheet": null,
+            "filing_type": null,
+            "accession_number": null
+          }
+        },
+        {
+          "period": "FY2020",
+          "value": -0.5772757722021644,
+          "currency": "USD",
+          "source": "bloomberg_custom_run",
+          "confidence": 0.95,
+          "audited": false,
+          "provenance": {
+            "concept": "EPS 10-Year Growth",
+            "cell_ref": null,
+            "source_document": "Custom_Run_Filter_2026-09-09-_14-38_-IDCC.xlsx",
+            "xbrl_tag": null,
+            "worksheet": null,
+            "filing_type": null,
+            "accession_number": null
+          }
+        },
+        {
+          "period": "FY2021",
+          "value": -0.6084162924277166,
+          "currency": "USD",
+          "source": "bloomberg_custom_run",
+          "confidence": 0.95,
+          "audited": false,
+          "provenance": {
+            "concept": "EPS 10-Year Growth",
+            "cell_ref": null,
+            "source_document": "Custom_Run_Filter_2026-09-09-_14-38_-IDCC.xlsx",
+            "xbrl_tag": null,
+            "worksheet": null,
+            "filing_type": null,
+            "accession_number": null
+          }
+        },
+        {
+          "period": "FY2022",
+          "value": -0.07200192719149068,
+          "currency": "USD",
+          "source": "bloomberg_custom_run",
+          "confidence": 0.95,
+          "audited": false,
+          "provenance": {
+            "concept": "EPS 10-Year Growth",
+            "cell_ref": null,
+            "source_document": "Custom_Run_Filter_2026-09-09-_14-38_-IDCC.xlsx",
+            "xbrl_tag": null,
+            "worksheet": null,
+            "filing_type": null,
+            "accession_number": null
+          }
+        },
+        {
+          "period": "FY2023",
+          "value": -0.1553164288573563,
+          "currency": "USD",
+          "source": "bloomberg_custom_run",
+          "confidence": 0.95,
+          "audited": false,
+          "provenance": {
+            "concept": "EPS 10-Year Growth",
+            "cell_ref": null,
+            "source_document": "Custom_Run_Filter_2026-09-09-_14-38_-IDCC.xlsx",
+            "xbrl_tag": null,
+            "worksheet": null,
+            "filing_type": null,
+            "accession_number": null
+          }
+        },
+        {
+          "period": "FY2024",
+          "value": 0.3373847691549479,
+          "currency": "USD",
+          "source": "bloomberg_custom_run",
+          "confidence": 0.95,
+          "audited": false,
+          "provenance": {
+            "concept": "EPS 10-Year Growth",
+            "cell_ref": null,
+            "source_document": "Custom_Run_Filter_2026-09-09-_14-38_-IDCC.xlsx",
+            "xbrl_tag": null,
+            "worksheet": null,
+            "filing_type": null,
+            "accession_number": null
+          }
+        },
+        {
+          "period": "FY2025",
+          "value": 1.037672939666034,
+          "currency": "USD",
+          "source": "bloomberg_custom_run",
+          "confidence": 0.95,
+          "audited": false,
+          "provenance": {
+            "concept": "EPS 10-Year Growth",
+            "cell_ref": null,
+            "source_document": "Custom_Run_Filter_2026-09-09-_14-38_-IDCC.xlsx",
+            "xbrl_tag": null,
+            "worksheet": null,
+            "filing_type": null,
+            "accession_number": null
+          }
+        },
+        {
+          "period": "FY2026",
+          "value": 1.387906555546963,
+          "currency": "USD",
+          "source": "bloomberg_custom_run",
+          "confidence": 0.95,
+          "audited": false,
+          "provenance": {
+            "concept": "EPS 10-Year Growth",
+            "cell_ref": null,
+            "source_document": "Custom_Run_Filter_2026-09-09-_14-38_-IDCC.xlsx",
+            "xbrl_tag": null,
+            "worksheet": null,
+            "filing_type": null,
+            "accession_number": null
+          }
+        }
+      ]
+    },
+    "eps_10y_direction": {
+      "name": "EPS 10-Year Direction",
+      "currency": "USD",
+      "points": []
+    },
+    "revenue_10y_growth": {
+      "name": "Revenue 10-Year Growth",
+      "currency": "USD",
+      "points": [
+        {
+          "period": "FY2011",
+          "value": 2.668922611135726,
+          "currency": "USD",
+          "source": "bloomberg_custom_run",
+          "confidence": 0.95,
+          "audited": false,
+          "provenance": {
+            "concept": "Revenue 10-Year Growth",
+            "cell_ref": null,
+            "source_document": "Custom_Run_Filter_2026-09-09-_14-38_-IDCC.xlsx",
+            "xbrl_tag": null,
+            "worksheet": null,
+            "filing_type": null,
+            "accession_number": null
+          }
+        },
+        {
+          "period": "FY2012",
+          "value": 2.564255448576762,
+          "currency": "USD",
+          "source": "bloomberg_custom_run",
+          "confidence": 0.95,
+          "audited": false,
+          "provenance": {
+            "concept": "Revenue 10-Year Growth",
+            "cell_ref": null,
+            "source_document": "Custom_Run_Filter_2026-09-09-_14-38_-IDCC.xlsx",
+            "xbrl_tag": null,
+            "worksheet": null,
+            "filing_type": null,
+            "accession_number": null
+          }
+        },
+        {
+          "period": "FY2013",
+          "value": 0.726491952103373,
+          "currency": "USD",
+          "source": "bloomberg_custom_run",
+          "confidence": 0.95,
+          "audited": false,
+          "provenance": {
+            "concept": "Revenue 10-Year Growth",
+            "cell_ref": null,
+            "source_document": "Custom_Run_Filter_2026-09-09-_14-38_-IDCC.xlsx",
+            "xbrl_tag": null,
+            "worksheet": null,
+            "filing_type": null,
+            "accession_number": null
+          }
+        },
+        {
+          "period": "FY2014",
+          "value": 0.5996903703821845,
+          "currency": "USD",
+          "source": "bloomberg_custom_run",
+          "confidence": 0.95,
+          "audited": false,
+          "provenance": {
+            "concept": "Revenue 10-Year Growth",
+            "cell_ref": null,
+            "source_document": "Custom_Run_Filter_2026-09-09-_14-38_-IDCC.xlsx",
+            "xbrl_tag": null,
+            "worksheet": null,
+            "filing_type": null,
+            "accession_number": null
+          }
+        },
+        {
+          "period": "FY2015",
+          "value": 0.2538786874434749,
+          "currency": "USD",
+          "source": "bloomberg_custom_run",
+          "confidence": 0.95,
+          "audited": false,
+          "provenance": {
+            "concept": "Revenue 10-Year Growth",
+            "cell_ref": null,
+            "source_document": "Custom_Run_Filter_2026-09-09-_14-38_-IDCC.xlsx",
+            "xbrl_tag": null,
+            "worksheet": null,
+            "filing_type": null,
+            "accession_number": null
+          }
+        },
+        {
+          "period": "FY2016",
+          "value": 1.003815262365067,
+          "currency": "USD",
+          "source": "bloomberg_custom_run",
+          "confidence": 0.95,
+          "audited": false,
+          "provenance": {
+            "concept": "Revenue 10-Year Growth",
+            "cell_ref": null,
+            "source_document": "Custom_Run_Filter_2026-09-09-_14-38_-IDCC.xlsx",
+            "xbrl_tag": null,
+            "worksheet": null,
+            "filing_type": null,
+            "accession_number": null
+          }
+        },
+        {
+          "period": "FY2017",
+          "value": 0.7820457661627642,
+          "currency": "USD",
+          "source": "bloomberg_custom_run",
+          "confidence": 0.95,
+          "audited": false,
+          "provenance": {
+            "concept": "Revenue 10-Year Growth",
+            "cell_ref": null,
+            "source_document": "Custom_Run_Filter_2026-09-09-_14-38_-IDCC.xlsx",
+            "xbrl_tag": null,
+            "worksheet": null,
+            "filing_type": null,
+            "accession_number": null
+          }
+        },
+        {
+          "period": "FY2018",
+          "value": 0.5157589230454938,
+          "currency": "USD",
+          "source": "bloomberg_custom_run",
+          "confidence": 0.95,
+          "audited": false,
+          "provenance": {
+            "concept": "Revenue 10-Year Growth",
+            "cell_ref": null,
+            "source_document": "Custom_Run_Filter_2026-09-09-_14-38_-IDCC.xlsx",
+            "xbrl_tag": null,
+            "worksheet": null,
+            "filing_type": null,
+            "accession_number": null
+          }
+        },
+        {
+          "period": "FY2019",
+          "value": -0.1471909368448154,
+          "currency": "USD",
+          "source": "bloomberg_custom_run",
+          "confidence": 0.95,
+          "audited": false,
+          "provenance": {
+            "concept": "Revenue 10-Year Growth",
+            "cell_ref": null,
+            "source_document": "Custom_Run_Filter_2026-09-09-_14-38_-IDCC.xlsx",
+            "xbrl_tag": null,
+            "worksheet": null,
+            "filing_type": null,
+            "accession_number": null
+          }
+        },
+        {
+          "period": "FY2020",
+          "value": -0.2362850981966662,
+          "currency": "USD",
+          "source": "bloomberg_custom_run",
+          "confidence": 0.95,
+          "audited": false,
+          "provenance": {
+            "concept": "Revenue 10-Year Growth",
+            "cell_ref": null,
+            "source_document": "Custom_Run_Filter_2026-09-09-_14-38_-IDCC.xlsx",
+            "xbrl_tag": null,
+            "worksheet": null,
+            "filing_type": null,
+            "accession_number": null
+          }
+        },
+        {
+          "period": "FY2021",
+          "value": -0.2142938020074846,
+          "currency": "USD",
+          "source": "bloomberg_custom_run",
+          "confidence": 0.95,
+          "audited": false,
+          "provenance": {
+            "concept": "Revenue 10-Year Growth",
+            "cell_ref": null,
+            "source_document": "Custom_Run_Filter_2026-09-09-_14-38_-IDCC.xlsx",
+            "xbrl_tag": null,
+            "worksheet": null,
+            "filing_type": null,
+            "accession_number": null
+          }
+        },
+        {
+          "period": "FY2022",
+          "value": 0.05037725654205905,
+          "currency": "USD",
+          "source": "bloomberg_custom_run",
+          "confidence": 0.95,
+          "audited": false,
+          "provenance": {
+            "concept": "Revenue 10-Year Growth",
+            "cell_ref": null,
+            "source_document": "Custom_Run_Filter_2026-09-09-_14-38_-IDCC.xlsx",
+            "xbrl_tag": null,
+            "worksheet": null,
+            "filing_type": null,
+            "accession_number": null
+          }
+        },
+        {
+          "period": "FY2023",
+          "value": -0.05929906572736032,
+          "currency": "USD",
+          "source": "bloomberg_custom_run",
+          "confidence": 0.95,
+          "audited": false,
+          "provenance": {
+            "concept": "Revenue 10-Year Growth",
+            "cell_ref": null,
+            "source_document": "Custom_Run_Filter_2026-09-09-_14-38_-IDCC.xlsx",
+            "xbrl_tag": null,
+            "worksheet": null,
+            "filing_type": null,
+            "accession_number": null
+          }
+        },
+        {
+          "period": "FY2024",
+          "value": 0.1436819415849149,
+          "currency": "USD",
+          "source": "bloomberg_custom_run",
+          "confidence": 0.95,
+          "audited": false,
+          "provenance": {
+            "concept": "Revenue 10-Year Growth",
+            "cell_ref": null,
+            "source_document": "Custom_Run_Filter_2026-09-09-_14-38_-IDCC.xlsx",
+            "xbrl_tag": null,
+            "worksheet": null,
+            "filing_type": null,
+            "accession_number": null
+          }
+        },
+        {
+          "period": "FY2025",
+          "value": 0.4952363437427794,
+          "currency": "USD",
+          "source": "bloomberg_custom_run",
+          "confidence": 0.95,
+          "audited": false,
+          "provenance": {
+            "concept": "Revenue 10-Year Growth",
+            "cell_ref": null,
+            "source_document": "Custom_Run_Filter_2026-09-09-_14-38_-IDCC.xlsx",
+            "xbrl_tag": null,
+            "worksheet": null,
+            "filing_type": null,
+            "accession_number": null
+          }
+        },
+        {
+          "period": "FY2026",
+          "value": 0.6456311440818072,
+          "currency": "USD",
+          "source": "bloomberg_custom_run",
+          "confidence": 0.95,
+          "audited": false,
+          "provenance": {
+            "concept": "Revenue 10-Year Growth",
+            "cell_ref": null,
+            "source_document": "Custom_Run_Filter_2026-09-09-_14-38_-IDCC.xlsx",
+            "xbrl_tag": null,
+            "worksheet": null,
+            "filing_type": null,
+            "accession_number": null
+          }
+        }
+      ]
+    },
+    "tax_federal": {
+      "name": "tax_federal",
+      "currency": "USD",
+      "points": [
+        {
+          "period": "FY2017",
+          "value": 3656000.0,
+          "currency": "USD",
+          "source": "sec_edgar_10k",
+          "confidence": 0.95,
+          "audited": true,
+          "provenance": {
+            "concept": "CurrentFederalTaxExpenseBenefit",
+            "cell_ref": null,
+            "source_document": "SEC 10-K FY2017",
+            "xbrl_tag": "CurrentFederalTaxExpenseBenefit",
+            "worksheet": null,
+            "filing_type": "10-K",
+            "accession_number": "0001405495-18-000015"
+          }
+        },
+        {
+          "period": "FY2018",
+          "value": -3148000.0,
+          "currency": "USD",
+          "source": "sec_edgar_10k",
+          "confidence": 0.95,
+          "audited": true,
+          "provenance": {
+            "concept": "CurrentFederalTaxExpenseBenefit",
+            "cell_ref": null,
+            "source_document": "SEC 10-K FY2018",
+            "xbrl_tag": "CurrentFederalTaxExpenseBenefit",
+            "worksheet": null,
+            "filing_type": "10-K",
+            "accession_number": "0001405495-19-000008"
+          }
+        },
+        {
+          "period": "FY2019",
+          "value": -11436000.0,
+          "currency": "USD",
+          "source": "sec_edgar_10k",
+          "confidence": 0.95,
+          "audited": true,
+          "provenance": {
+            "concept": "CurrentFederalTaxExpenseBenefit",
+            "cell_ref": null,
+            "source_document": "SEC 10-K FY2019",
+            "xbrl_tag": "CurrentFederalTaxExpenseBenefit",
+            "worksheet": null,
+            "filing_type": "10-K",
+            "accession_number": "0001405495-20-000007"
+          }
+        },
+        {
+          "period": "FY2020",
+          "value": -26092000.0,
+          "currency": "USD",
+          "source": "sec_edgar_10k",
+          "confidence": 0.95,
+          "audited": true,
+          "provenance": {
+            "concept": "CurrentFederalTaxExpenseBenefit",
+            "cell_ref": null,
+            "source_document": "SEC 10-K FY2020",
+            "xbrl_tag": "CurrentFederalTaxExpenseBenefit",
+            "worksheet": null,
+            "filing_type": "10-K",
+            "accession_number": "0001405495-21-000013"
+          }
+        },
+        {
+          "period": "FY2021",
+          "value": -291000.0,
+          "currency": "USD",
+          "source": "sec_edgar_10k",
+          "confidence": 0.95,
+          "audited": true,
+          "provenance": {
+            "concept": "CurrentFederalTaxExpenseBenefit",
+            "cell_ref": null,
+            "source_document": "SEC 10-K FY2021",
+            "xbrl_tag": "CurrentFederalTaxExpenseBenefit",
+            "worksheet": null,
+            "filing_type": "10-K",
+            "accession_number": "0001405495-22-000010"
+          }
+        },
+        {
+          "period": "FY2022",
+          "value": 657000.0,
+          "currency": "USD",
+          "source": "sec_edgar_10k",
+          "confidence": 0.95,
+          "audited": true,
+          "provenance": {
+            "concept": "CurrentFederalTaxExpenseBenefit",
+            "cell_ref": null,
+            "source_document": "SEC 10-K FY2022",
+            "xbrl_tag": "CurrentFederalTaxExpenseBenefit",
+            "worksheet": null,
+            "filing_type": "10-K",
+            "accession_number": "0001405495-23-000011"
+          }
+        },
+        {
+          "period": "FY2023",
+          "value": 45816000.0,
+          "currency": "USD",
+          "source": "sec_edgar_10k",
+          "confidence": 0.95,
+          "audited": true,
+          "provenance": {
+            "concept": "CurrentFederalTaxExpenseBenefit",
+            "cell_ref": null,
+            "source_document": "SEC 10-K FY2023",
+            "xbrl_tag": "CurrentFederalTaxExpenseBenefit",
+            "worksheet": null,
+            "filing_type": "10-K",
+            "accession_number": "0001405495-24-000052"
+          }
+        },
+        {
+          "period": "FY2024",
+          "value": 36977000.0,
+          "currency": "USD",
+          "source": "sec_edgar_10k",
+          "confidence": 0.95,
+          "audited": true,
+          "provenance": {
+            "concept": "CurrentFederalTaxExpenseBenefit",
+            "cell_ref": null,
+            "source_document": "SEC 10-K FY2024",
+            "xbrl_tag": "CurrentFederalTaxExpenseBenefit",
+            "worksheet": null,
+            "filing_type": "10-K",
+            "accession_number": "0001405495-25-000011"
+          }
+        },
+        {
+          "period": "FY2025",
+          "value": -17743000.0,
+          "currency": "USD",
+          "source": "sec_edgar_10k",
+          "confidence": 0.95,
+          "audited": true,
+          "provenance": {
+            "concept": "CurrentFederalTaxExpenseBenefit",
+            "cell_ref": null,
+            "source_document": "SEC 10-K FY2025",
+            "xbrl_tag": "CurrentFederalTaxExpenseBenefit",
+            "worksheet": null,
+            "filing_type": "10-K",
+            "accession_number": "0001405495-26-000011"
+          }
+        }
+      ]
+    },
+    "tax_state": {
+      "name": "tax_state",
+      "currency": "USD",
+      "points": [
+        {
+          "period": "FY2017",
+          "value": -1000.0,
+          "currency": "USD",
+          "source": "sec_edgar_10k",
+          "confidence": 0.95,
+          "audited": true,
+          "provenance": {
+            "concept": "CurrentStateAndLocalTaxExpenseBenefit",
+            "cell_ref": null,
+            "source_document": "SEC 10-K FY2017",
+            "xbrl_tag": "CurrentStateAndLocalTaxExpenseBenefit",
+            "worksheet": null,
+            "filing_type": "10-K",
+            "accession_number": "0001405495-18-000015"
+          }
+        },
+        {
+          "period": "FY2018",
+          "value": 239000.0,
+          "currency": "USD",
+          "source": "sec_edgar_10k",
+          "confidence": 0.95,
+          "audited": true,
+          "provenance": {
+            "concept": "CurrentStateAndLocalTaxExpenseBenefit",
+            "cell_ref": null,
+            "source_document": "SEC 10-K FY2018",
+            "xbrl_tag": "CurrentStateAndLocalTaxExpenseBenefit",
+            "worksheet": null,
+            "filing_type": "10-K",
+            "accession_number": "0001405495-19-000008"
+          }
+        },
+        {
+          "period": "FY2019",
+          "value": 207000.0,
+          "currency": "USD",
+          "source": "sec_edgar_10k",
+          "confidence": 0.95,
+          "audited": true,
+          "provenance": {
+            "concept": "CurrentStateAndLocalTaxExpenseBenefit",
+            "cell_ref": null,
+            "source_document": "SEC 10-K FY2019",
+            "xbrl_tag": "CurrentStateAndLocalTaxExpenseBenefit",
+            "worksheet": null,
+            "filing_type": "10-K",
+            "accession_number": "0001405495-20-000007"
+          }
+        },
+        {
+          "period": "FY2020",
+          "value": 89000.0,
+          "currency": "USD",
+          "source": "sec_edgar_10k",
+          "confidence": 0.95,
+          "audited": true,
+          "provenance": {
+            "concept": "CurrentStateAndLocalTaxExpenseBenefit",
+            "cell_ref": null,
+            "source_document": "SEC 10-K FY2020",
+            "xbrl_tag": "CurrentStateAndLocalTaxExpenseBenefit",
+            "worksheet": null,
+            "filing_type": "10-K",
+            "accession_number": "0001405495-21-000013"
+          }
+        },
+        {
+          "period": "FY2021",
+          "value": 797000.0,
+          "currency": "USD",
+          "source": "sec_edgar_10k",
+          "confidence": 0.95,
+          "audited": true,
+          "provenance": {
+            "concept": "CurrentStateAndLocalTaxExpenseBenefit",
+            "cell_ref": null,
+            "source_document": "SEC 10-K FY2021",
+            "xbrl_tag": "CurrentStateAndLocalTaxExpenseBenefit",
+            "worksheet": null,
+            "filing_type": "10-K",
+            "accession_number": "0001405495-22-000010"
+          }
+        },
+        {
+          "period": "FY2022",
+          "value": 931000.0,
+          "currency": "USD",
+          "source": "sec_edgar_10k",
+          "confidence": 0.95,
+          "audited": true,
+          "provenance": {
+            "concept": "CurrentStateAndLocalTaxExpenseBenefit",
+            "cell_ref": null,
+            "source_document": "SEC 10-K FY2022",
+            "xbrl_tag": "CurrentStateAndLocalTaxExpenseBenefit",
+            "worksheet": null,
+            "filing_type": "10-K",
+            "accession_number": "0001405495-23-000011"
+          }
+        },
+        {
+          "period": "FY2023",
+          "value": -229000.0,
+          "currency": "USD",
+          "source": "sec_edgar_10k",
+          "confidence": 0.95,
+          "audited": true,
+          "provenance": {
+            "concept": "CurrentStateAndLocalTaxExpenseBenefit",
+            "cell_ref": null,
+            "source_document": "SEC 10-K FY2023",
+            "xbrl_tag": "CurrentStateAndLocalTaxExpenseBenefit",
+            "worksheet": null,
+            "filing_type": "10-K",
+            "accession_number": "0001405495-24-000052"
+          }
+        },
+        {
+          "period": "FY2024",
+          "value": 687000.0,
+          "currency": "USD",
+          "source": "sec_edgar_10k",
+          "confidence": 0.95,
+          "audited": true,
+          "provenance": {
+            "concept": "CurrentStateAndLocalTaxExpenseBenefit",
+            "cell_ref": null,
+            "source_document": "SEC 10-K FY2024",
+            "xbrl_tag": "CurrentStateAndLocalTaxExpenseBenefit",
+            "worksheet": null,
+            "filing_type": "10-K",
+            "accession_number": "0001405495-25-000011"
+          }
+        },
+        {
+          "period": "FY2025",
+          "value": 161000.0,
+          "currency": "USD",
+          "source": "sec_edgar_10k",
+          "confidence": 0.95,
+          "audited": true,
+          "provenance": {
+            "concept": "CurrentStateAndLocalTaxExpenseBenefit",
+            "cell_ref": null,
+            "source_document": "SEC 10-K FY2025",
+            "xbrl_tag": "CurrentStateAndLocalTaxExpenseBenefit",
+            "worksheet": null,
+            "filing_type": "10-K",
+            "accession_number": "0001405495-26-000011"
+          }
+        }
+      ]
+    },
+    "tax_foreign": {
+      "name": "tax_foreign",
+      "currency": "USD",
+      "points": [
+        {
+          "period": "FY2017",
+          "value": 47592000.0,
+          "currency": "USD",
+          "source": "sec_edgar_10k",
+          "confidence": 0.95,
+          "audited": true,
+          "provenance": {
+            "concept": "CurrentForeignTaxExpenseBenefit",
+            "cell_ref": null,
+            "source_document": "SEC 10-K FY2017",
+            "xbrl_tag": "CurrentForeignTaxExpenseBenefit",
+            "worksheet": null,
+            "filing_type": "10-K",
+            "accession_number": "0001405495-18-000015"
+          }
+        },
+        {
+          "period": "FY2018",
+          "value": 25187000.0,
+          "currency": "USD",
+          "source": "sec_edgar_10k",
+          "confidence": 0.95,
+          "audited": true,
+          "provenance": {
+            "concept": "CurrentForeignTaxExpenseBenefit",
+            "cell_ref": null,
+            "source_document": "SEC 10-K FY2018",
+            "xbrl_tag": "CurrentForeignTaxExpenseBenefit",
+            "worksheet": null,
+            "filing_type": "10-K",
+            "accession_number": "0001405495-19-000008"
+          }
+        },
+        {
+          "period": "FY2019",
+          "value": 19850000.0,
+          "currency": "USD",
+          "source": "sec_edgar_10k",
+          "confidence": 0.95,
+          "audited": true,
+          "provenance": {
+            "concept": "CurrentForeignTaxExpenseBenefit",
+            "cell_ref": null,
+            "source_document": "SEC 10-K FY2019",
+            "xbrl_tag": "CurrentForeignTaxExpenseBenefit",
+            "worksheet": null,
+            "filing_type": "10-K",
+            "accession_number": "0001405495-20-000007"
+          }
+        },
+        {
+          "period": "FY2020",
+          "value": 26229000.0,
+          "currency": "USD",
+          "source": "sec_edgar_10k",
+          "confidence": 0.95,
+          "audited": true,
+          "provenance": {
+            "concept": "CurrentForeignTaxExpenseBenefit",
+            "cell_ref": null,
+            "source_document": "SEC 10-K FY2020",
+            "xbrl_tag": "CurrentForeignTaxExpenseBenefit",
+            "worksheet": null,
+            "filing_type": "10-K",
+            "accession_number": "0001405495-21-000013"
+          }
+        },
+        {
+          "period": "FY2021",
+          "value": 22415000.0,
+          "currency": "USD",
+          "source": "sec_edgar_10k",
+          "confidence": 0.95,
+          "audited": true,
+          "provenance": {
+            "concept": "CurrentForeignTaxExpenseBenefit",
+            "cell_ref": null,
+            "source_document": "SEC 10-K FY2021",
+            "xbrl_tag": "CurrentForeignTaxExpenseBenefit",
+            "worksheet": null,
+            "filing_type": "10-K",
+            "accession_number": "0001405495-22-000010"
+          }
+        },
+        {
+          "period": "FY2022",
+          "value": 5754000.0,
+          "currency": "USD",
+          "source": "sec_edgar_10k",
+          "confidence": 0.95,
+          "audited": true,
+          "provenance": {
+            "concept": "CurrentForeignTaxExpenseBenefit",
+            "cell_ref": null,
+            "source_document": "SEC 10-K FY2022",
+            "xbrl_tag": "CurrentForeignTaxExpenseBenefit",
+            "worksheet": null,
+            "filing_type": "10-K",
+            "accession_number": "0001405495-23-000011"
+          }
+        },
+        {
+          "period": "FY2023",
+          "value": 12444000.0,
+          "currency": "USD",
+          "source": "sec_edgar_10k",
+          "confidence": 0.95,
+          "audited": true,
+          "provenance": {
+            "concept": "CurrentForeignTaxExpenseBenefit",
+            "cell_ref": null,
+            "source_document": "SEC 10-K FY2023",
+            "xbrl_tag": "CurrentForeignTaxExpenseBenefit",
+            "worksheet": null,
+            "filing_type": "10-K",
+            "accession_number": "0001405495-24-000052"
+          }
+        },
+        {
+          "period": "FY2024",
+          "value": 32578000.0,
+          "currency": "USD",
+          "source": "sec_edgar_10k",
+          "confidence": 0.95,
+          "audited": true,
+          "provenance": {
+            "concept": "CurrentForeignTaxExpenseBenefit",
+            "cell_ref": null,
+            "source_document": "SEC 10-K FY2024",
+            "xbrl_tag": "CurrentForeignTaxExpenseBenefit",
+            "worksheet": null,
+            "filing_type": "10-K",
+            "accession_number": "0001405495-25-000011"
+          }
+        }
+      ]
+    },
+    "tax_expense": {
+      "name": "tax_expense",
+      "currency": "USD",
+      "points": [
+        {
+          "period": "FY2017",
+          "value": 121676000.0,
+          "currency": "USD",
+          "source": "sec_edgar_10k",
+          "confidence": 0.95,
+          "audited": true,
+          "provenance": {
+            "concept": "IncomeTaxExpenseBenefit",
+            "cell_ref": null,
+            "source_document": "SEC 10-K FY2017",
+            "xbrl_tag": "IncomeTaxExpenseBenefit",
+            "worksheet": null,
+            "filing_type": "10-K",
+            "accession_number": "0001405495-18-000015"
+          }
+        },
+        {
+          "period": "FY2018",
+          "value": -27417000.0,
+          "currency": "USD",
+          "source": "sec_edgar_10k",
+          "confidence": 0.95,
+          "audited": true,
+          "provenance": {
+            "concept": "IncomeTaxExpenseBenefit",
+            "cell_ref": null,
+            "source_document": "SEC 10-K FY2018",
+            "xbrl_tag": "IncomeTaxExpenseBenefit",
+            "worksheet": null,
+            "filing_type": "10-K",
+            "accession_number": "0001405495-19-000008"
+          }
+        },
+        {
+          "period": "FY2019",
+          "value": 10991000.0,
+          "currency": "USD",
+          "source": "sec_edgar_10k",
+          "confidence": 0.95,
+          "audited": true,
+          "provenance": {
+            "concept": "IncomeTaxExpenseBenefit",
+            "cell_ref": null,
+            "source_document": "SEC 10-K FY2019",
+            "xbrl_tag": "IncomeTaxExpenseBenefit",
+            "worksheet": null,
+            "filing_type": "10-K",
+            "accession_number": "0001405495-20-000007"
+          }
+        },
+        {
+          "period": "FY2020",
+          "value": -6648000.0,
+          "currency": "USD",
+          "source": "sec_edgar_10k",
+          "confidence": 0.95,
+          "audited": true,
+          "provenance": {
+            "concept": "IncomeTaxExpenseBenefit",
+            "cell_ref": null,
+            "source_document": "SEC 10-K FY2020",
+            "xbrl_tag": "IncomeTaxExpenseBenefit",
+            "worksheet": null,
+            "filing_type": "10-K",
+            "accession_number": "0001405495-21-000013"
+          }
+        },
+        {
+          "period": "FY2021",
+          "value": 15368000.0,
+          "currency": "USD",
+          "source": "sec_edgar_10k",
+          "confidence": 0.95,
+          "audited": true,
+          "provenance": {
+            "concept": "IncomeTaxExpenseBenefit",
+            "cell_ref": null,
+            "source_document": "SEC 10-K FY2021",
+            "xbrl_tag": "IncomeTaxExpenseBenefit",
+            "worksheet": null,
+            "filing_type": "10-K",
+            "accession_number": "0001405495-22-000010"
+          }
+        },
+        {
+          "period": "FY2022",
+          "value": 25502000.0,
+          "currency": "USD",
+          "source": "sec_edgar_10k",
+          "confidence": 0.95,
+          "audited": true,
+          "provenance": {
+            "concept": "IncomeTaxExpenseBenefit",
+            "cell_ref": null,
+            "source_document": "SEC 10-K FY2022",
+            "xbrl_tag": "IncomeTaxExpenseBenefit",
+            "worksheet": null,
+            "filing_type": "10-K",
+            "accession_number": "0001405495-23-000011"
+          }
+        },
+        {
+          "period": "FY2023",
+          "value": 23557000.0,
+          "currency": "USD",
+          "source": "sec_edgar_10k",
+          "confidence": 0.95,
+          "audited": true,
+          "provenance": {
+            "concept": "IncomeTaxExpenseBenefit",
+            "cell_ref": null,
+            "source_document": "SEC 10-K FY2023",
+            "xbrl_tag": "IncomeTaxExpenseBenefit",
+            "worksheet": null,
+            "filing_type": "10-K",
+            "accession_number": "0001405495-24-000052"
+          }
+        },
+        {
+          "period": "FY2024",
+          "value": 70802000.0,
+          "currency": "USD",
+          "source": "sec_edgar_10k",
+          "confidence": 0.95,
+          "audited": true,
+          "provenance": {
+            "concept": "IncomeTaxExpenseBenefit",
+            "cell_ref": null,
+            "source_document": "SEC 10-K FY2024",
+            "xbrl_tag": "IncomeTaxExpenseBenefit",
+            "worksheet": null,
+            "filing_type": "10-K",
+            "accession_number": "0001405495-25-000011"
+          }
+        },
+        {
+          "period": "FY2025",
+          "value": 62788000.0,
+          "currency": "USD",
+          "source": "sec_edgar_10k",
+          "confidence": 0.95,
+          "audited": true,
+          "provenance": {
+            "concept": "IncomeTaxExpenseBenefit",
+            "cell_ref": null,
+            "source_document": "SEC 10-K FY2025",
+            "xbrl_tag": "IncomeTaxExpenseBenefit",
+            "worksheet": null,
+            "filing_type": "10-K",
+            "accession_number": "0001405495-26-000011"
+          }
+        },
+        {
+          "period": "FY2026",
+          "value": 31471000.0,
+          "currency": "USD",
+          "source": "sec_edgar_10k",
+          "confidence": 0.95,
+          "audited": true,
+          "provenance": {
+            "concept": "IncomeTaxExpenseBenefit",
+            "cell_ref": null,
+            "source_document": "SEC 10-Q FY2026",
+            "xbrl_tag": "IncomeTaxExpenseBenefit",
+            "worksheet": null,
+            "filing_type": "10-Q",
+            "accession_number": "0001405495-26-000066"
+          }
+        }
+      ]
+    },
+    "tax_unit_flag": 0,
+    "current_price": 327.25,
+    "current_price_source": "market_internet:yahoo_chart",
+    "current_e10": 6.580234454296405,
+    "current_pe10": 51.95559556039492,
+    "current_max_pe10": 15.7060963353699,
+    "max_price_to_buy": 103.3497962484995,
+    "exit_price_1": 130.044408046724,
+    "expected_return_current": -0.6196197260830585,
+    "expected_return_div_current": 0.03098566675004255,
+    "expected_return_div_max_entry": 0.1620077768195991,
+    "pe10_percentile": 0.9155328798185941,
+    "current_eps_3y_10y_growth": 1.387906555546963,
+    "current_eps_growth_direction": "P",
+    "current_revenue_3y_10y_growth": 0.6456311440818072
+  },
+  "metadata": {
+    "ingestion": "hap_v1_sec_plus_custom_run",
+    "custom_run_source": "Custom_Run_Filter_2026-09-09-_14-38_-IDCC.xlsx",
+    "custom_run_proprietary": {
+      "valuation": {
+        "Graham Instrinsic Value in 7 Years": 333.8756768283331,
+        "Current Max PE10 to Enter (Lowest PE10 or 7PE10)": 15.7060963353699,
+        "Graham Expected Annualized Return": -0.003378722040398463,
+        "EBIT TTM/EV": 0.04254281679072359,
+        "WACC": 0.127681,
+        "Current Graham Instrinsic Value": 178.9031310122755,
+        "ROC Greenblatt": 9.830057540021647,
+        "1st Exit Price": 130.044408046724,
+        "Current PE10": 51.95559556039492,
+        "Expected Return @ Current Price": -0.6196197260830585,
+        "Approximate Residual Earnings Value": 81.0830685204196,
+        "Expected Return Price Plus Dividends - Given Current Price": 0.03098566675004255,
+        "Current E10": 6.580234454296405,
+        "ROC - WACC": 9.702376540021646,
+        "High Price in 10 years": 396.54,
+        "Max Current Price to Buy": 103.3497962484995,
+        "Low Price in 10 years": 33.65,
+        "2nd Exit Price": 139.9006962795867
+      },
+      "quality": {
+        "ROCE 10 Fiscal Years": 0.1547698193093139,
+        "P_MS": 1,
+        "P_SNOA": 1,
+        "Number of Consecutive Positive Growth Margins": 24,
+        "P_ROA10": 1,
+        "SNOA (Scaled Net Operating Assets)": 0.2241228926523157,
+        "ROCE 5 Fiscal Years": 0.1525995377827672,
+        "ROCE": 0.2545230765862018,
+        "P_FS": 0.5,
+        "P_MM": 1,
+        "ROA10": 0.09277288058128441,
+        "ROC10": 7.019009742507821,
+        "P_MG": 1,
+        "Franchise Power": 1,
+        "P_CFOA10": 1,
+        "P_ROC10": 1,
+        "Profit Margin Stability": 4.839067298452123,
+        "ROCE Fiscal Year": 0.2637468572729607,
+        "Profit Margin Growth": 0.007568908230792371,
+        "Quality_FPFS": 0.75,
+        "Final Score": 2,
+        "CFOA": 1.190465546154085
+      },
+      "market": {
+        "Current Dividend Yield": 0.00819000819000819,
+        "Current Price (Live Price)": 341.88,
+        "Current Market Capitalization": 8822.55767316,
+        "Current Dividend Rate": 2.8,
+        "Current Enterprise Value (not-diluted)": 8111.686673159999
+      }
+    },
+    "mapped_cell_count": 190,
+    "workbook_metric_count": 0,
+    "unmapped_cells": [
+      {
+        "concept": "earnings per share",
+        "period": "FY2017",
+        "cell_ref": "SEC!earnings per share!FY2017"
+      },
+      {
+        "concept": "earnings per share",
+        "period": "FY2018",
+        "cell_ref": "SEC!earnings per share!FY2018"
+      },
+      {
+        "concept": "earnings per share",
+        "period": "FY2019",
+        "cell_ref": "SEC!earnings per share!FY2019"
+      },
+      {
+        "concept": "earnings per share",
+        "period": "FY2020",
+        "cell_ref": "SEC!earnings per share!FY2020"
+      },
+      {
+        "concept": "earnings per share",
+        "period": "FY2021",
+        "cell_ref": "SEC!earnings per share!FY2021"
+      },
+      {
+        "concept": "earnings per share",
+        "period": "FY2022",
+        "cell_ref": "SEC!earnings per share!FY2022"
+      },
+      {
+        "concept": "earnings per share",
+        "period": "FY2023",
+        "cell_ref": "SEC!earnings per share!FY2023"
+      },
+      {
+        "concept": "earnings per share",
+        "period": "FY2024",
+        "cell_ref": "SEC!earnings per share!FY2024"
+      },
+      {
+        "concept": "earnings per share",
+        "period": "FY2025",
+        "cell_ref": "SEC!earnings per share!FY2025"
+      },
+      {
+        "concept": "earnings per share",
+        "period": "FY2026",
+        "cell_ref": "SEC!earnings per share!FY2026"
+      }
+    ],
+    "series_point_count": 178,
+    "custom_run_ticker": "IDCC",
+    "custom_run_series_count": 117,
+    "terminal_growth_defaulted": true
+  }
+}

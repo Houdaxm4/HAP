@@ -32,6 +32,12 @@ services:
         value: none
       - key: HAP_ENV
         value: production
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: HAP_SEC_USER_AGENT
+        sync: false
+      - key: HAP_MAX_UPLOAD_MB
+        value: "200"
       - key: PYTHONUNBUFFERED
         value: "1"
 

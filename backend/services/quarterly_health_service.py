@@ -144,6 +144,7 @@ def assess_statement_health(
     populated = sum(1 for r in rows if r["populated"] or r["formula"])
     missing = max(0, expected - populated)
     missing_ratio = (missing / expected) if expected else 1.0
+    missing_fact_labels = [str(r["label"]) for r in rows if not r["populated"] and not r["formula"]]
 
     majors = _MAJOR_TOTALS[kind]
     found: list[str] = []
@@ -186,8 +187,13 @@ def assess_statement_health(
         if has_ytd_axis and fq_populated >= 1 and ytd_populated == 0:
             missing_cumulative = True
 
-    # Primary anchors: first two needles are required for coherence
+    # Primary anchors: first two needles are required for coherence.
+    # A labeled taxonomy with blank values is incomplete supplied data.
+    # Those rows stay in place. HAP does not fill them.
     primary = majors[:2]
+    taxonomy_intact = expected >= MIN_EXPECTED_ROWS and all(
+        any(needle in _norm(r["label"]) for r in rows) for needle in primary
+    )
     primary_ok = all(
         any(needle in _norm(r["label"]) and (r["populated"] or r["formula"]) for r in rows)
         for needle in primary
@@ -200,12 +206,14 @@ def assess_statement_health(
     if not expected or expected < MIN_EXPECTED_ROWS:
         structural = True
         notes.append(f"too_few_labeled_rows:{expected}")
-    if missing_ratio >= STRUCTURAL_MISSING_RATIO:
+    if missing_ratio >= STRUCTURAL_MISSING_RATIO and not taxonomy_intact:
         structural = True
         notes.append(f"high_missing_ratio:{missing_ratio:.2%}")
-    if not primary_ok and expected >= MIN_EXPECTED_ROWS:
+    if not primary_ok and expected >= MIN_EXPECTED_ROWS and not taxonomy_intact:
         structural = True
         notes.append(f"primary_totals_missing:{primary}")
+    if taxonomy_intact:
+        notes.append("taxonomy_intact")
     if expected == 0:
         structural = True
         notes.append("empty_statement_body")
@@ -218,9 +226,11 @@ def assess_statement_health(
     if isolated:
         notes.append("isolated_gaps_only")
 
-    if missing_cumulative:
+    if missing_cumulative and not taxonomy_intact:
         structural = True
-        notes.append("sec_required_for_missing_ytd")
+        notes.append("statement_incomplete_missing_ytd")
+    elif missing_cumulative:
+        notes.append("ytd_column_incomplete")
 
     if structural:
         reason = (
@@ -231,8 +241,8 @@ def assess_statement_health(
         )
     elif isolated:
         reason = (
-            f"{sheet}: Bloomberg usable with isolated gaps "
-            f"(missing={missing}/{expected}, majors present)"
+            f"{sheet}: supplied statement incomplete "
+            f"(isolated gaps missing={missing}/{expected}, majors present)"
         )
     elif missing == 0 and major_totals_present:
         reason = f"{sheet}: Bloomberg substantially complete (populated={populated}/{expected})"
@@ -254,29 +264,26 @@ def assess_statement_health(
         major_totals_missing=missing_majors,
         structural_failure=structural,
         isolated_gaps=isolated,
+        missing_fact_labels=missing_fact_labels[:80],
         coherence_notes=notes + ([f"labels_sample:{labels_joined[:120]}"] if rows else []),
         reason=reason,
     )
 
 
 def decide_presentation(health: BloombergHealthAssessment) -> PresentationDecision:
+    """Classify supplied-statement completeness.
+
+    A complete statement is preserved. Missing statement data, including an
+    absent sheet, is STATEMENT_INCOMPLETE. This never requests a HAP fill,
+    Yahoo template, or SEC layout rebuild.
+    """
     if not health.present:
-        return PresentationDecision.BLOCKED
-    if health.structural_failure:
-        if health.statement in (
-            QuarterlyStatementKind.INCOME,
-            QuarterlyStatementKind.CASH_FLOW,
-        ):
-            return PresentationDecision.YAHOO_BASIC_TEMPLATE_REQUIRED
-        # BS structural gaps: fill from Yahoo/SEC without layout rewrite
-        return PresentationDecision.BLOOMBERG_FILL_GAPS
-    if health.isolated_gaps:
-        return PresentationDecision.BLOOMBERG_FILL_GAPS
+        return PresentationDecision.STATEMENT_INCOMPLETE
+    if health.structural_failure or health.isolated_gaps:
+        return PresentationDecision.STATEMENT_INCOMPLETE
     if health.major_totals_present and health.missing_ratio <= ISOLATED_GAP_RATIO:
         return PresentationDecision.BLOOMBERG_PRESERVE
-    if health.missing_ratio < STRUCTURAL_MISSING_RATIO and health.major_totals_present:
-        return PresentationDecision.BLOOMBERG_FILL_GAPS
-    return PresentationDecision.SEC_10Q_PRESENTATION_REQUIRED
+    return PresentationDecision.STATEMENT_INCOMPLETE
 
 
 def assess_all_quarterly_statements(workbook: Workbook) -> list[tuple[BloombergHealthAssessment, PresentationDecision]]:

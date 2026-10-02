@@ -1,0 +1,95 @@
+{
+  "analysis_id": "17feded2-1785-4807-8560-1716c7cfa34c",
+  "ticker": "LNN",
+  "status": "autonomous_selected",
+  "proposed_rate": 0.04,
+  "selected_rate": 0.04,
+  "approved_rate": null,
+  "analyst_action": null,
+  "analyst_reason": null,
+  "decision_class": "AUTONOMOUS_AGENT_DECISION",
+  "classification": "disclosed",
+  "supporting_evidence": [
+    "FY2025 reported operating-lease WtdAvg discount rate 0.0400."
+  ],
+  "prior_or_comparable_rates": [],
+  "calculated_lease_asset": 18.096,
+  "calculated_lease_liability": 21.467,
+  "sensitivity": [
+    {
+      "rate": 0.03,
+      "role": "lower"
+    },
+    {
+      "rate": 0.04,
+      "role": "proposed"
+    },
+    {
+      "rate": 0.05,
+      "role": "upper"
+    }
+  ],
+  "proposal": {
+    "proposed_rate": 0.04,
+    "methodology": "reported_weighted_average_discount_rate",
+    "methodology_rank": 1,
+    "classification": "disclosed",
+    "source_fiscal_year": "FY2025",
+    "source_form": "10-K",
+    "source_accession": "0001193125-25-248751",
+    "limitations": "Company-disclosed ASC 842 weighted-average discount rate for the latest fiscal year.",
+    "market_date": null,
+    "estimated_lease_duration": null,
+    "benchmark_rate": null,
+    "credit_spread": null,
+    "company_evidence": [
+      "FY2025 reported operating-lease WtdAvg discount rate 0.0400."
+    ],
+    "confidence": 0.9,
+    "sensitivity": [
+      {
+        "rate": 0.03,
+        "role": "lower"
+      },
+      {
+        "rate": 0.04,
+        "role": "proposed"
+      },
+      {
+        "rate": 0.05,
+        "role": "upper"
+      }
+    ],
+    "hierarchy_attempts": [
+      {
+        "rank": 1,
+        "method": "reported_weighted_average_discount_rate",
+        "rate": 0.04
+      }
+    ]
+  },
+  "audit_trail": [
+    {
+      "event": "AUTONOMOUS_AGENT_DECISION",
+      "rate": 0.04,
+      "methodology": "reported_weighted_average_discount_rate",
+      "classification": "disclosed",
+      "timestamp": "2026-09-22T19:15:42.278433+00:00"
+    }
+  ],
+  "notes_written": [
+    "Leases!L1",
+    "Leases!M2",
+    "Leases!M3",
+    "Leases!M4",
+    "Leases!M5",
+    "Leases!M6",
+    "Leases!M7",
+    "Leases!M8",
+    "Leases!M9",
+    "Leases!M10",
+    "Leases!M11"
+  ],
+  "blocking": false,
+  "summary": "AUTONOMOUS_AGENT_DECISION: selected_rate=0.04 (disclosed via reported_weighted_average_discount_rate). Optional analyst override is available; routine approval is not required."
+}

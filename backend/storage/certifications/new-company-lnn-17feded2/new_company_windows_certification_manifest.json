@@ -1,0 +1,163 @@
+{
+  "payload": {
+    "git_branch": "cursor/new-company-analysis-pipeline-9b4a",
+    "git_commit": "f1b8b1a189bc9b0c7390b384fff625f0daac9d9a",
+    "generated_at": "2026-09-22T19:14:09.131927+00:00",
+    "excel_version": "16.0",
+    "ticker": "LNN",
+    "workbook": "C:\\Users\\Soulaymane Kachani\\Downloads\\HAP2\\backend\\storage\\uploads\\e49429d4-2828-41ac-8eec-f78ded145015\\prefilled_workbook.xlsx",
+    "crf": "C:\\Users\\Soulaymane Kachani\\Downloads\\HAP2\\backend\\storage\\uploads\\e49429d4-2828-41ac-8eec-f78ded145015\\Custom_Run_Filter_2026-08-27-_20-57_-LNN.xlsx",
+    "analysis_id": "17feded2-1785-4807-8560-1716c7cfa34c",
+    "lease_approval_path": "not_required",
+    "status": "complete",
+    "pipeline_state": "complete",
+    "certification_status": "COMPLETE",
+    "workflow_state": "COMPLETE",
+    "selected_lease_rate": 0.04,
+    "lease_classification": "disclosed",
+    "lease_decision_class": "AUTONOMOUS_AGENT_DECISION",
+    "lease_rate_approved": false,
+    "proposed_lease_rate": 0.04,
+    "approved_lease_rate": null,
+    "lease_action": null,
+    "com_invoked": true,
+    "recalc_status": "ok",
+    "recalc_method": "excel_com_calculate_full_rebuild",
+    "gates": {
+      "A_template_period": "pass",
+      "A_sec_coverage": "pass",
+      "B_statements": "pass",
+      "C_pe10": "pass",
+      "D_tax": "pass",
+      "E_rd": "pass",
+      "F_leases": "pass",
+      "F_lease_rate": "pass",
+      "G_buybacks": "pass",
+      "H_current": "pass",
+      "I_projection": "pass",
+      "J_recalc": "pass",
+      "K_valuation": "pass",
+      "L_valuation_judgment": "pass",
+      "report_authorization": "authorized"
+    },
+    "blockers": [],
+    "warnings": [
+      "PE10_PERIOD_NOTE: fiscal year-end dates not supplied; nearest-date matching assumes calendar 31 Dec unless a dated CRF series is used.",
+      "PE10_PERIOD_NOTE: current PE10 and fiscal-year PE10 differ because they represent different as-of dates \u2014 informational, not a mismatch.",
+      "RD_USEFUL_LIFE_AGENT_SELECTED",
+      "LEASE_RATE_AUTONOMOUS_AGENT_DECISION"
+    ],
+    "report_authorized": true,
+    "valuation_judgment": {
+      "status": "ok",
+      "er_decision": "KEEP_EXISTING",
+      "oe_decision": "KEEP_EXISTING",
+      "graham_decision": "KEEP_EXISTING",
+      "normalized_base_decision": "KEEP_REPORTED_BASE",
+      "original_assumptions_preserved": true,
+      "hap_introduced_circular_count": 0,
+      "period_context": "Q3 initiation: distinguish reported nine-month YTD, standalone Q3, and projected full-year. Partial-year amounts must not feed annual valuation formulas without annualization."
+    },
+    "circular_status": "ok",
+    "artifact_dir": "C:\\Users\\Soulaymane Kachani\\Downloads\\HAP2\\backend\\storage\\outputs\\17feded2-1785-4807-8560-1716c7cfa34c",
+    "artifact_paths": [
+      "C:\\Users\\Soulaymane Kachani\\Downloads\\HAP2\\backend\\storage\\outputs\\17feded2-1785-4807-8560-1716c7cfa34c\\2025 LNN FA.xlsx",
+      "C:\\Users\\Soulaymane Kachani\\Downloads\\HAP2\\backend\\storage\\outputs\\17feded2-1785-4807-8560-1716c7cfa34c\\2025 LNN New Company.docx",
+      "C:\\Users\\Soulaymane Kachani\\Downloads\\HAP2\\backend\\storage\\outputs\\17feded2-1785-4807-8560-1716c7cfa34c\\analysis_engine_result.json",
+      "C:\\Users\\Soulaymane Kachani\\Downloads\\HAP2\\backend\\storage\\outputs\\17feded2-1785-4807-8560-1716c7cfa34c\\analyst_review_report.json",
+      "C:\\Users\\Soulaymane Kachani\\Downloads\\HAP2\\backend\\storage\\outputs\\17feded2-1785-4807-8560-1716c7cfa34c\\cell_diff_report.json",
+      "C:\\Users\\Soulaymane Kachani\\Downloads\\HAP2\\backend\\storage\\outputs\\17feded2-1785-4807-8560-1716c7cfa34c\\company_facts.json",
+      "C:\\Users\\Soulaymane Kachani\\Downloads\\HAP2\\backend\\storage\\outputs\\17feded2-1785-4807-8560-1716c7cfa34c\\company_financial_model.json",
+      "C:\\Users\\Soulaymane Kachani\\Downloads\\HAP2\\backend\\storage\\outputs\\17feded2-1785-4807-8560-1716c7cfa34c\\completed_workbook.xlsx",
+      "C:\\Users\\Soulaymane Kachani\\Downloads\\HAP2\\backend\\storage\\outputs\\17feded2-1785-4807-8560-1716c7cfa34c\\completed_workbook_pre_judgment.xlsx",
+      "C:\\Users\\Soulaymane Kachani\\Downloads\\HAP2\\backend\\storage\\outputs\\17feded2-1785-4807-8560-1716c7cfa34c\\completion_fill_intents.json",
+      "C:\\Users\\Soulaymane Kachani\\Downloads\\HAP2\\backend\\storage\\outputs\\17feded2-1785-4807-8560-1716c7cfa34c\\completion_report.json",
+      "C:\\Users\\Soulaymane Kachani\\Downloads\\HAP2\\backend\\storage\\outputs\\17feded2-1785-4807-8560-1716c7cfa34c\\custom_run_data.json",
+      "C:\\Users\\Soulaymane Kachani\\Downloads\\HAP2\\backend\\storage\\outputs\\17feded2-1785-4807-8560-1716c7cfa34c\\custom_run_mapping.json",
+      "C:\\Users\\Soulaymane Kachani\\Downloads\\HAP2\\backend\\storage\\outputs\\17feded2-1785-4807-8560-1716c7cfa34c\\discrepancy_report.json",
+      "C:\\Users\\Soulaymane Kachani\\Downloads\\HAP2\\backend\\storage\\outputs\\17feded2-1785-4807-8560-1716c7cfa34c\\expected_return_analyst_review.json",
+      "C:\\Users\\Soulaymane Kachani\\Downloads\\HAP2\\backend\\storage\\outputs\\17feded2-1785-4807-8560-1716c7cfa34c\\expected_return_validation_report.json",
+      "C:\\Users\\Soulaymane Kachani\\Downloads\\HAP2\\backend\\storage\\outputs\\17feded2-1785-4807-8560-1716c7cfa34c\\final_recommendation_report.json",
+      "C:\\Users\\Soulaymane Kachani\\Downloads\\HAP2\\backend\\storage\\outputs\\17feded2-1785-4807-8560-1716c7cfa34c\\hap_workbook.xlsx",
+      "C:\\Users\\Soulaymane Kachani\\Downloads\\HAP2\\backend\\storage\\outputs\\17feded2-1785-4807-8560-1716c7cfa34c\\lease_rate_review.json",
+      "C:\\Users\\Soulaymane Kachani\\Downloads\\HAP2\\backend\\storage\\outputs\\17feded2-1785-4807-8560-1716c7cfa34c\\new_company_analyst_judgment_report.json",
+      "C:\\Users\\Soulaymane Kachani\\Downloads\\HAP2\\backend\\storage\\outputs\\17feded2-1785-4807-8560-1716c7cfa34c\\new_company_analytical_research_report.json",
+      "C:\\Users\\Soulaymane Kachani\\Downloads\\HAP2\\backend\\storage\\outputs\\17feded2-1785-4807-8560-1716c7cfa34c\\new_company_assumption_notes.json",
+      "C:\\Users\\Soulaymane Kachani\\Downloads\\HAP2\\backend\\storage\\outputs\\17feded2-1785-4807-8560-1716c7cfa34c\\new_company_buyback_report.json",
+      "C:\\Users\\Soulaymane Kachani\\Downloads\\HAP2\\backend\\storage\\outputs\\17feded2-1785-4807-8560-1716c7cfa34c\\new_company_certification_status.json",
+      "C:\\Users\\Soulaymane Kachani\\Downloads\\HAP2\\backend\\storage\\outputs\\17feded2-1785-4807-8560-1716c7cfa34c\\new_company_circular_reference_report.json",
+      "C:\\Users\\Soulaymane Kachani\\Downloads\\HAP2\\backend\\storage\\outputs\\17feded2-1785-4807-8560-1716c7cfa34c\\new_company_current_data_report.json",
+      "C:\\Users\\Soulaymane Kachani\\Downloads\\HAP2\\backend\\storage\\outputs\\17feded2-1785-4807-8560-1716c7cfa34c\\new_company_deliverables_report.json",
+      "C:\\Users\\Soulaymane Kachani\\Downloads\\HAP2\\backend\\storage\\outputs\\17feded2-1785-4807-8560-1716c7cfa34c\\new_company_discrepancy_report.json",
+      "C:\\Users\\Soulaymane Kachani\\Downloads\\HAP2\\backend\\storage\\outputs\\17feded2-1785-4807-8560-1716c7cfa34c\\new_company_excel_recalc_report.json",
+      "C:\\Users\\Soulaymane Kachani\\Downloads\\HAP2\\backend\\storage\\outputs\\17feded2-1785-4807-8560-1716c7cfa34c\\new_company_expected_return_report.json",
+      "C:\\Users\\Soulaymane Kachani\\Downloads\\HAP2\\backend\\storage\\outputs\\17feded2-1785-4807-8560-1716c7cfa34c\\new_company_lease_report.json",
+      "C:\\Users\\Soulaymane Kachani\\Downloads\\HAP2\\backend\\storage\\outputs\\17feded2-1785-4807-8560-1716c7cfa34c\\new_company_normalized_base_report.json",
+      "C:\\Users\\Soulaymane Kachani\\Downloads\\HAP2\\backend\\storage\\outputs\\17feded2-1785-4807-8560-1716c7cfa34c\\new_company_output_gate_report.json",
+      "C:\\Users\\Soulaymane Kachani\\Downloads\\HAP2\\backend\\storage\\outputs\\17feded2-1785-4807-8560-1716c7cfa34c\\new_company_pe10_report.json",
+      "C:\\Users\\Soulaymane Kachani\\Downloads\\HAP2\\backend\\storage\\outputs\\17feded2-1785-4807-8560-1716c7cfa34c\\new_company_period_report.json",
+      "C:\\Users\\Soulaymane Kachani\\Downloads\\HAP2\\backend\\storage\\outputs\\17feded2-1785-4807-8560-1716c7cfa34c\\new_company_projection_report.json",
+      "C:\\Users\\Soulaymane Kachani\\Downloads\\HAP2\\backend\\storage\\outputs\\17feded2-1785-4807-8560-1716c7cfa34c\\new_company_rd_report.json",
+      "C:\\Users\\Soulaymane Kachani\\Downloads\\HAP2\\backend\\storage\\outputs\\17feded2-1785-4807-8560-1716c7cfa34c\\new_company_run_state.json",
+      "C:\\Users\\Soulaymane Kachani\\Downloads\\HAP2\\backend\\storage\\outputs\\17feded2-1785-4807-8560-1716c7cfa34c\\new_company_statement_validation_report.json",
+      "C:\\Users\\Soulaymane Kachani\\Downloads\\HAP2\\backend\\storage\\outputs\\17feded2-1785-4807-8560-1716c7cfa34c\\new_company_tax_report.json",
+      "C:\\Users\\Soulaymane Kachani\\Downloads\\HAP2\\backend\\storage\\outputs\\17feded2-1785-4807-8560-1716c7cfa34c\\new_company_timing_report.json",
+      "C:\\Users\\Soulaymane Kachani\\Downloads\\HAP2\\backend\\storage\\outputs\\17feded2-1785-4807-8560-1716c7cfa34c\\new_company_valuation_extract_report.json",
+      "C:\\Users\\Soulaymane Kachani\\Downloads\\HAP2\\backend\\storage\\outputs\\17feded2-1785-4807-8560-1716c7cfa34c\\new_company_valuation_report.json",
+      "C:\\Users\\Soulaymane Kachani\\Downloads\\HAP2\\backend\\storage\\outputs\\17feded2-1785-4807-8560-1716c7cfa34c\\parse_workbook_timings.json",
+      "C:\\Users\\Soulaymane Kachani\\Downloads\\HAP2\\backend\\storage\\outputs\\17feded2-1785-4807-8560-1716c7cfa34c\\prefill_validation_report.json",
+      "C:\\Users\\Soulaymane Kachani\\Downloads\\HAP2\\backend\\storage\\outputs\\17feded2-1785-4807-8560-1716c7cfa34c\\provenance_report.json",
+      "C:\\Users\\Soulaymane Kachani\\Downloads\\HAP2\\backend\\storage\\outputs\\17feded2-1785-4807-8560-1716c7cfa34c\\rd_useful_life_decision.json",
+      "C:\\Users\\Soulaymane Kachani\\Downloads\\HAP2\\backend\\storage\\outputs\\17feded2-1785-4807-8560-1716c7cfa34c\\roic_analyst_review.json",
+      "C:\\Users\\Soulaymane Kachani\\Downloads\\HAP2\\backend\\storage\\outputs\\17feded2-1785-4807-8560-1716c7cfa34c\\roic_validation_report.json",
+      "C:\\Users\\Soulaymane Kachani\\Downloads\\HAP2\\backend\\storage\\outputs\\17feded2-1785-4807-8560-1716c7cfa34c\\seasonality_projection_report.json",
+      "C:\\Users\\Soulaymane Kachani\\Downloads\\HAP2\\backend\\storage\\outputs\\17feded2-1785-4807-8560-1716c7cfa34c\\sec_filings_manifest.json",
+      "C:\\Users\\Soulaymane Kachani\\Downloads\\HAP2\\backend\\storage\\outputs\\17feded2-1785-4807-8560-1716c7cfa34c\\statement_validation_report.json",
+      "C:\\Users\\Soulaymane Kachani\\Downloads\\HAP2\\backend\\storage\\outputs\\17feded2-1785-4807-8560-1716c7cfa34c\\ten_year_source_coverage.json",
+      "C:\\Users\\Soulaymane Kachani\\Downloads\\HAP2\\backend\\storage\\outputs\\17feded2-1785-4807-8560-1716c7cfa34c\\validation_report.json",
+      "C:\\Users\\Soulaymane Kachani\\Downloads\\HAP2\\backend\\storage\\outputs\\17feded2-1785-4807-8560-1716c7cfa34c\\valuation_analyst_review.json",
+      "C:\\Users\\Soulaymane Kachani\\Downloads\\HAP2\\backend\\storage\\outputs\\17feded2-1785-4807-8560-1716c7cfa34c\\valuation_validation_report.json",
+      "C:\\Users\\Soulaymane Kachani\\Downloads\\HAP2\\backend\\storage\\outputs\\17feded2-1785-4807-8560-1716c7cfa34c\\workbook_structure.json",
+      "C:\\Users\\Soulaymane Kachani\\Downloads\\HAP2\\backend\\storage\\outputs\\17feded2-1785-4807-8560-1716c7cfa34c\\write_intents.json"
+    ],
+    "recommendation": "READY_FOR_PRODUCTION"
+  },
+  "gates": {
+    "Mode A + NewCompanyRunner first pass": {
+      "result": "PASS",
+      "evidence": "C:\\Users\\Soulaymane Kachani\\Downloads\\HAP2\\backend\\storage\\outputs\\17feded2-1785-4807-8560-1716c7cfa34c\\new_company_run_state.json"
+    },
+    "Ten-year validation": {
+      "result": "PASS",
+      "evidence": "C:\\Users\\Soulaymane Kachani\\Downloads\\HAP2\\backend\\storage\\outputs\\17feded2-1785-4807-8560-1716c7cfa34c\\ten_year_source_coverage.json"
+    },
+    "Lease-rate proposal": {
+      "result": "PASS",
+      "evidence": "C:\\Users\\Soulaymane Kachani\\Downloads\\HAP2\\backend\\storage\\outputs\\17feded2-1785-4807-8560-1716c7cfa34c\\lease_rate_review.json"
+    },
+    "Autonomous lease-rate decision": {
+      "result": "PASS",
+      "evidence": "not_required"
+    },
+    "Genuine Excel COM CalculateFullRebuild": {
+      "result": "PASS",
+      "evidence": "C:\\Users\\Soulaymane Kachani\\Downloads\\HAP2\\backend\\storage\\outputs\\17feded2-1785-4807-8560-1716c7cfa34c\\new_company_excel_recalc_report.json"
+    },
+    "Valuation judgment (ER/EV/OE/Graham)": {
+      "result": "PASS",
+      "evidence": "C:\\Users\\Soulaymane Kachani\\Downloads\\HAP2\\backend\\storage\\outputs\\17feded2-1785-4807-8560-1716c7cfa34c\\new_company_valuation_report.json"
+    },
+    "No HAP-introduced circular references": {
+      "result": "PASS",
+      "evidence": "C:\\Users\\Soulaymane Kachani\\Downloads\\HAP2\\backend\\storage\\outputs\\17feded2-1785-4807-8560-1716c7cfa34c\\new_company_circular_reference_report.json"
+    },
+    "Gates A\u2013L + report authorization": {
+      "result": "PASS",
+      "evidence": "C:\\Users\\Soulaymane Kachani\\Downloads\\HAP2\\backend\\storage\\outputs\\17feded2-1785-4807-8560-1716c7cfa34c\\new_company_output_gate_report.json"
+    },
+    "Authorized Word analysis": {
+      "result": "PASS",
+      "evidence": "C:\\Users\\Soulaymane Kachani\\Downloads\\HAP2\\backend\\storage\\outputs\\17feded2-1785-4807-8560-1716c7cfa34c\\2025 LNN New Company.docx"
+    }
+  }
+}

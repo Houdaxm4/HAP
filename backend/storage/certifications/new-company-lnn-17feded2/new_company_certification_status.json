@@ -1,0 +1,18 @@
+{
+  "analysis_id": "17feded2-1785-4807-8560-1716c7cfa34c",
+  "ticker": "LNN",
+  "workflow_state": "COMPLETE",
+  "certification_status": "COMPLETE",
+  "lease_rate_approved": false,
+  "lease_rate_selected": true,
+  "lease_decision_class": "AUTONOMOUS_AGENT_DECISION",
+  "com_invoked": true,
+  "recalc_status": "ok",
+  "recalc_method": "excel_com_calculate_full_rebuild",
+  "valuation_judgment_status": "ok",
+  "er_decision": "KEEP_EXISTING",
+  "oe_decision": "KEEP_EXISTING",
+  "graham_decision": "KEEP_EXISTING",
+  "original_assumptions_preserved": true,
+  "hap_introduced_circular_count": 0
+}

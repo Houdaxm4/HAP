@@ -134,9 +134,10 @@ def test_blank_required_cell_fill(workbook_with_revenue: Path, tmp_path: Path):
         intent_report=intents,
         target_fiscal_year="FY2025",
     )
-    assert completion.fill_count == 1
-    assert completion.entries[0].decision == CompletionDecision.FILL
-    assert fill.write_count == 1
+    assert completion.fill_count == 0
+    assert completion.entries[0].decision == CompletionDecision.BLOCKED
+    assert "STATEMENT_INCOMPLETE" in (completion.entries[0].reason or "")
+    assert fill.write_count == 0
 
     dest = tmp_path / "out.xlsx"
     _, cell_diff, written, _, _ = ExcelFillService().apply_write_intents(
@@ -146,8 +147,8 @@ def test_blank_required_cell_fill(workbook_with_revenue: Path, tmp_path: Path):
         destination_workbook_path=dest,
         intent_report=fill,
     )
-    assert written == 1
-    assert cell_diff.changed_count == 1
+    assert written == 0
+    assert cell_diff.changed_count == 0
 
 
 def test_populated_incorrect_cell_discrepancy_not_overwritten(

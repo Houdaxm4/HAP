@@ -1,7 +1,8 @@
-"""Accounting-concept-aware matching for quarterly SEC gap fills.
+"""Accounting-concept matching for SEC validation and research extraction.
 
 Hierarchy: canonical XBRL → aliases → statement context → period type →
 parent/subtotal → SEC label → semantic fallback. Ambiguous → REVIEW_REQUIRED.
+Matching does not write workbook cells.
 """
 
 from __future__ import annotations
@@ -35,6 +36,18 @@ CONCEPT_ALIASES: dict[str, tuple[str, ...]] = {
         "operating profit",
     ),
     "net_income": ("net income", "net earnings", "net income, gaap", "profit for the period"),
+    # GAAP per-share lines only. "diluted eps" alone also matches adjusted and
+    # continuing-operations rows, so those labels are not aliases.
+    "basic_eps": (
+        "basic eps, gaap",
+        "earnings per share, basic",
+        "basic earnings per share",
+    ),
+    "diluted_eps": (
+        "diluted eps, gaap",
+        "earnings per share, diluted",
+        "diluted earnings per share",
+    ),
     "cash": (
         "cash and cash equivalents",
         "cash & cash equivalents",
@@ -103,6 +116,8 @@ CONCEPT_XBRL: dict[str, tuple[str, ...]] = {
     "gross_profit": ("GrossProfit",),
     "operating_income": ("OperatingIncomeLoss",),
     "net_income": ("NetIncomeLoss",),
+    "basic_eps": ("EarningsPerShareBasic",),
+    "diluted_eps": ("EarningsPerShareDiluted",),
     "cash": ("CashAndCashEquivalentsAtCarryingValue",),
     "short_term_investments": (
         "MarketableSecuritiesCurrent",
@@ -136,7 +151,7 @@ CONCEPT_XBRL: dict[str, tuple[str, ...]] = {
 
 STATEMENT_CONCEPTS: dict[QuarterlyStatementKind, frozenset[str]] = {
     QuarterlyStatementKind.INCOME: frozenset(
-        {"revenue", "gross_profit", "operating_income", "net_income"}
+        {"revenue", "gross_profit", "operating_income", "net_income", "basic_eps", "diluted_eps"}
     ),
     QuarterlyStatementKind.BALANCE_SHEET: frozenset(
         {
@@ -189,13 +204,27 @@ def interpret_workbook_label(
 ) -> list[str]:
     """Return ranked concept ids that could match a workbook label."""
     n = _norm(label)
+    # Bloomberg component rows ("+ Other Operating Income") are not the
+    # parent total. Matching them would write the total into the detail line.
+    if n.startswith("+") or n.startswith("-"):
+        return []
+    # Adjusted EPS is not GAAP diluted or basic EPS.
+    gaap_eps_only = "adjusted" not in n and "non-gaap" not in n and "non gaap" not in n
     allowed = STATEMENT_CONCEPTS[kind]
     hits: list[tuple[int, str]] = []
     for concept, aliases in CONCEPT_ALIASES.items():
         if concept not in allowed:
             continue
+        if concept in {"basic_eps", "diluted_eps"} and not gaap_eps_only:
+            continue
         for alias in aliases:
-            if alias in n or n in alias:
+            # EPS aliases must occur in the label. The reverse test would
+            # treat a short label such as "eps" as both basic and diluted.
+            if concept in {"basic_eps", "diluted_eps"}:
+                matched = alias in n
+            else:
+                matched = alias in n or n in alias
+            if matched:
                 # Prefer longer alias matches
                 hits.append((len(alias), concept))
                 break
@@ -227,7 +256,10 @@ def match_sec_item_to_concept(
             if kind == QuarterlyStatementKind.INCOME and item.duration_kind != "standalone_quarter":
                 if item.duration_kind != "ytd":  # ytd IS used in separate path
                     continue
-            if kind == QuarterlyStatementKind.CASH_FLOW and item.duration_kind != "ytd":
+            if kind == QuarterlyStatementKind.CASH_FLOW and item.duration_kind not in {
+                "ytd",
+                "standalone_quarter",
+            }:
                 continue
         if item.xbrl_concept and item.xbrl_concept in xbrl_prefs:
             by_xbrl.append(item)
@@ -313,7 +345,7 @@ def resolve_workbook_gap(
     kind: QuarterlyStatementKind,
     sec_items: list[SecLineItem],
 ) -> ConceptMatchResult:
-    """Full hierarchy entry point for one blank workbook row."""
+    """Match one workbook label to an SEC fact. Does not write the workbook."""
     concepts = interpret_workbook_label(workbook_label, kind)
     if not concepts:
         return ConceptMatchResult(

@@ -22,6 +22,15 @@ _CROSS_REF_RE = re.compile(
 )
 # Prefer annual "YYYY A" / FY tokens over Bloomberg side columns like "2026 Y".
 _ANNUAL_MARKER_RE = re.compile(r"(20\d{2})\s*A\b|^FY\s*20\d{2}\b", re.IGNORECASE)
+_MIN_FY_YEAR = 1990
+
+
+def _max_fy_year() -> int:
+    return datetime.now().year + 2
+
+
+def _valid_fy_year(year: int) -> bool:
+    return _MIN_FY_YEAR <= int(year) <= _max_fy_year()
 
 
 class AnnualPeriodAlignmentError(Exception):
@@ -43,15 +52,37 @@ def _fy_token(value: object) -> str | None:
     if value is None:
         return None
     if isinstance(value, datetime):
+        if not _valid_fy_year(value.year):
+            return None
         return f"FY{value.year}"
-    text = str(value).strip().upper()
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, (int, float)):
+        year = int(value)
+        if _valid_fy_year(year):
+            return f"FY{year}"
+        return None
+    if not isinstance(value, str):
+        # ArrayFormula and other openpyxl objects stringify to formula text that
+        # can contain row numbers such as 2065; those are not fiscal years.
+        return None
+    text = value.strip().upper()
+    if text.startswith("="):
+        compact_formula = text.replace(" ", "")
+        if compact_formula.startswith('="FY') or compact_formula.startswith("=FY"):
+            m_fy = _YEAR_RE.search(text)
+            if m_fy and _valid_fy_year(int(m_fy.group(1))):
+                return f"FY{m_fy.group(1)}"
+        return None
     # FY 2025 / FY2025
     compact = text.replace(" ", "")
     if compact.startswith("FY") and len(compact) >= 6 and compact[2:6].isdigit():
-        return f"FY{compact[2:6]}"
+        year = int(compact[2:6])
+        return f"FY{year}" if _valid_fy_year(year) else None
     m = _YEAR_RE.search(text)
     if m:
-        return f"FY{m.group(1)}"
+        year = int(m.group(1))
+        return f"FY{year}" if _valid_fy_year(year) else None
     return None
 
 

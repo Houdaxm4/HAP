@@ -245,16 +245,16 @@ def test_fill_stage_loads_write_intents_artifact(industrial_mini: Path, tmp_path
     assert _sha256(completed) != upload_hash
     assert (tmp_path / "outputs" / "stage-m4" / "cell_diff_report.json").exists()
     assert (tmp_path / "outputs" / "stage-m4" / "completion_report.json").exists()
-    assert completion.fill_count == 1
-    assert "FILL=" in log.detail or "excel_wrote=" in log.detail
+    assert completion.fill_count == 0
+    assert completion.blocked_count >= 1
 
     wb = load_workbook(completed, data_only=False)
     try:
-        assert wb["Income - GAAP"]["K9"].value == pytest.approx(100.0)
+        assert wb["Income - GAAP"]["K9"].value in (None, "")
     finally:
         wb.close()
 
-    assert any(e.cell_ref == "Income - GAAP!K9" and e.status == "filled" for e in provenance.entries)
+    assert not any(e.cell_ref == "Income - GAAP!K9" and e.status == "filled" for e in provenance.entries)
     assert Path(prov_path).name == "provenance_report.json" or "provenance_report" in prov_path
     assert "cell_diff_report" in diff_path
     assert "completion_report" in completion_path

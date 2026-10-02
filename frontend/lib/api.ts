@@ -200,6 +200,37 @@ export async function listAnalysisOutputs(
   return payload.artifacts;
 }
 
+export async function reviewLeaseRate(
+  analysisId: string,
+  payload: { action: "approve" | "correct" | "request_more_evidence"; rate?: number; reason?: string },
+): Promise<Record<string, unknown>> {
+  return requestJson(`/analysis/${analysisId}/analyst-review/lease-rate`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function overrideRdUsefulLife(
+  analysisId: string,
+  payload: { useful_life: number; reason?: string },
+): Promise<Record<string, unknown>> {
+  return requestJson(`/analysis/${analysisId}/analyst-review/rd-useful-life`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function getAnalystReview(analysisId: string): Promise<{
+  analysis_id: string;
+  lease_rate_review: Record<string, unknown> | null;
+  rd_useful_life_decision: Record<string, unknown> | null;
+  run_state: Record<string, unknown> | null;
+}> {
+  return requestJson(`/analysis/${analysisId}/analyst-review`);
+}
+
 export function getOutputDownloadUrl(
   analysisId: string,
   artifactName: string,
@@ -214,8 +245,204 @@ export function isAnalysisTerminal(detail: {
 }): boolean {
   return (
     detail.is_complete ||
-    detail.pipeline_state === "complete" ||
-    detail.pipeline_state === "failed" ||
-    detail.status === "failed"
+    detail.status === "failed" ||
+    detail.status === "awaiting_analyst_review" ||
+    detail.status === "needs_review" ||
+    (detail.pipeline_state === "complete" && detail.status === "complete") ||
+    detail.pipeline_state === "failed"
   );
 }
+
+export type ChatTurn = { role: "user" | "assistant"; content: string };
+
+export type ChatReplyDto = {
+  reply: string;
+  tool_calls: { name: string; input: Record<string, unknown>; ok: boolean }[];
+  iterations: number;
+  stop_reason: string | null;
+  model: string | null;
+  input_tokens: number;
+  output_tokens: number;
+  budget?: BudgetStatus | null;
+  source: "built_in" | "cache" | "claude" | "none";
+  intent?: string | null;
+  needs_claude: boolean;
+  estimated_cost_usd?: number | null;
+};
+
+export type ChatMode = "auto" | "free" | "claude";
+
+/** Ask the read-only HAP Analyst agent about one analysis. */
+export async function chatWithAnalyst(
+  analysisId: string,
+  messages: ChatTurn[],
+  mode: ChatMode = "auto",
+): Promise<ChatReplyDto> {
+  return requestJson<ChatReplyDto>(`/analysis/${analysisId}/chat`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ messages, mode }),
+  });
+}
+
+export type BudgetStatus = {
+  month: string;
+  spent_usd: number;
+  cap_usd: number;
+  remaining_usd: number;
+  percent_used: number;
+  level: "ok" | "warning" | "exceeded";
+};
+
+export async function getBudget(): Promise<BudgetStatus> {
+  return requestJson<BudgetStatus>("/budget");
+}
+
+export type FeedbackPayload = {
+  target: string;
+  action:
+    | "approve"
+    | "correct"
+    | "reject"
+    | "request_more_evidence"
+    | "thumbs_up"
+    | "thumbs_down"
+    | "comment";
+  agent_value?: unknown;
+  analyst_value?: unknown;
+  reason?: string;
+  context?: Record<string, unknown>;
+};
+
+/** Tell HAP what you decided about something the agent proposed or said. */
+export async function submitFeedback(
+  analysisId: string,
+  payload: FeedbackPayload,
+): Promise<Record<string, unknown>> {
+  return requestJson<Record<string, unknown>>(`/analysis/${analysisId}/feedback`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+}
+
+export type Lesson = {
+  id: string;
+  created_at: string;
+  status: "proposed" | "approved" | "rejected" | "retired";
+  kind: string;
+  target: string;
+  analysis_type: string;
+  title: string;
+  text: string;
+  evidence: string[];
+  support_count: number;
+  decided_at: string | null;
+  decision_note: string | null;
+};
+
+export async function listLessons(status?: Lesson["status"]): Promise<Lesson[]> {
+  const query = status ? `?status=${status}` : "";
+  return (await requestJson<{ items: Lesson[] }>(`/lessons${query}`)).items;
+}
+
+/** Look for repeated corrections in your feedback and propose lessons (free). */
+export async function proposeLessons(): Promise<{ created: Lesson[]; count: number }> {
+  return requestJson("/lessons/propose", { method: "POST" });
+}
+
+async function lessonAction(
+  id: string,
+  action: "approve" | "reject" | "retire",
+  body: { text?: string; note?: string } = {},
+): Promise<Lesson> {
+  return requestJson<Lesson>(`/lessons/${id}/${action}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
+
+export const approveLesson = (id: string, body?: { text?: string; note?: string }) =>
+  lessonAction(id, "approve", body);
+export const rejectLesson = (id: string, body?: { note?: string }) => lessonAction(id, "reject", body);
+export const retireLesson = (id: string, body?: { note?: string }) => lessonAction(id, "retire", body);
+
+export type RecommendationConflict = {
+  available: boolean;
+  conflict: boolean;
+  headline: string | null;
+  headline_source: string;
+  final_recommendation: string | null;
+  engine_recommendation: string | null;
+  message: string | null;
+};
+
+export async function getRecommendationConflict(analysisId: string): Promise<RecommendationConflict> {
+  return requestJson<RecommendationConflict>(`/analysis/${encodeURIComponent(analysisId)}/recommendation-conflict`);
+}
+
+export type AgentCheckpoint = {
+  id: string;
+  kind: string;
+  status: "open" | "answered";
+  title: string;
+  summary: string;
+  options: string[];
+  created_at: string;
+  answer: { decision: string; note: string; at: string } | null;
+};
+
+export type AgentRunState = {
+  analysis_id: string;
+  phase: "not_started" | "pipeline" | "waiting_for_you" | "revising" | "done" | "stopped";
+  checkpoints: AgentCheckpoint[];
+  history: { at: string; event: string }[];
+};
+
+export type AgentDossier = {
+  company: string;
+  ticker: string;
+  headline: RecommendationConflict;
+  flags: string[];
+  outside_evidence: {
+    items: { kind: string; source: string; url: string; as_of: string | null; reliability_note: string; title: string; content: string }[];
+    errors: string[];
+  };
+  my_take: { text: string | null; label?: string; error?: string } | null;
+  note: string;
+};
+
+const jsonPost = (body?: unknown): RequestInit => ({
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: body === undefined ? undefined : JSON.stringify(body),
+});
+
+export const getAgentRun = (id: string) => requestJson<AgentRunState>(`/analysis/${encodeURIComponent(id)}/agent`);
+export const startAgentRun = (id: string, withTake: boolean) =>
+  requestJson<AgentRunState>(`/analysis/${encodeURIComponent(id)}/agent/run?with_take=${withTake}`, jsonPost());
+export const continueAgentRun = (id: string, withTake: boolean) =>
+  requestJson<Record<string, unknown>>(`/analysis/${encodeURIComponent(id)}/agent/continue?with_take=${withTake}`, jsonPost());
+export const getAgentDossier = (id: string) => requestJson<AgentDossier>(`/analysis/${encodeURIComponent(id)}/agent/dossier`);
+export const answerCheckpoint = (id: string, checkpointId: string, decision: "approve" | "revise" | "stop", note?: string) =>
+  requestJson<AgentRunState>(
+    `/analysis/${encodeURIComponent(id)}/agent/checkpoints/${encodeURIComponent(checkpointId)}`,
+    jsonPost({ decision, note }),
+  );
+
+export type ReportOpinion = {
+  generated_at: string;
+  model: string | null;
+  fundamentals: string;
+  valuation: string | null;
+  tools_used: string[];
+  outside_sources: { source: string; title: string; url: string; as_of: string }[];
+  sections_inserted: number;
+  inserted_into: string;
+  label: string;
+};
+
+export const getReportOpinion = (id: string) => requestJson<ReportOpinion>(`/analysis/${encodeURIComponent(id)}/report/opinion`);
+export const generateReportOpinion = (id: string) =>
+  requestJson<ReportOpinion>(`/analysis/${encodeURIComponent(id)}/report/opinion`, jsonPost());

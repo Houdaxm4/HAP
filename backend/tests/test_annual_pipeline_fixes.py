@@ -173,6 +173,34 @@ def test_detect_year_columns_inputs_row1_and_ignores_bloomberg_y(tmp_path: Path)
     wb.close()
 
 
+def test_fy_token_ignores_formulas_non_strings_and_out_of_range_years():
+    from datetime import datetime
+
+    from services.annual_period_service import _fy_token, detect_year_columns
+
+    class _ArrayLike:
+        text = "=SUM(A2065:A2066)"
+
+        def __str__(self) -> str:
+            return self.text
+
+    assert _fy_token("FY2016") == "FY2016"
+    assert _fy_token("2016 A") == "FY2016"
+    assert _fy_token("=SUM(A2065:B2066)") is None
+    assert _fy_token(_ArrayLike()) is None
+    assert _fy_token(datetime(2065, 1, 1)) is None
+    assert _fy_token(2065) is None
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Balance Sheet - Standardized"
+    ws["C7"] = "FY2016"
+    ws["D7"] = "=SUM(A2065:A2066)"
+    cols = detect_year_columns(ws, wb)
+    assert cols.get("FY2016") == 3
+    assert "FY2065" not in cols
+    wb.close()
+
+
 def test_tax_writes_new_fy_inputs_column(tmp_path: Path):
     prev, tmpl, _ = _rolling_books(tmp_path)
     out = tmp_path / "out.xlsx"

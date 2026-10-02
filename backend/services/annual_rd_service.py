@@ -11,6 +11,7 @@ from openpyxl.utils import get_column_letter
 
 from models.annual_update import AnnualRdReport
 from services.annual_period_service import detect_workbook_years, detect_year_columns
+from services.formula_utils import is_formula, shift_formula_columns
 
 _LIFE_CELLS = ("B8", "C8", "B2")
 _COL_LETTER_RE = re.compile(r"([A-Z]+)")
@@ -93,6 +94,7 @@ class AnnualRdService:
         schedule_extended = False
         lookback: list[str] = []
         lookback_complete = True
+        missing_history: list[str] = []
         written: list[str] = []
         try:
             # Prefer Inputs R&D expense (formula-linked to Income) as Bloomberg/statement source.
@@ -119,8 +121,32 @@ class AnnualRdService:
                 year_num = int("".join(ch for ch in token if ch.isdigit()) or 0)
                 lookback = [f"FY{y}" for y in range(year_num - life_years + 1, year_num + 1)]
 
+                prewindow_written = self._carry_prewindow_history(
+                    pws, ows, wb, prev, life_years=life_years, written=written
+                )
+                if prewindow_written:
+                    written.extend(prewindow_written)
+
                 # Ensure Inputs historical R&D present for lookback when formula-backed.
                 lookback_complete = self._verify_inputs_lookback(wb, lookback)
+                pre_ok, missing_history = self._verify_rd_prewindow(ows, wb, life_years)
+                lookback_complete = lookback_complete and pre_ok
+                if missing_history:
+                    from services.workbook_flag_service import flag_suggestion
+                    from openpyxl.utils.cell import coordinate_from_string
+
+                    for addr in missing_history:
+                        cell_addr = addr.split("!")[-1] if "!" in addr else addr
+                        try:
+                            coordinate_from_string(cell_addr)
+                        except Exception:  # noqa: BLE001
+                            cell_addr = "B2"
+                        flag_suggestion(
+                            ows,
+                            cell_addr,
+                            suggestion="copy prior R&D expense",
+                            reason="Required pre-window R&D history is missing and must not be treated as zero.",
+                        )
 
                 # Extend R&D schedule formulas through the new FY column if missing.
                 schedule_extended = self._ensure_schedule_formulas(
@@ -201,6 +227,7 @@ class AnnualRdService:
             schedule_extended=schedule_extended,
             lookback_years=lookback,
             lookback_complete=lookback_complete,
+            missing_required_history=missing_history,
             cells_written=written,
             summary=(
                 f"R&D: useful life={life} (unchanged={life_unchanged}); "
@@ -296,6 +323,121 @@ class AnnualRdService:
                 return False
         return True
 
+    def _carry_prewindow_history(
+        self, pws, ows, wb, prev, *, life_years: int, written: list[str]
+    ) -> list[str]:
+        """Copy N-1 pre-window R&D expenses from the previous workbook.
+
+        The 10-year analysis window and the R&D schedule lookback are different:
+        dropping Y1 from the visible window must not drop R&D history the schedule needs.
+        """
+        from openpyxl.utils import get_column_letter
+
+        copied: list[str] = []
+        needed = max(int(life_years) - 1, 1)
+        prev_pre = self._prewindow_expense_columns(pws)
+        new_pre = self._prewindow_expense_columns(ows)
+        if not new_pre:
+            return copied
+        # Values: previous pre-window constants, then the dropped window-start expense.
+        values: list[float] = []
+        for col in prev_pre:
+            val = _num(pws.cell(2, col).value)
+            if val is not None:
+                values.append(val)
+        dropped = self._dropped_window_rd_expense(prev, wb)
+        if dropped is not None:
+            values.append(dropped)
+        # Align to the right: newest pre-window slot gets the most recent history.
+        if not values:
+            return copied
+        take = values[-len(new_pre) :]
+        # Pad left if we have fewer values than slots.
+        while len(take) < len(new_pre):
+            take = [take[0] if take else None] + take
+        for col, val in zip(new_pre[-needed:] if needed <= len(new_pre) else new_pre, take[-needed:]):
+            if val is None:
+                continue
+            cell = ows.cell(2, col)
+            # Pre-window constants from the prior analyst workbook take priority over
+            # template formulas that zero-fill missing Inputs history.
+            if is_formula(cell.value) or cell.value in (None, ""):
+                cell.value = float(val)
+                copied.append(f"R&D!{get_column_letter(col)}2")
+        return copied
+
+    @staticmethod
+    def _prewindow_expense_columns(ws) -> list[int]:
+        cols: list[int] = []
+        for col in range(2, min(ws.max_column or 1, 20) + 1):
+            header = ws.cell(1, col).value
+            expense = ws.cell(2, col).value
+            header_s = str(header or "")
+            if "Inputs!" in header_s and "C1" in header_s.replace(" ", ""):
+                break
+            if isinstance(header, str) and header.startswith("=") and "RIGHT(" in header.upper():
+                cols.append(col)
+                continue
+            if expense not in (None, "") and col < 5:
+                cols.append(col)
+        return cols
+
+    @staticmethod
+    def _dropped_window_rd_expense(prev, current_wb) -> float | None:
+        """Expense for the year dropped from the 10-year window (now pre-window)."""
+        if "Inputs" not in prev.sheetnames:
+            return None
+        p_inp = prev["Inputs"]
+        from services.annual_period_service import detect_year_columns
+
+        prev_cols = detect_year_columns(p_inp, prev)
+        cur_cols = {}
+        if "Inputs" in current_wb.sheetnames:
+            cur_cols = detect_year_columns(current_wb["Inputs"], current_wb)
+        dropped = [fy for fy in prev_cols if fy.startswith("FY") and fy not in cur_cols]
+        if not dropped:
+            # Oldest previous Inputs column is the dropped year when windows rolled.
+            fys = sorted(k for k in prev_cols if k.startswith("FY"))
+            if not fys:
+                return None
+            dropped_fy = fys[0]
+        else:
+            dropped_fy = min(dropped)
+        col = prev_cols.get(dropped_fy)
+        if not col:
+            return None
+        for row in range(100, 110):
+            lab = str(p_inp.cell(row, 1).value or "").lower()
+            if "r&d expense" in lab:
+                return _num(p_inp.cell(row, col).value)
+        if "R&D" in prev.sheetnames:
+            # Window expense band is typically Inputs col + 2.
+            return _num(prev["R&D"].cell(2, col + 2).value)
+        return None
+
+    def _verify_rd_prewindow(self, ows, wb, life_years: int) -> tuple[bool, list[str]]:
+        needed = max(int(life_years) - 1, 1)
+        cols = self._prewindow_expense_columns(ows)
+        missing: list[str] = []
+        if not cols:
+            # Workbook has no dedicated pre-window R&D band; visible-window lookback applies.
+            return True, missing
+        from openpyxl.utils import get_column_letter
+
+        if len(cols) < needed:
+            missing.append(f"R&D!{get_column_letter(cols[0])}2")
+            return False, missing
+
+        for col in cols[-needed:]:
+            val = ows.cell(2, col).value
+            if val in (None, "") or (is_formula(val) and "=\"\"" in str(val) and ",0," in str(val).replace(" ", "")):
+                # Formula that treats blank Inputs as zero is not sufficient history.
+                if is_formula(val) and ",0," in str(val).replace(" ", ""):
+                    missing.append(f"R&D!{get_column_letter(col)}2")
+                elif val in (None, ""):
+                    missing.append(f"R&D!{get_column_letter(col)}2")
+        return (len(missing) == 0), missing
+
     def _ensure_schedule_formulas(
         self,
         ows,
@@ -331,7 +473,7 @@ class AnnualRdService:
                 continue
             prior = ows.cell(row, prior_col).value
             if isinstance(prior, str) and prior.startswith("="):
-                cell.value = _shift_formula(prior, prior_col, new_col)
+                cell.value = shift_formula_columns(prior, prior_col, new_col)
                 written.append(f"R&D!{get_column_letter(new_col)}{row}")
                 extended = True
             elif row == 2:

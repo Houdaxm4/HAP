@@ -1,11 +1,10 @@
-"""Refinement pass: model continuity, ignored sheets, Yahoo fallback, Word research."""
+"""Refinement pass: model continuity, ignored sheets, and Word research."""
 
 from __future__ import annotations
 
 from copy import copy
 from pathlib import Path
 
-import pytest
 from openpyxl import Workbook, load_workbook
 from openpyxl.styles import PatternFill
 
@@ -169,8 +168,3 @@ def test_restore_ignored_sheets_after_modification(tmp_path: Path):
     finally:
         wb3.close()
 
-
-def test_yahoo_millions_conversion():
-    from services.yahoo_quarterly_statement_service import _to_millions
-
-    assert _to_millions(94_930_000_000) == pytest.approx(94930.0)

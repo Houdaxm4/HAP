@@ -16,6 +16,14 @@ from services.annual_period_service import (
     align_fiscal_periods,
     detect_year_columns,
 )
+from services.circular_reference_service import CircularReferenceService
+from services.formula_utils import (
+    formula_references_column,
+    formula_text,
+    formula_would_self_reference,
+    is_formula,
+    shift_formula_columns,
+)
 from workbook_mapping.sheet_policies import OUTPUT_SHEETS
 
 # Re-export for tests and downstream imports.
@@ -64,11 +72,7 @@ def _cell_kind(value: Any) -> str:
 
 
 def _formula_text(value: Any) -> str | None:
-    if isinstance(value, str) and value.startswith("="):
-        return value
-    if hasattr(value, "text"):
-        return str(value.text)
-    return None
+    return formula_text(value)
 
 
 def _values_equal(a: Any, b: Any) -> bool:
@@ -174,9 +178,27 @@ class AnnualContinuityService:
                             out_cell=out_cell,
                             formula_guard=formula_guard,
                             new_fiscal_year=detected_new,
+                            prev_col=prev_col,
+                            out_col=col,
+                            pws=pws,
+                            fy_cols=fy_cols,
+                            row=row,
+                            workbook=out,
                         )
                         if entry is not None:
                             entries.append(entry)
+
+                    helper_entries = self._copy_same_address_helpers(
+                        sheet=sheet,
+                        row=row,
+                        pws=pws,
+                        ows=ows,
+                        fy_cols=fy_cols,
+                        detected_new=detected_new,
+                        formula_guard=formula_guard,
+                        workbook=out,
+                    )
+                    entries.extend(helper_entries)
 
             out.save(workbook_path)
         finally:
@@ -296,6 +318,12 @@ class AnnualContinuityService:
         out_cell,
         formula_guard,
         new_fiscal_year: str | None = None,
+        prev_col: int | None = None,
+        out_col: int | None = None,
+        pws=None,
+        fy_cols: dict[str, int] | None = None,
+        row: int | None = None,
+        workbook=None,
     ) -> ContinuityEntry | None:
         if new_fiscal_year and fy == new_fiscal_year:
             return None
@@ -330,30 +358,59 @@ class AnnualContinuityService:
         reason = "Already aligned."
         fmt = False
         changed = False
+        blocked_cycle = False
 
-        if pk == "formula" and ok != "formula":
-            out_cell.value = pv
-            action = ContinuityAction.RESTORE_FORMULA
-            reason = "Previous workbook formula restored on historical cell."
-            changed = True
-        elif pk == "formula" and ok == "formula":
-            prev_f, out_f = _formula_text(pv), _formula_text(ov)
-            if prev_f != out_f:
+        if pk == "formula":
+            relocatable = prev_col is not None and formula_references_column(
+                str(formula_text(pv) or pv), prev_col
+            )
+            if not relocatable:
+                # Helper formula occupying an FY column — do not relocate by year match.
                 action = ContinuityAction.KEEP_NEW_FORMULA
-                reason = "New-template formula retained (deliberate template update)."
+                reason = (
+                    "Non-year-series helper formula not relocated by FY alignment; "
+                    "same-address helper copy handles fixed-layout formulas."
+                )
             else:
-                action = ContinuityAction.MATCH_ALREADY
-                reason = "Historical formula already matches."
+                shifted = shift_formula_columns(str(formula_text(pv) or pv), prev_col, out_col or prev_col)
+                if self._formula_write_unsafe(
+                    workbook, sheet, addr, shifted, dest_col=out_col or prev_col, dest_row=row or 0
+                ):
+                    action = ContinuityAction.BLOCKED
+                    reason = "Proposed FY-aligned formula write would create a circular reference; write rejected."
+                    blocked_cycle = True
+                elif ok != "formula":
+                    out_cell.value = shifted
+                    action = ContinuityAction.RESTORE_FORMULA
+                    reason = "Previous year-series formula carried with column alignment."
+                    changed = True
+                else:
+                    prev_f, out_f = _formula_text(pv), _formula_text(ov)
+                    if shift_formula_columns(prev_f or "", prev_col, out_col or prev_col) == out_f:
+                        action = ContinuityAction.MATCH_ALREADY
+                        reason = "Historical year-series formula already aligned."
+                    else:
+                        action = ContinuityAction.KEEP_NEW_FORMULA
+                        reason = "New-template formula retained (deliberate template update)."
         elif pk == "value" and ok == "formula":
-            action = ContinuityAction.KEEP_NEW_FORMULA
-            reason = "Template formula preserved; not flattened to prior value."
+            if pws is not None and fy_cols and row is not None and self._row_is_mixed_override(
+                pws, row, fy_cols
+            ):
+                out_cell.value = pv
+                action = ContinuityAction.CARRY_FORWARD_VALUE
+                reason = "Analyst override on a hybrid formula/constant row carried from previous workbook."
+                changed = True
+            else:
+                action = ContinuityAction.KEEP_NEW_FORMULA
+                reason = "Template formula preserved; not flattened to prior cached value."
         elif pk == "value" and (ok == "blank" or (ok == "value" and not _values_equal(pv, ov))):
             out_cell.value = pv
             action = ContinuityAction.CARRY_FORWARD_VALUE
             reason = "Analyst-entered historical value carried from previous workbook."
             changed = True
 
-        fmt = _copy_style(prev_cell, out_cell)
+        if not blocked_cycle:
+            fmt = _copy_style(prev_cell, out_cell)
         if fmt and not changed and action == ContinuityAction.MATCH_ALREADY:
             action = ContinuityAction.CARRY_FORWARD_FORMAT
             reason = "Historical formatting copied from previous workbook."
@@ -375,6 +432,108 @@ class AnnualContinuityService:
             reason=reason,
             formatting_copied=fmt,
         )
+
+    def _copy_same_address_helpers(
+        self,
+        *,
+        sheet: str,
+        row: int,
+        pws,
+        ows,
+        fy_cols: dict[str, int],
+        detected_new: str | None,
+        formula_guard: bool,
+        workbook,
+    ) -> list[ContinuityEntry]:
+        """Copy fixed-layout helper formulas/values by address (not FY relocation)."""
+        if formula_guard:
+            return []
+        entries: list[ContinuityEntry] = []
+        fy_col_set = set(fy_cols.values())
+        new_col = fy_cols.get(detected_new) if detected_new else None
+        max_col = min(max(pws.max_column or 1, ows.max_column or 1, 1), _MAX_COL)
+        for col in range(1, max_col + 1):
+            addr = f"{get_column_letter(col)}{row}"
+            if sheet == "Inputs" and addr in _CURRENT_DATA_CELLS:
+                continue
+            if new_col and col == new_col and col in fy_col_set:
+                continue
+            prev_cell = pws.cell(row, col)
+            out_cell = ows.cell(row, col)
+            pv, ov = prev_cell.value, out_cell.value
+            pk, ok = _cell_kind(pv), _cell_kind(ov)
+            if pk == "blank":
+                continue
+            if pk == "formula":
+                text = formula_text(pv) or str(pv)
+                if col in fy_col_set and formula_references_column(text, col):
+                    continue  # year-series handled by FY match
+                if ok == "formula":
+                    continue
+                if self._formula_write_unsafe(
+                    workbook, sheet, addr, text, dest_col=col, dest_row=row
+                ):
+                    entries.append(
+                        ContinuityEntry(
+                            sheet=sheet,
+                            cell=addr,
+                            action=ContinuityAction.BLOCKED,
+                            reason="Same-address helper formula would create a circular reference; write rejected.",
+                            previous_type=pk,
+                            template_type=ok,
+                        )
+                    )
+                    continue
+                out_cell.value = pv
+                _copy_style(prev_cell, out_cell)
+                entries.append(
+                    ContinuityEntry(
+                        sheet=sheet,
+                        cell=addr,
+                        action=ContinuityAction.RESTORE_FORMULA,
+                        reason="Fixed-layout helper formula copied by address from previous workbook.",
+                        previous_type=pk,
+                        template_type=ok,
+                        final_type="formula",
+                        formatting_copied=True,
+                    )
+                )
+            elif pk == "value" and ok == "blank":
+                out_cell.value = pv
+                _copy_style(prev_cell, out_cell)
+                entries.append(
+                    ContinuityEntry(
+                        sheet=sheet,
+                        cell=addr,
+                        action=ContinuityAction.CARRY_FORWARD_VALUE,
+                        reason="Fixed-layout helper value copied by address from previous workbook.",
+                        previous_type=pk,
+                        template_type=ok,
+                        final_type="value",
+                    )
+                )
+        return entries
+
+    @staticmethod
+    def _row_is_mixed_override(pws, row: int, fy_cols: dict[str, int]) -> bool:
+        kinds: set[str] = set()
+        for col in fy_cols.values():
+            kinds.add(_cell_kind(pws.cell(row, col).value))
+        return "formula" in kinds and "value" in kinds
+
+    @staticmethod
+    def _formula_write_unsafe(workbook, sheet: str, addr: str, formula: str, *, dest_col: int, dest_row: int) -> bool:
+        if formula_would_self_reference(formula, dest_col, dest_row, sheet=sheet):
+            return True
+        if workbook is None:
+            return False
+        try:
+            cycle = CircularReferenceService().write_would_create_cycle(
+                workbook, sheet=sheet, cell=addr, formula=formula
+            )
+        except Exception:  # noqa: BLE001
+            return formula_would_self_reference(formula, dest_col, dest_row, sheet=sheet)
+        return cycle is not None
 
     @staticmethod
     def _workbook_fy_columns(wb) -> dict[str, int]:

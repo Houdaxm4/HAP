@@ -212,11 +212,14 @@ def test_explicit_restatement_updates_and_vague_is_review(tmp_path: Path):
             }
         ],
     )
-    assert auto.automatic_changes
-    assert auto.automatic_changes[0].automatic_change is True
+    assert auto.automatic_changes == []
+    flagged = auto.review_required[0]
+    assert flagged.automatic_change is False
+    assert flagged.revised_reported_value == 333.0
+    assert flagged.action == ContinuityAction.RESTATEMENT_REVIEW_REQUIRED
     wb = load_workbook(out)
-    # FY2024 is column F (2021=C ... 2024=F)
-    assert wb["Income - GAAP"]["F11"].value == 333.0
+    # FY2024 is column F (2021=C ... 2024=F). Supplied comparative stays; SEC figure is flagged.
+    assert wb["Income - GAAP"]["F11"].value == 140.0
     wb.close()
 
     vague = svc.apply(
@@ -406,7 +409,7 @@ def test_word_report_flags_missing_call_and_includes_required_sections(tmp_path:
         performance=perf,
         research=research,
     )
-    assert report.excel_filename == "2025 AAPL FA.xlsx"
+    assert report.excel_filename == "2025 Fiscal Year AAPL Annual Update.xlsx"
     assert report.word_filename == "2025 AAPL Annual Update.docx"
     assert (tmp_path / report.excel_filename).exists()
     from docx import Document

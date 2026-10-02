@@ -119,6 +119,11 @@ class CustomRunService:
             if annual_pe:
                 metadata["inputs_annual_pe10"] = annual_pe.get("PE10") or {}
                 metadata["inputs_annual_e10"] = annual_pe.get("E10") or {}
+            annual_crf = self._augment_annual_growth_metrics(ticker_rows, periods, historical)
+            if annual_crf:
+                metadata["inputs_annual_eps_10y_growth"] = annual_crf.get("EPS_10Y_GROWTH") or {}
+                metadata["inputs_annual_eps_10y_direction"] = annual_crf.get("EPS_10Y_DIRECTION") or {}
+                metadata["inputs_annual_revenue_10y_growth"] = annual_crf.get("REVENUE_10Y_GROWTH") or {}
             scalars = self._parse_scalar_block(ticker_rows)
             summary = self._parse_summary(summary_rows)
 
@@ -367,6 +372,37 @@ class CustomRunService:
                 )
         return result
 
+    def _augment_annual_growth_metrics(
+        self,
+        rows: list[list[Any]],
+        periods: CustomRunPeriods,
+        historical: dict[str, CustomRunSeries],
+    ) -> dict[str, dict[str, Any]]:
+        """Collapse CRF 10-year growth series to fiscal-year-end points (same rule as PE10/E10)."""
+        years = periods.fiscal_years
+        result: dict[str, dict[str, Any]] = {}
+        if not years:
+            return result
+        specs = (
+            ("EPS_10Y_GROWTH", 120, "3 years Av EPS Growth (10 Years) TTM", False),
+            ("EPS_10Y_DIRECTION", 121, "3 years Av EPS Growth (10 Years) TTM Direction", True),
+            ("REVENUE_10Y_GROWTH", 122, "3 years Av Revenue Growth (10 Years) TTM", False),
+        )
+        for key, row_idx, label, as_str in specs:
+            raw = self._row_values(rows, row_idx)
+            if not raw:
+                existing = historical.get(label)
+                raw = list(existing.values) if existing else []
+            if not raw:
+                continue
+            if as_str:
+                annual = _collapse_to_fy_end_any(years, raw)
+            else:
+                annual = _collapse_to_fy_end(years, raw)
+            if annual:
+                result[key] = annual
+        return result
+
     @staticmethod
     def annual_metric_by_fy(
         historical: dict[str, CustomRunSeries],
@@ -495,4 +531,22 @@ def _collapse_to_fy_end(
         if num is None:
             continue
         last_by_fy[token] = num
+    return last_by_fy
+
+
+def _collapse_to_fy_end_any(
+    fiscal_years: list[str],
+    values: list[Any],
+) -> dict[str, Any]:
+    last_by_fy: dict[str, Any] = {}
+    for idx, year_raw in enumerate(fiscal_years):
+        token = _fy_token(year_raw)
+        if not token:
+            continue
+        if idx >= len(values):
+            break
+        val = values[idx]
+        if val in (None, ""):
+            continue
+        last_by_fy[token] = val
     return last_by_fy

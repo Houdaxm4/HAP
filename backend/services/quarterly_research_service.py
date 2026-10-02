@@ -11,6 +11,7 @@ from html import unescape
 from typing import Any
 
 from models.quarterly_update import QuarterlyResearchReport, ResearchSourceEntry
+from settings import sec_user_agent
 
 YAHOO_NEWS = "https://query2.finance.yahoo.com/v1/finance/search?q={query}&quotesCount=0&newsCount=10"
 SEC_USER_AGENT = "HAP-Platform contact@houda-analyst.com"
@@ -35,6 +36,19 @@ def _is_template_junk(text: str) -> bool:
     if "{{" in text or "{{#" in text:
         return True
     return len(text.strip()) < 30
+
+
+_BOILERPLATE_MARKERS = (
+    "trademarks", "service marks", "forward-looking", "indicate by check mark", "pursuant to",
+    "securities and exchange commission", "commission file number", "washington, d.c.",
+    "exact name of registrant", "safe harbor",
+)
+
+
+def _is_boilerplate(text: str) -> bool:
+    """Cover-page and legal text from a filing is not a reported fact."""
+    tl = (text or "").lower()
+    return any(marker in tl for marker in _BOILERPLATE_MARKERS)
 
 
 def _is_transcript_narrative(text: str) -> bool:
@@ -154,7 +168,7 @@ class QuarterlyResearchService:
                 )
                 if form == "8-K":
                     reported.append(
-                        sec_snippet
+                        (sec_snippet if sec_snippet and not _is_boilerplate(sec_snippet) else None)
                         or (
                             f"Form 8-K filed {filing.get('filing_date', 'n/a')} — "
                             "typically includes earnings release exhibit."
@@ -162,7 +176,7 @@ class QuarterlyResearchService:
                     )
                     official_release_used = True
                 if form == "10-Q":
-                    if sec_snippet and not _is_template_junk(sec_snippet):
+                    if sec_snippet and not _is_template_junk(sec_snippet) and not _is_boilerplate(sec_snippet):
                         reported.append(sec_snippet[:600])
                     else:
                         reported.append(
@@ -397,7 +411,7 @@ class QuarterlyResearchService:
 
     @staticmethod
     def _fetch_html(url: str) -> str | None:
-        ua = SEC_USER_AGENT if "sec.gov" in url.lower() else "HAP2-ModeA/1.0"
+        ua = (sec_user_agent() or SEC_USER_AGENT) if "sec.gov" in url.lower() else "HAP2-ModeA/1.0"
         req = urllib.request.Request(url, headers={"User-Agent": ua}, method="GET")
         try:
             with urllib.request.urlopen(req, timeout=8) as resp:

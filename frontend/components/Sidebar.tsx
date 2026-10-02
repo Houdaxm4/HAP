@@ -22,6 +22,7 @@ const navItems: NavItem[] = [
   { label: "Dashboard", kind: "link", href: "/" },
   { label: "New Analysis", kind: "action", action: "new" },
   { label: "History", kind: "link", href: "/history" },
+  { label: "Lessons", kind: "link", href: "/lessons" },
   { label: "Settings", kind: "disabled", reason: "Coming soon" },
 ];
 

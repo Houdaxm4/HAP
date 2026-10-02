@@ -18,9 +18,13 @@ export default function RecommendationTab({ analysis }: { analysis: AnalysisDeta
         <div className="rounded border border-hap-border bg-hap-panel p-4">
           <p className="text-xs uppercase tracking-wider text-hap-muted">Recommendation</p>
           <p className="mt-1 text-xl font-semibold text-hap-orange">
-            {recommendation.recommendation_label}
+            {analysis.finalRecommendation ?? recommendation.recommendation_label}
           </p>
-          <p className="mt-0.5 font-mono text-xs text-hap-muted">{recommendation.recommendation}</p>
+          <p className="mt-0.5 font-mono text-xs text-hap-muted">
+            {analysis.finalRecommendation
+              ? `Final report (headline). Engine view: ${recommendation.recommendation_label} (${recommendation.recommendation})`
+              : recommendation.recommendation}
+          </p>
         </div>
         <div className="rounded border border-hap-border bg-hap-panel p-4">
           <p className="text-xs uppercase tracking-wider text-hap-muted">Confidence</p>

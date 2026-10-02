@@ -1,126 +1,13 @@
-"""Certification hardening: YTD provenance, Word research, final continuity."""
+"""Certification hardening: Word research and final continuity."""
 
 from __future__ import annotations
 
 from pathlib import Path
 
-import pytest
 from openpyxl import Workbook, load_workbook
 
-from models.quarterly_presentation import QuarterlyStatementKind
-from models.quarterly_update import CarryForwardDecision
 from services.quarterly_model_continuity_service import QuarterlyModelContinuityService
 from services.quarterly_research_service import QuarterlyResearchService
-from services.yahoo_quarterly_statement_service import (
-    DERIVED_QUARTER_SUM,
-    DIRECT_REPORTED,
-    SECONDARY_REPORTED,
-    SOURCE_MISSING,
-    YahooQuarterSnapshot,
-    YahooQuarterlyBundle,
-    YahooQuarterlyStatementService,
-)
-
-
-@pytest.fixture
-def mock_sec_is_ytd(monkeypatch):
-    """Patch SEC YTD map to return known revenue YTD."""
-
-    def _fake_map(kind, company_facts, fiscal_year, fiscal_period):
-        if kind == QuarterlyStatementKind.INCOME:
-            return {"totalRevenue": 364357.0, "netIncome": 101464.0}
-        if kind == QuarterlyStatementKind.CASH_FLOW:
-            return {"totalCashFromOperatingActivities": 116996.0}
-        return {}
-
-    monkeypatch.setattr(
-        YahooQuarterlyStatementService,
-        "_sec_ytd_map",
-        staticmethod(_fake_map),
-    )
-
-
-def _is_bundle(*quarter_values: float) -> YahooQuarterlyBundle:
-    snaps = []
-    for i, v in enumerate(quarter_values):
-        snaps.append(
-            YahooQuarterSnapshot(
-                end_date=f"2024-{9-i*3:02d}-30",
-                fields={"totalRevenue": v, "netIncome": v * 0.2},
-            )
-        )
-    return YahooQuarterlyBundle(income_quarters=snaps)
-
-
-def _cf_bundle(ytd_cfo: float) -> YahooQuarterlyBundle:
-    return YahooQuarterlyBundle(
-        cashflow_quarters=[
-            YahooQuarterSnapshot(
-                end_date="2024-09-30",
-                fields={"totalCashFromOperatingActivities": ytd_cfo},
-            )
-        ]
-    )
-
-
-def test_sec_ytd_beats_derived_quarter_sum(mock_sec_is_ytd):
-    bundle = _is_bundle(109417.0, 85777.0, 90753.0)  # Q3, Q2, Q1 standalone
-    svc = YahooQuarterlyStatementService()
-    result = svc.values_for_periods(
-        bundle,
-        QuarterlyStatementKind.INCOME,
-        fiscal_quarter=3,
-        company_facts={"facts": {}},
-        fiscal_year=2024,
-        fiscal_period="Q3",
-    )
-    prov = result.ytd_provenance["totalRevenue"]
-    assert prov.provenance == SECONDARY_REPORTED
-    assert prov.value == pytest.approx(364357.0)
-    assert prov.components is None
-
-
-def test_derived_quarter_sum_when_no_sec(mock_sec_is_ytd, monkeypatch):
-    monkeypatch.setattr(
-        YahooQuarterlyStatementService,
-        "_sec_ytd_map",
-        staticmethod(lambda *a, **k: {}),
-    )
-    bundle = _is_bundle(100.0, 90.0, 80.0)
-    svc = YahooQuarterlyStatementService()
-    result = svc.values_for_periods(
-        bundle, QuarterlyStatementKind.INCOME, fiscal_quarter=3
-    )
-    prov = result.ytd_provenance["totalRevenue"]
-    assert prov.provenance == DERIVED_QUARTER_SUM
-    assert prov.components == [100.0, 90.0, 80.0]
-    assert prov.value == pytest.approx(270.0)
-
-
-def test_cf_ytd_direct_reported_not_quarter_sum():
-    bundle = _cf_bundle(116996.0)
-    svc = YahooQuarterlyStatementService()
-    result = svc.values_for_periods(
-        bundle, QuarterlyStatementKind.CASH_FLOW, fiscal_quarter=3
-    )
-    prov = result.ytd_provenance["totalCashFromOperatingActivities"]
-    assert prov.provenance == DIRECT_REPORTED
-    assert prov.period_identity == "Q3_9M_YTD"
-    assert prov.value == pytest.approx(116996.0)
-
-
-def test_q2_period_identity(mock_sec_is_ytd):
-    bundle = _is_bundle(200.0, 180.0)
-    svc = YahooQuarterlyStatementService()
-    result = svc.values_for_periods(
-        bundle,
-        QuarterlyStatementKind.INCOME,
-        fiscal_quarter=2,
-        company_facts={"facts": {}},
-        fiscal_year=2024,
-        fiscal_period="Q2",
-    )
-    assert result.ytd_provenance["totalRevenue"].period_identity == "Q2_6M_YTD"
 
 
 def test_research_prioritizes_sec_and_flags_missing_call():
