@@ -1,0 +1,223 @@
+{
+  "engine": {
+    "confidence": 0.5918,
+    "findings": [
+      "BALANCED_CAPITAL_RETURN|positive|positive",
+      "BEAR_CASE_DOES_NOT_SUPPORT_MARGIN_OF_SAFETY|warning|negative",
+      "BEAR_SCENARIO_NEGATIVE_RETURN|warning|negative",
+      "BOOM-BUST_GROWTH_PATTERN|warning|negative",
+      "BUSINESS_QUALITY_SCORE|info|neutral",
+      "CONSERVATIVE_LEVERAGE|positive|positive",
+      "CONSISTENT_CASH_GENERATION|info|neutral",
+      "CONSISTENT_CASH_GENERATION|positive|positive",
+      "DELEVERAGING_TREND|positive|positive",
+      "DETERIORATING_LIQUIDITY|warning|negative",
+      "DISCIPLINED_BUYBACKS|positive|positive",
+      "EXCEPTIONAL_INTEREST_COVERAGE|positive|positive",
+      "FORTRESS_BALANCE_SHEET|positive|positive",
+      "GROWTH_DECELERATION|warning|negative",
+      "HIGH_CASH_LIQUIDITY|positive|positive",
+      "INDEX_LIKELY_SUPERIOR|warning|negative",
+      "INSUFFICIENT_OUTLOOK_DATA|info|neutral",
+      "INVESTMENT_ATTRACTIVENESS_SCORE|info|neutral",
+      "LIABILITY_GROWTH_OUTPACING_ASSETS|warning|negative",
+      "LIABILITY_GROWTH_RISK|info|neutral",
+      "LIQUIDITY_WEAKNESS|info|neutral",
+      "LOW_QUALITY_GROWTH|warning|negative",
+      "MODEST_NET_LEVERAGE|positive|positive",
+      "NEGATIVE_EXPECTED_RETURN|critical|negative",
+      "NEGATIVE_GROWTH_CONTRIBUTION|warning|negative",
+      "OWNER_EARNINGS_BELOW_REPORTED_EARNINGS|warning|negative",
+      "PEER_MULTIPLES_NOT_AVAILABLE|info|neutral",
+      "POOR_CASH_CONVERSION|info|neutral",
+      "POOR_INVESTMENT_ATTRACTIVENESS|info|neutral",
+      "POTENTIALLY_OVERVALUED|warning|negative",
+      "PRUDENT_LEVERAGE_USE|info|neutral",
+      "PRUDENT_LEVERAGE_USE|positive|positive",
+      "REVENUE_STAGNATION|info|neutral",
+      "STRONG_BOOK_VALUE_COMPOUNDING|info|neutral",
+      "STRONG_BOOK_VALUE_COMPOUNDING|positive|positive",
+      "STRONG_CASH_VS_DEBT|positive|positive",
+      "STRONG_FINANCIAL_FLEXIBILITY|positive|positive",
+      "UNSTABLE_GROWTH|warning|negative",
+      "VALUATION_HEADWIND|warning|negative",
+      "WEAK_CASH_CONVERSION|warning|negative",
+      "WEAK_ORGANIC_GROWTH|info|neutral",
+      "WEAK_ORGANIC_GROWTH|warning|negative",
+      "WORKING_CAPITAL_DETERIORATION|info|neutral",
+      "WORKING_CAPITAL_DETERIORATION|warning|negative"
+    ],
+    "metric_count": 116,
+    "modules": {
+      "balance_sheet": {
+        "confidence": 0.72,
+        "score": 86.65,
+        "status": "ok"
+      },
+      "business_outlook": {
+        "confidence": 0.0,
+        "score": 60.0,
+        "status": "ok"
+      },
+      "capital_allocation": {
+        "confidence": 0.5633,
+        "score": 66.65,
+        "status": "ok"
+      },
+      "cash_flow": {
+        "confidence": 0.7875,
+        "score": 70.86,
+        "status": "ok"
+      },
+      "expected_return": {
+        "confidence": 0.6892,
+        "score": 23.94,
+        "status": "ok"
+      },
+      "growth": {
+        "confidence": 0.588,
+        "score": 25.99,
+        "status": "ok"
+      },
+      "margins": {
+        "confidence": 0.0,
+        "score": null,
+        "status": "skipped"
+      },
+      "profitability": {
+        "confidence": 0.74,
+        "score": 92.32,
+        "status": "ok"
+      },
+      "recommendation": {
+        "confidence": 0.6098,
+        "score": null,
+        "status": "ok"
+      },
+      "valuation": {
+        "confidence": 0.628,
+        "score": 48.33,
+        "status": "ok"
+      }
+    },
+    "opportunities": [
+      "BALANCED_CAPITAL_RETURN",
+      "BALANCED_CAPITAL_RETURN",
+      "BOOK_VALUE_COMPOUNDING",
+      "BOOK_VALUE_COMPOUNDING",
+      "CONSERVATIVE_LEVERAGE",
+      "CONSERVATIVE_LEVERAGE",
+      "CONSISTENT_CASH_GENERATION",
+      "CONSISTENT_CASH_GENERATION",
+      "DELEVERAGING_TREND",
+      "DELEVERAGING_TREND",
+      "DISCIPLINED_BUYBACKS",
+      "DISCIPLINED_BUYBACKS",
+      "EXCEPTIONAL_INTEREST_COVERAGE",
+      "EXCEPTIONAL_INTEREST_COVERAGE",
+      "FORTRESS_BALANCE_SHEET",
+      "FORTRESS_BALANCE_SHEET",
+      "HIGH_CASH_LIQUIDITY",
+      "HIGH_CASH_LIQUIDITY",
+      "MODEST_NET_LEVERAGE",
+      "MODEST_NET_LEVERAGE",
+      "NET_CASH_POSITION",
+      "NET_CASH_POSITION",
+      "PRUDENT_LEVERAGE_USE",
+      "PRUDENT_LEVERAGE_USE",
+      "STRONG_CASH_VS_DEBT",
+      "STRONG_CASH_VS_DEBT"
+    ],
+    "recommendation": {
+      "business_quality_classification": "HIGH_QUALITY_BUSINESS",
+      "business_quality_score": 70.15,
+      "confidence": 0.6098,
+      "investment_attractiveness_classification": "HIGHLY_OVERVALUED",
+      "investment_attractiveness_score": 41.01,
+      "recommendation": "AVOID",
+      "recommendation_label": "Avoid"
+    },
+    "risks": [
+      "BEAR_CASE_BELOW_MARKET",
+      "BEAR_CASE_BELOW_MARKET",
+      "BEAR_RETURN_NEGATIVE",
+      "BEAR_RETURN_NEGATIVE",
+      "GROWTH_DECELERATION",
+      "GROWTH_DECELERATION",
+      "INDEX_SUPERIOR",
+      "INDEX_SUPERIOR",
+      "LIABILITY_GROWTH_RISK",
+      "LIABILITY_GROWTH_RISK",
+      "LIQUIDITY_WEAKNESS",
+      "LIQUIDITY_WEAKNESS",
+      "LOW_QUALITY_GROWTH",
+      "LOW_QUALITY_GROWTH",
+      "NEGATIVE_EXPECTED_RETURN",
+      "NEGATIVE_EXPECTED_RETURN",
+      "NEGATIVE_GROWTH_CONTRIBUTION",
+      "NEGATIVE_GROWTH_CONTRIBUTION",
+      "OWNER_EARNINGS_GAP",
+      "OWNER_EARNINGS_GAP",
+      "POOR_CASH_CONVERSION",
+      "POOR_CASH_CONVERSION",
+      "POTENTIAL_OVERVALUATION",
+      "POTENTIAL_OVERVALUATION",
+      "UNSTABLE_GROWTH",
+      "UNSTABLE_GROWTH",
+      "UNSTABLE_GROWTH",
+      "UNSTABLE_GROWTH",
+      "VALUATION_HEADWIND",
+      "VALUATION_HEADWIND",
+      "WEAK_ORGANIC_GROWTH",
+      "WEAK_ORGANIC_GROWTH",
+      "WORKING_CAPITAL_DETERIORATION",
+      "WORKING_CAPITAL_DETERIORATION"
+    ],
+    "summary_metrics": {
+      "business_quality_score": 70.15,
+      "divergent_metric_count": 0,
+      "error_count": 0,
+      "finding_count": 44,
+      "investment_attractiveness_score": 41.01,
+      "metric_comparison_count": 42,
+      "metric_count": 116,
+      "module_count": 10,
+      "ok_count": 9,
+      "recommendation": "AVOID",
+      "scored_module_count": 8,
+      "skipped_count": 1
+    }
+  },
+  "final_recommendation": {
+    "business_quality_classification": "AVERAGE_BUSINESS",
+    "business_quality_score": 65.0,
+    "confidence": 0.2,
+    "current_price": 341.88,
+    "entry_price": 134.329605,
+    "expected_return_status": "SOURCE_MISSING",
+    "final_recommendation": "WATCH",
+    "intrinsic_value": 179.10614,
+    "investment_attractiveness_classification": "OVERVALUED",
+    "investment_attractiveness_score": 52.0,
+    "key_risks": [
+      "Insufficient margin of safety versus 25% house threshold.",
+      "Valuation premium to Graham intrinsic value may reverse.",
+      "13 unresolved statement discrepancies.",
+      "38 material analyst-review items remain open.",
+      "Graham IV embeds historical EPS CAGR; forward growth below history would lower intrinsic value."
+    ],
+    "margin_of_safety": -0.908812,
+    "reasons_against": [
+      "Insufficient ROIC/WACC evidence for a high-confidence business-quality score.",
+      "ROIC review flagged MATERIAL_REVIEW items (e.g., tax/classification judgment).",
+      "13 statement-validation discrepancies remain unresolved \u2014 confidence reduced (BQ not lowered solely for price).",
+      "38 material analyst-review findings require ongoing monitoring.",
+      "Current price $341.88 is above Graham intrinsic $179.11 (MOS -90.9%) \u2014 valuation classified EXPENSIVE.",
+      "Expected-return output incomplete (e.g., missing price inputs historically) \u2014 does not improve attractiveness."
+    ],
+    "reasons_for": [],
+    "recommendation_label": "Watch",
+    "roic_wacc_assessment": "review_required",
+    "valuation_status": "EXPENSIVE"
+  }
+}

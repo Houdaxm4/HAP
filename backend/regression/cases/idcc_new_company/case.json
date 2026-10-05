@@ -1,0 +1,20 @@
+{
+  "analysis_type": "new_company",
+  "approval_note": "Approved by the analyst on 2026-10-05 as the refreshed IDCC new company baseline: R&D life 5 years, lease-rate row fix, SEC buyback override, ROIC adjustments.",
+  "approved": true,
+  "approved_at": "2026-10-05T04:19:46.385689+00:00",
+  "created_at": "2026-10-05T04:19:45.462748+00:00",
+  "inputs": [
+    "company_financial_model.json",
+    "valuation_validation_report.json",
+    "roic_validation_report.json",
+    "expected_return_validation_report.json",
+    "statement_validation_report.json",
+    "analyst_review_report.json"
+  ],
+  "name": "idcc_new_company",
+  "note": "IDCC new company with R&D life 5 (10-K business description), lease-rate row fix, SEC buyback override and ROIC adjustments",
+  "replay_reproduces_stored_outputs": true,
+  "source_analysis_id": "44f4d41f-1e20-47ee-8f57-9b0f3a2b6059",
+  "ticker": "IDCC"
+}
