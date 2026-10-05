@@ -110,6 +110,16 @@ class QuarterlyValuationService:
             ctx["oe_base_analysis"] = base_obj.model_dump()
             ctx["analytical_research"] = analytical
 
+        from services.valuation_correction_service import ValuationCorrectionService
+
+        self.last_input_review = None
+        try:
+            self.last_input_review = ValuationCorrectionService().apply(path, company_facts)
+        except Exception:  # noqa: BLE001 - advisory: never stops the run
+            self.last_input_review = None
+        if self.last_input_review is not None and self.last_input_review.applied:
+            self.excel_recalc.recalculate(analysis_id=analysis_id, ticker=ticker, workbook_path=path, fiscal_year=fy_label)
+        self.judgment.input_review = self.last_input_review
         er_rep, judge = self.judgment.apply(
             analysis_id=analysis_id,
             ticker=ticker,

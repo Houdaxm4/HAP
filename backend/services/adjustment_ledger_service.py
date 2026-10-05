@@ -31,6 +31,8 @@ CATEGORY_FILL = {
     "Operating liabilities": "FDE9D9",
     "One-time operating income": "EADCF4",
     "SEC override of Bloomberg": "FFF1C2",
+    "Expected return input": "E4DFEC",
+    "Enterprise value input": "E4DFEC",
     "Filled from filing": "E6F4EA",
     "Differs from filing": "FDE2E2",
     "Missing figure": "FDE2E2",
@@ -58,6 +60,7 @@ METHOD_LABELS = {
     "sec_override": "SEC figure replaces Bloomberg",
     "house_projection_method": "House projection method",
     "flag_only": "Flagged for review, not changed",
+    "normalized_input": "Normalized for extraordinary items",
 }
 
 

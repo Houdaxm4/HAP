@@ -424,7 +424,12 @@ class NewCompanyRunner:
                 # Leases tab: replace blank, N/A, <1% or >10% long-term rates with a flagged, justified number, then recalculate.
                 lease_row_fix = timed(
                     "lease_rate_row_fix",
-                    lambda: self.lease_rows.apply(workbook_path=working_path, lease_years=leases.years),
+                    lambda: self.lease_rows.apply(
+                        workbook_path=working_path,
+                        lease_years=leases.years,
+                        estimated_rate=(lease_review.selected_rate if lease_review is not None else None),
+                        estimated_basis=self._lease_basis(lease_review),
+                    ),
                 )
                 if lease_row_fix.changed:
                     lease_review = self._lease_review_after_row_fix(lease_review, lease_row_fix)
@@ -769,19 +774,7 @@ class NewCompanyRunner:
         if review is None:
             return
         try:
-            self.output_service.write_json(
-                analysis_id,
-                "valuation_inputs_review.json",
-                {
-                    "flagged_for_discussion": [f.text for f in review.flagged],
-                    "findings": [
-                        {"topic": f.topic, "metric": f.metric, "verdict": f.verdict, "text": f.text} for f in review.findings
-                    ],
-                    "alternatives": review.alternatives,
-                    "skipped": review.skipped,
-                    "note": "Flags only: no model value was changed.",
-                },
-            )
+            self.output_service.write_json(analysis_id, "valuation_inputs_review.json", review.payload())
         except Exception:  # noqa: BLE001 - advisory
             pass
 
@@ -800,6 +793,20 @@ class NewCompanyRunner:
             return report.cleared
         finally:
             wb.close()
+
+    @staticmethod
+    def _lease_basis(review) -> str:
+        """Where the estimated long-term lease rate comes from, in plain words."""
+        classification = getattr(review, "classification", None) if review is not None else None
+        proposal = getattr(review, "proposal", None) if review is not None else None
+        form = (getattr(proposal, "source_form", None) or "10-K") if proposal is not None else "10-K"
+        year = getattr(proposal, "source_fiscal_year", None) or ""
+        return {
+            "disclosed": f"the company's {form} {year} lease note".replace("  ", " "),
+            "disclosed_historical": f"the company's earlier {form} lease note",
+            "derived": "the company's lease payments and lease liability in the 10-K",
+            "estimated": "the company's cost of debt",
+        }.get(classification or "", "the company's lease note")
 
     @staticmethod
     def _lease_review_after_row_fix(review, row_fix):

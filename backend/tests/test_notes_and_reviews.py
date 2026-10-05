@@ -177,3 +177,61 @@ def test_template_error_cell_rules_are_not_duplicated(tmp_path: Path):
     for sheet, addr in ((LQ_IS, "L1"), (LQ_CF, "H1")):
         rules = [r for rng, rs in wb[sheet].conditional_formatting._cf_rules.items() if addr in str(rng.sqref) for r in rs]
         assert len(rules) == 2          # the template's own green (0) and red (not 0) rules are used as they are
+
+
+# ---------------------------------------------------------------- corrections are applied, not only flagged
+def _apply(path: Path):
+    from services.valuation_correction_service import ValuationCorrectionService
+
+    return ValuationCorrectionService().apply(path)
+
+
+def test_distorted_average_roe_is_replaced_and_documented(tmp_path: Path):
+    roe = [0.12, 0.13, 0.12, 0.14, 0.13, 0.70, 0.12, 0.13, 0.14, 0.13]
+    path = _valuation_workbook(tmp_path / "a.xlsx", oe=[100] * 10, roe=roe, g=0.11)
+    review = _apply(path)
+    wb = load_workbook(path)
+    er = wb["Expected Returns & Buybacks"]
+    normal = [v for v in roe if v != 0.70]
+    assert er["A14"].value == pytest.approx(sum(normal) / len(normal), abs=1e-4)          # the normal years' average replaces 18.6%
+    assert er["A14"].number_format == "0.0%"
+    applied = [a for a in review.applied if a.topic == "expected_return"]
+    assert applied and applied[0].cell.endswith("A14") and applied[0].kind == "replaced"
+    ledger = [str(c.value) for row in wb["HAP Adjustments"].iter_rows(min_row=5) for c in row if c.value]
+    assert "Expected return input" in ledger
+    text = " ".join(review.notes("expected_return"))
+    assert "was replaced with 12.9% (it was 18.6%)" in text and "FY2021" in text and "kept in the HAP Adjustments tab" in text
+
+
+def test_book_value_growth_above_the_limit_is_capped(tmp_path: Path):
+    path = _valuation_workbook(tmp_path / "b.xlsx", oe=[100] * 10, roe=[0.40] * 10, g=0.34)
+    review = _apply(path)
+    er = load_workbook(path)["Expected Returns & Buybacks"]
+    assert er["A11"].value == pytest.approx(0.15)                                          # 0.84 retention x 40% ROE = 34% is capped
+    assert any(a.cell.endswith("A11") for a in review.applied)
+
+
+def test_a_clearly_wrong_owner_earnings_growth_replaces_the_model_value(tmp_path: Path):
+    path = _valuation_workbook(tmp_path / "c.xlsx", oe=[74, 200, 260, 280, 290, 300, 310, 330, 380, 424], roe=[0.13] * 10)
+    review = _apply(path)
+    ev = load_workbook(path)["Enterprise Value"]
+    assert 0.10 < ev["C6"].value < 0.15 and ev["C6"].number_format == "0.0%"             # was about 21%, now the 3-year-average rate
+    applied = [a for a in review.applied if a.topic == "owner_earnings"][0]
+    assert applied.kind == "replaced" and "was replaced with" in applied.what and "FY2016" in applied.why
+
+
+def test_a_borderline_owner_earnings_growth_gets_a_parallel_calculation(tmp_path: Path):
+    oe = [280, 300, 320, 345, 370, 400, 430, 460, 490, 520]      # about 7% a year; the start year is normal
+    path = _valuation_workbook(tmp_path / "d.xlsx", oe=oe, roe=[0.13] * 10, annual=0.17)
+    review = _apply(path)
+    ev = load_workbook(path)["Enterprise Value"]
+    applied = [a for a in review.applied if a.topic == "owner_earnings"]
+    assert applied and applied[0].kind == "parallel" and ev["C6"].value == 0.17            # the original stays; a corrected copy sits below
+    assert "HAP Alternative" in str(ev["A54"].value) or any("HAP" in str(c.value) for row in ev.iter_rows(min_row=50) for c in row if c.value)
+
+
+def test_realistic_inputs_are_not_touched(tmp_path: Path):
+    path = _valuation_workbook(tmp_path / "e.xlsx", oe=[200, 215, 230, 248, 265, 285, 305, 330, 355, 380], roe=[0.13] * 10, g=0.11)
+    before = path.read_bytes()
+    review = _apply(path)
+    assert not review.applied and path.read_bytes() == before

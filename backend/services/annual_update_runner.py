@@ -67,6 +67,16 @@ class AnnualUpdateRunner:
         self.excel_recalc = ExcelRecalcService()
         self.buybacks = NewCompanyBuybackService()
 
+    @staticmethod
+    def _estimated_lease_rate(leases) -> float | None:
+        """The analyst's own long-term rate from earlier years, when it is one steady number (3 or more years within half a point)."""
+        import statistics
+
+        rates = [r for r in (getattr(leases, "historical_rates", None) or []) if isinstance(r, (int, float))]
+        if len(rates) >= 3 and statistics.pstdev(rates) <= 0.005:
+            return float(statistics.median(rates))
+        return None
+
     def run_workbook_phases(
         self,
         *,
@@ -277,7 +287,12 @@ class AnnualUpdateRunner:
         if new_fy:
             lease_row_fix = timed(
                 "lease_rate_row_fix",
-                lambda: self.lease_rows.apply(workbook_path=working_path, newest_only_fy=new_fy),
+                lambda: self.lease_rows.apply(
+                    workbook_path=working_path,
+                    newest_only_fy=new_fy,
+                    estimated_rate=self._estimated_lease_rate(leases),
+                    estimated_basis="the long-term rate the analyst used in earlier years",
+                ),
             )
             if lease_row_fix.changed:
                 timed(
@@ -339,6 +354,21 @@ class AnnualUpdateRunner:
             base_obj.disclosure = AnnualNormalizedBaseDisclosureService().build(base_obj, analytical)
             ctx["oe_base_analysis"] = base_obj.model_dump()
             ctx["analytical_research"] = analytical
+        from services.valuation_correction_service import ValuationCorrectionService
+
+        def _correct_valuation_inputs():
+            try:
+                return ValuationCorrectionService().apply(working_path, company_facts)
+            except Exception:  # noqa: BLE001 - advisory: never stops the run
+                return None
+
+        input_review = timed("valuation_input_corrections", _correct_valuation_inputs)
+        if input_review is not None and input_review.applied:
+            timed(
+                "excel_recalculation_after_valuation_corrections",
+                lambda: self.excel_recalc.recalculate(analysis_id=analysis_id, ticker=ticker, workbook_path=working_path, fiscal_year=new_fy),
+            )
+        self.judgment.input_review = input_review
         er_rep, judge = timed(
             "expected_return_ev_graham_judgment",
             lambda: self.judgment.apply(
@@ -474,6 +504,7 @@ class AnnualUpdateRunner:
             "annual_statement_validation_report.json": stmt,
             "annual_restatement_report.json": rest,
             "annual_analyst_judgment_report.json": judge,
+            "valuation_inputs_review.json": input_review.payload() if input_review is not None else {},
             "annual_research_report.json": research,
             "annual_output_gate_report.json": gate,
             "annual_buyback_report.json": buybacks,

@@ -2179,7 +2179,6 @@ def test_lease_disclosed_rate_does_not_overwrite_long_term_formulas(tmp_path: Pa
         assert str(wb["Leases"]["C18"].value).startswith("=Inputs!")
         blob = " ".join(str(c.value or "") for row in wb["Leases"].iter_rows() for c in row)
         assert "Lease discount rate set at 4.50%" in blob
-        assert "interest expense divided by total debt" in blob
         assert report.review.selected_rate == pytest.approx(0.045)
     finally:
         wb.close()
@@ -2222,13 +2221,15 @@ def test_rd_selected_life_rewrites_three_year_schedule_formulas(tmp_path: Path):
     wb = load_workbook(path)
     try:
         assert wb["R&D"]["B8"].value == 5
-        e3 = str(wb["R&D"]["E3"].value or "")
-        e4 = str(wb["R&D"]["E4"].value or "")
-        assert "/5" in e3.replace(" ", "") or "*1/5" in e3.replace(" ", "")
+        # a 5-year life needs 4 look-back years; the template has 3, so B1:N4 moved one column right (first year now in F)
+        assert wb["R&D"]["F1"].value == "=Inputs!C1"
+        e3 = str(wb["R&D"]["F3"].value or "")
+        e4 = str(wb["R&D"]["F4"].value or "")
+        assert "B2" in e3 and "/5" in e3.replace(" ", "")
         assert "/3" not in e3.replace(" ", "")
         assert e4.replace(" ", "").endswith("/5,0)") or "/5)" in e4.replace(" ", "")
         assert isinstance(wb["R&D"]["B2"].value, (int, float))
-        assert wb["R&D"]["B20"].value is not None
+        assert wb["R&D"]["B20"].value is None  # no helper row: the look-back lives in the shifted columns
         blob = " ".join(str(c.value or "") for row in wb["R&D"].iter_rows() for c in row)
         assert "R&D useful life set at 5 years" in blob
     finally:

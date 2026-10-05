@@ -130,3 +130,56 @@ def test_nothing_to_fix_means_the_file_is_not_rewritten(tmp_path: Path):
     before = path.read_bytes()
     report = LeaseRateRowService().apply(workbook_path=path)
     assert not report.changed and path.read_bytes() == before
+
+
+def _rate_workbook(path: Path, rates: list) -> Path:
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Leases"
+    ws["A1"] = "Year"
+    for i, rate in enumerate(rates):
+        ws.cell(1, 3 + i).value = f"FY{2016 + i}"          # year columns start at C, as in the real tab
+        ws.cell(18, 3 + i).value = rate
+    ws["A18"] = "Estimated Long-Term Rate"
+    wb.save(path)
+    return path
+
+
+def test_row_is_replaced_in_all_years_when_most_years_are_far_from_the_estimate(tmp_path: Path):
+    path = _rate_workbook(tmp_path / "a.xlsx", [0.08, 0.075, 0.09, 0.085, 0.07, 0.065])
+    report = LeaseRateRowService().apply(workbook_path=path, estimated_rate=0.045, estimated_basis="the company's 10-K lease note")
+    ws = load_workbook(path)["Leases"]
+    assert report.mode == "all_years" and len(report.fixes) == 6
+    assert [ws.cell(18, c).value for c in range(3, 9)] == [0.045] * 6
+    notes = [str(c.value) for row in ws.iter_rows() for c in row if c.value]
+    assert any("replaced with 4.50% in all 6 years" in n and "Source: the company's 10-K lease note" in n for n in notes)
+
+
+def test_only_the_far_years_are_replaced_when_the_rest_agree_with_the_estimate(tmp_path: Path):
+    path = _rate_workbook(tmp_path / "b.xlsx", [0.044, 0.046, 0.045, 0.092, 0.047, 0.043])
+    report = LeaseRateRowService().apply(workbook_path=path, estimated_rate=0.045)
+    ws = load_workbook(path)["Leases"]
+    assert report.mode == "differing_years" and [f.fiscal_year for f in report.fixes] == ["FY2019"]
+    assert ws["F18"].value == 0.045 and ws["C18"].value == 0.044             # near years keep the formula result
+
+
+def test_a_noisy_row_gets_one_consistent_rate_and_newest_only_limits_the_change(tmp_path: Path):
+    noisy = [0.02, 0.09, 0.03, 0.095, 0.025, 0.05]
+    path = _rate_workbook(tmp_path / "c.xlsx", noisy)
+    report = LeaseRateRowService().apply(workbook_path=path, estimated_rate=0.05)
+    assert report.mode == "all_years"
+    path2 = _rate_workbook(tmp_path / "d.xlsx", noisy)
+    only_latest = LeaseRateRowService().apply(workbook_path=path2, newest_only_fy="FY2021", estimated_rate=0.03)
+    out = load_workbook(path2)["Leases"]
+    assert [f.fiscal_year for f in only_latest.fixes] == ["FY2021"] and out["C18"].value == 0.02 and out["H18"].value == 0.03
+
+
+def test_a_year_with_its_own_disclosed_rate_uses_it(tmp_path: Path):
+    path = _rate_workbook(tmp_path / "e.xlsx", [0.08, 0.075, 0.09, 0.085])
+    report = LeaseRateRowService().apply(
+        workbook_path=path, estimated_rate=0.045,
+        lease_years=[SimpleNamespace(fiscal_year="FY2017", reported_discount_rate=3.9)],
+    )
+    ws = load_workbook(path)["Leases"]
+    assert ws["D18"].value == 0.039 and ws["C18"].value == 0.045
+    assert {f.fiscal_year: f.method for f in report.fixes}["FY2017"] == "company_disclosed"

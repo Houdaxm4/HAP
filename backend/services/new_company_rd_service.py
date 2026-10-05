@@ -20,6 +20,7 @@ from services.annual_period_service import detect_workbook_years, detect_year_co
 from services.annual_rd_service import AnnualRdService
 from services.hap_analysis_layout_service import HapAnalysisLayoutService
 from services.sec_service import SecService
+from services.rd_layout import insert_lookback_columns, rd_year_columns
 from services.tab_notes import add_notes, note
 
 _PERMITTED = (1, 10)
@@ -360,12 +361,13 @@ class NewCompanyRdService:
                     )
                 )
             self._write_inputs_rd(wb, amounts, written)
+            shifted = self._extend_lookback_columns(wb, life, written)
             extra_needed = self._write_lookback_prewindow(
                 wb, amounts, first, life, written
             )
             extended = self._extend_schedule(wb, fiscal_years, life, written)
             self._apply_selected_life_formulas(
-                wb, fiscal_years, life, extra_needed, written
+                wb, fiscal_years, life, extra_needed, written, force=bool(shifted)
             )
             notes = self._write_decision_notes(wb, decision, lookback, written)
             wb.save(workbook_path)
@@ -600,6 +602,19 @@ class NewCompanyRdService:
                 extended = True
         return extended
 
+    @staticmethod
+    def _extend_lookback_columns(wb, life: int, written: list[str]) -> list[str]:
+        """Shift B1:N4 to the right so the tab holds all life - 1 look-back years (2010 to 2015 for a 7-year life and a 2016 start)."""
+        if "R&D" not in wb.sheetnames:
+            return []
+        have = len(AnnualRdService._prewindow_expense_columns(wb["R&D"]))
+        missing = max(int(life) - 1, 0) - have
+        if missing <= 0:
+            return []
+        headers = insert_lookback_columns(wb, missing)
+        written.extend(headers)
+        return headers
+
     def _write_lookback_prewindow(
         self,
         wb,
@@ -700,12 +715,13 @@ class NewCompanyRdService:
         life: int,
         extra_needed: int,
         written: list[str],
+        force: bool = False,
     ) -> None:
         if "R&D" not in wb.sheetnames or "Inputs" not in wb.sheetnames or life < 1:
             return
         ows = wb["R&D"]
         inp_cols = detect_year_columns(wb["Inputs"], wb)
-        rd_cols = {fy: c + 2 for fy, c in inp_cols.items() if str(fy).startswith("FY")}
+        rd_cols = rd_year_columns(ows, inp_cols)
         pre = AnnualRdService._prewindow_expense_columns(ows)
         for fy in fiscal_years:
             col = rd_cols.get(fy)
@@ -714,10 +730,10 @@ class NewCompanyRdService:
             addrs = self._expense_window_addrs(col, life, pre, extra_needed)
             asset_cell = ows.cell(3, col)
             amort_cell = ows.cell(4, col)
-            if self._is_life_adaptable(asset_cell.value):
+            if force or self._is_life_adaptable(asset_cell.value):
                 asset_cell.value = self._asset_formula(addrs, life)
                 written.append(f"R&D!{get_column_letter(col)}3")
-            if self._is_life_adaptable(amort_cell.value):
+            if force or self._is_life_adaptable(amort_cell.value):
                 amort_cell.value = self._amort_formula(addrs, life)
                 written.append(f"R&D!{get_column_letter(col)}4")
 

@@ -9,6 +9,9 @@ Order of choice for each bad year:
 2. The median of the nearest realistic years in the same row (matches earlier years).
 3. A business-based estimate: 4-6% for investment-grade-like companies, 6-9% otherwise.
 
+When the agent has decided on an estimated long-term rate (the company's disclosed lease rate, or an estimate), the row is then ALIGNED to it:
+the years whose formula result is far from that rate are replaced, or all years when one consistent rate fits the company better.
+
 It reads cached values, so the workbook must have been recalculated first, and it needs another recalculation afterwards.
 """
 
@@ -33,6 +36,9 @@ NON_IG_RATE = 0.075
 STRESSED_RATE = 0.085
 _RATE_LABELS = ("estimated long-term rate", "long-term rate", "long term rate", "lease rate")
 NOTES_START_ROW = 23
+SIGNIFICANT_GAP = 0.02      # a year this far (2 points) from the estimated long-term rate is replaced
+NOISY_SPREAD = 0.025        # yearly formula results this spread out mean one consistent rate describes the debt better
+ALL_YEARS_SHARE = 0.5       # replace every year when at least this share of the years is far from the estimate
 
 
 @dataclass
@@ -53,6 +59,10 @@ class LeaseRowReport:
     credit_profile: dict[str, Any] = field(default_factory=dict)
     skipped: list[str] = field(default_factory=list)
     notes_rows: list[int] = field(default_factory=list)
+    mode: str = ""                      # "" | bad_years | differing_years | all_years
+    estimated_rate: float | None = None
+    estimated_basis: str = ""
+    formula_range: tuple[float, float] | None = None
 
     @property
     def changed(self) -> bool:
@@ -142,6 +152,8 @@ class LeaseRateRowService:
         workbook_path: Path,
         lease_years: list[Any] | None = None,
         newest_only_fy: str | None = None,
+        estimated_rate: float | None = None,
+        estimated_basis: str = "the company's lease note",
     ) -> LeaseRowReport:
         """Fix the rate row. `newest_only_fy` limits changes to one year (annual update: earlier years are copied)."""
         report = LeaseRowReport()
@@ -173,40 +185,72 @@ class LeaseRateRowService:
             ws = wb["Leases"]
             ledger = AdjustmentLedger(wb)
             report.checked = len(ordered)
-            for fy, current in ordered:
-                if newest_only_fy is not None and fy != newest_only_fy:
-                    continue
-                if is_realistic(current):
-                    continue
+            plan = self._plan(ordered, newest_only_fy, estimated_rate, estimated_basis, disclosed, report)
+            for fy, current, rate, method, why, source in plan:
                 cell = ws.cell(rate_row, cols[fy])
-                rate, method, reason = choose_rate(fy, ordered, disclosed, report.credit_profile)
                 original = current if current is not None else "blank or N/A"
-                source = {
-                    "company_disclosed": "10-K operating-lease note (SEC XBRL)",
-                    "nearest_realistic_years": f"Leases!{ws.cell(rate_row, 1).coordinate} neighbors",
-                    "business_estimate": "HAP business-based estimate (Inputs: debt, interest, EBIT)",
-                }[method]
-                why = (
-                    f"the formula (interest expense / total debt) gave {self._fmt(current)}, "
-                    f"outside the realistic range {RATE_MIN * 100:.0f}%-{RATE_MAX * 100:.0f}%; {reason}"
-                )
                 original_formula = cell.value
                 cell.value = rate
                 ledger.record(
                     sheet="Leases", cell=cell.coordinate, fiscal_year=fy, category="Lease rate",
                     what="Estimated Long-Term Rate", original=original_formula, new=rate, amount=rate,
                     reason=why, source=source, method=method,
-                    confidence="high" if method == "company_disclosed" else ("medium" if method == "nearest_realistic_years" else "low"),
+                    confidence="high" if method == "company_disclosed" else ("medium" if method in {"nearest_realistic_years", "estimated_rate"} else "low"),
                 )
-                report.fixes.append(
-                    LeaseRateFix(fy, f"Leases!{cell.coordinate}", original, rate, method, why, source)
-                )
+                report.fixes.append(LeaseRateFix(fy, f"Leases!{cell.coordinate}", original, rate, method, why, source))
             if report.fixes:
                 report.notes_rows = self._write_notes(ws, report, rate_row)
                 wb.save(path)
         finally:
             wb.close()
         return report
+
+    def _plan(self, ordered, newest_only_fy, estimated_rate, basis, disclosed, report) -> list[tuple]:
+        """Which years to replace and with what: (fy, current, rate, method, reason, source)."""
+        candidates = [(fy, cur) for fy, cur in ordered if newest_only_fy is None or fy == newest_only_fy]
+        realistic = [float(v) for _fy, v in ordered if is_realistic(v)]
+        if realistic:
+            report.formula_range = (min(realistic), max(realistic))
+        plan: list[tuple] = []
+        if estimated_rate is None or not is_realistic(estimated_rate):
+            for fy, current in candidates:
+                if is_realistic(current):
+                    continue
+                rate, method, reason = choose_rate(fy, ordered, disclosed, report.credit_profile)
+                source = {
+                    "company_disclosed": "10-K operating-lease note (SEC XBRL)",
+                    "nearest_realistic_years": "neighbouring years in the same row",
+                    "business_estimate": "credit-based estimate from debt, interest and EBIT",
+                }[method]
+                why = (f"the formula (interest expense / total debt) gave {self._fmt(current)}, outside the realistic range "
+                       f"{RATE_MIN * 100:.0f}%-{RATE_MAX * 100:.0f}%; {reason}")
+                plan.append((fy, current, rate, method, why, source))
+            if plan:
+                report.mode = "bad_years"
+            return plan
+
+        estimate = round(float(estimated_rate), 4)
+        report.estimated_rate, report.estimated_basis = estimate, basis
+        bad = [fy for fy, cur in candidates if not is_realistic(cur)]
+        differing = [fy for fy, cur in candidates if is_realistic(cur) and abs(float(cur) - estimate) > SIGNIFICANT_GAP]
+        noisy = len(realistic) >= 4 and statistics.pstdev(realistic) > NOISY_SPREAD
+        all_years = bool(candidates) and ((len(bad) + len(differing)) >= ALL_YEARS_SHARE * len(candidates) or noisy)
+        chosen = [fy for fy, _c in candidates] if all_years else [fy for fy, _c in candidates if fy in set(bad) | set(differing)]
+        report.mode = "all_years" if all_years and chosen else ("differing_years" if chosen else "")
+        current_by_year = dict(candidates)
+        for fy in chosen:
+            current = current_by_year[fy]
+            rate = round(disclosed.get(fy, estimate), 4)
+            if is_realistic(current) and abs(float(current) - rate) <= 0.0005:
+                continue
+            if all_years:
+                why = (f"one consistent long-term rate of {rate * 100:.2f}% describes the company's debt better than the yearly formula "
+                       f"(interest expense / total debt), which gave {self._fmt(current)}")
+            else:
+                why = (f"the formula (interest expense / total debt) gave {self._fmt(current)}, far from the estimated long-term rate of "
+                       f"{rate * 100:.2f}%")
+            plan.append((fy, current, rate, "company_disclosed" if fy in disclosed else "estimated_rate", why, basis))
+        return plan
 
     @staticmethod
     def _fmt(value: Any) -> str:
@@ -245,15 +289,30 @@ class LeaseRateRowService:
         from services.tab_notes import add_notes, note
 
         years = ", ".join(fix.fiscal_year for fix in report.fixes)
+        basis = report.estimated_basis or "the company's lease note, neighbouring years, or a credit-based estimate; details are in the HAP Adjustments tab"
+        if report.mode == "all_years" and report.estimated_rate is not None:
+            low, high = report.formula_range or (None, None)
+            span = f", which swings between {low * 100:.1f}% and {high * 100:.1f}%" if low is not None and high is not None else ""
+            text = note(
+                f"The long-term lease rate was replaced with {report.estimated_rate * 100:.2f}% in all {len(report.fixes)} years",
+                f"one consistent rate describes the company's debt better than the yearly interest-over-debt formula{span}",
+                basis,
+            )
+        elif report.mode == "differing_years" and report.estimated_rate is not None:
+            text = note(
+                f"The long-term lease rate for {years} was replaced with {report.estimated_rate * 100:.2f}%",
+                "the formula result in those years is far from the estimated long-term rate",
+                basis,
+            )
+        else:
+            text = note(
+                f"The long-term lease rate for {years} was replaced",
+                f"the template formula gave a blank or unrealistic result (outside {RATE_MIN * 100:.0f}% to {RATE_MAX * 100:.0f}%)",
+                basis,
+            )
         written = add_notes(
             ws,
-            [
-                note(
-                    f"The long-term lease rate for {years} was replaced",
-                    f"the template formula gave a blank or unrealistic result (outside {RATE_MIN * 100:.0f}% to {RATE_MAX * 100:.0f}%)",
-                    "the company's lease note, neighbouring years, or a credit-based estimate; details are in the HAP Adjustments tab",
-                )
-            ],
-            replace_containing=("The long-term lease rate for",),
+            [text],
+            replace_containing=("The long-term lease rate for", "The long-term lease rate was replaced", "long-term rate row on this tab"),
         )
         return [int("".join(ch for ch in cell.split("!")[-1] if ch.isdigit())) for cell in written]

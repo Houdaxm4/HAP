@@ -818,21 +818,8 @@ class NewCompanyLeaseService:
             }.get(review.classification or "", "it is the best supported rate available")
             lines = [
                 note(f"Lease discount rate set at {rate_txt}", how, source),
-                note(
-                    "The long-term rate row on this tab keeps its formula (interest expense divided by total debt) in years where the result is realistic",
-                    "that is the template's own method",
-                    "the Inputs tab",
-                ),
             ]
-            if rate_row:
-                lines.append(
-                    note(
-                        "Years where the formula result was blank, below 1% or above 10% were replaced with a justified rate",
-                        "a rate outside that range is not realistic for a lease",
-                        "the company's lease note, neighbouring years, or a credit-based estimate (listed in the HAP Adjustments tab)",
-                    )
-                )
-            written = add_notes(ws, lines, replace_containing=("Lease discount rate set at", "long-term rate row on this tab", "Years where the formula result"))
+            written = add_notes(ws, lines, replace_containing=("Lease discount rate set at",))
             wb.save(path)
             return written
         finally:

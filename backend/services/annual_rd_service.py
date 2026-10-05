@@ -12,6 +12,7 @@ from openpyxl.utils import get_column_letter
 from models.annual_update import AnnualRdReport
 from services.annual_period_service import detect_workbook_years, detect_year_columns
 from services.formula_utils import is_formula, shift_formula_columns
+from services.rd_layout import rd_year_columns
 
 _LIFE_CELLS = ("B8", "C8", "B2")
 _COL_LETTER_RE = re.compile(r"([A-Z]+)")
@@ -161,7 +162,7 @@ class AnnualRdService:
                     if not any(k.startswith("FY") for k in inp_cols):
                         inp_cols = detect_workbook_years(workbook_path)
                     # R&D expense row uses cols E..=Inputs!C.. so offset +2
-                    cols = {fy: c + 2 for fy, c in inp_cols.items() if str(fy).startswith("FY")}
+                    cols = rd_year_columns(ows, inp_cols)
 
                 col = cols.get(token)
                 expense_row = 2
@@ -254,7 +255,7 @@ class AnnualRdService:
             inp_col = inp_cols.get(token)
             if not inp_col:
                 return report
-            rd_col = inp_col + 2  # R&D expense band offset
+            rd_col = rd_year_columns(wb["R&D"], inp_cols).get(token, inp_col + 2)
             expense = _num(wb["R&D"].cell(2, rd_col).value)
             asset = _num(wb["R&D"].cell(3, rd_col).value)
             amort = _num(wb["R&D"].cell(4, rd_col).value)
@@ -369,7 +370,7 @@ class AnnualRdService:
     @staticmethod
     def _prewindow_expense_columns(ws) -> list[int]:
         cols: list[int] = []
-        for col in range(2, min(ws.max_column or 1, 20) + 1):
+        for col in range(2, min(ws.max_column or 1, 40) + 1):
             header = ws.cell(1, col).value
             expense = ws.cell(2, col).value
             header_s = str(header or "")
@@ -412,7 +413,7 @@ class AnnualRdService:
                 return _num(p_inp.cell(row, col).value)
         if "R&D" in prev.sheetnames:
             # Window expense band is typically Inputs col + 2.
-            return _num(prev["R&D"].cell(2, col + 2).value)
+            return _num(prev["R&D"].cell(2, rd_year_columns(prev["R&D"], prev_cols).get(dropped_fy, col + 2)).value)
         return None
 
     def _verify_rd_prewindow(self, ows, wb, life_years: int) -> tuple[bool, list[str]]:
@@ -454,7 +455,7 @@ class AnnualRdService:
         if not any(k.startswith("FY") for k in inp_cols):
             return False
         # Map FY → R&D sheet column (expense band starts at E for Inputs!C).
-        rd_cols = {fy: c + 2 for fy, c in inp_cols.items() if str(fy).startswith("FY")}
+        rd_cols = rd_year_columns(ows, inp_cols)
         new_col = rd_cols.get(token)
         if new_col is None:
             return False

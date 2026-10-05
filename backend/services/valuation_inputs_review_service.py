@@ -48,10 +48,38 @@ class ReviewFinding:
 
 
 @dataclass
+class AppliedCorrection:
+    topic: str                  # expected_return | owner_earnings
+    cell: str                   # e.g. "Expected Returns & Buybacks!A14"
+    original: Any
+    new: Any
+    kind: str                   # replaced | parallel
+    what: str                   # what was done, plain language
+    why: str                    # why, plain language
+    source: str
+
+
+@dataclass
 class ValuationInputsReview:
     findings: list[ReviewFinding] = field(default_factory=list)
     alternatives: dict[str, Any] = field(default_factory=dict)
     skipped: list[str] = field(default_factory=list)
+    applied: list[AppliedCorrection] = field(default_factory=list)
+    left_as_is: dict[str, str] = field(default_factory=dict)
+
+    def payload(self) -> dict[str, Any]:
+        """The review as plain data (saved next to the other reports)."""
+        return {
+            "flagged_for_discussion": [f.text for f in self.flagged],
+            "findings": [{"topic": f.topic, "metric": f.metric, "verdict": f.verdict, "text": f.text} for f in self.findings],
+            "alternatives": self.alternatives,
+            "corrections_applied": [
+                {"topic": a.topic, "cell": a.cell, "original": str(a.original), "new": a.new, "kind": a.kind, "what": a.what, "why": a.why}
+                for a in self.applied
+            ],
+            "left_as_is": self.left_as_is,
+            "skipped": self.skipped,
+        }
 
     @property
     def flagged(self) -> list[ReviewFinding]:
@@ -72,6 +100,11 @@ class ValuationInputsReview:
             checked = "the owner's earnings growth rate used to project enterprise value"
             risk = "a very high, negative or very low rate, or one unusual start year, can distort the whole valuation"
             source = "the Final Metrics tab history"
+        applied = [a for a in self.applied if a.topic == topic]
+        if applied:
+            out = [note(a.what, a.why, a.source) for a in applied]
+            out.append(note("The original formulas and values are kept in the HAP Adjustments tab", "so any correction can be undone by hand", because=False))
+            return out
         flagged = [f for f in items if f.verdict == "flag"]
         if not flagged:
             return [note(f"Reviewed {checked}, and they look realistic", "They are close to what the company actually delivered", source, because=False)]
@@ -81,7 +114,8 @@ class ValuationInputsReview:
         alt = self.alternatives.get(topic)
         if alt:
             out.append(note(alt, "This shows the result on a more typical basis", source, because=False))
-        out.append(note("No model value was changed", "The flagged inputs are for your decision", because=False))
+        reason = self.left_as_is.get(topic)
+        out.append(note("No model value was changed", reason or "The flagged inputs are for your decision", because=False))
         return out
 
 

@@ -75,6 +75,15 @@ REQUIRED_ANNUAL_OUTPUTS: tuple[tuple[str, str], ...] = (
 )
 
 
+def _rd_col(wb, cols: dict, token: str, col: int) -> int:
+    """Column of the fiscal year on the R&D tab (its look-back shift moves it away from Inputs column + 2)."""
+    if "R&D" not in wb.sheetnames:
+        return col + 2
+    from services.rd_layout import rd_year_columns
+
+    return rd_year_columns(wb["R&D"], cols).get(token, col + 2)
+
+
 def _fy_dependent_outputs(path: Path, fiscal_year: str | None) -> list[tuple[str, str]]:
     """Tax / R&D / IC / Final Metrics cells for the new fiscal-year column."""
     if not fiscal_year:
@@ -95,7 +104,7 @@ def _fy_dependent_outputs(path: Path, fiscal_year: str | None) -> list[tuple[str
         if not col:
             return []
         letter = get_column_letter(col)
-        rd_letter = get_column_letter(col + 2)
+        rd_letter = get_column_letter(_rd_col(wb, cols, token, col))
         out: list[tuple[str, str]] = [
             ("Tax", f"{letter}15"),
             ("Tax", f"{letter}25"),
