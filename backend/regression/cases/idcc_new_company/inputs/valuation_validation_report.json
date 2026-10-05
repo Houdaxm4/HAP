@@ -1,9 +1,9 @@
 {
-  "analysis_id": "44f4d41f-1e20-47ee-8f57-9b0f3a2b6059",
+  "analysis_id": "d74e1f47-3608-425b-8aea-5cbe08cf9610",
   "ticker": "IDCC",
   "schema_version": "1.0.0",
   "milestone": "valuation_margin_of_safety_entry_price_review",
-  "workbook_path": "C:\\Users\\Soulaymane Kachani\\Downloads\\HAP2\\backend\\storage\\outputs\\44f4d41f-1e20-47ee-8f57-9b0f3a2b6059\\completed_workbook.xlsx",
+  "workbook_path": "C:\\Users\\Soulaymane Kachani\\Downloads\\HAP2\\backend\\storage\\outputs\\d74e1f47-3608-425b-8aea-5cbe08cf9610\\completed_workbook.xlsx",
   "methodology": {
     "primary_intrinsic": "Graham Growth Intrinsic Value (Final Metrics row 33 / Enterprise Value!B42)",
     "intrinsic_formula": "EPS \u00d7 (PE_multiplier + CAGR% \u00d7 growth_multiplier)",

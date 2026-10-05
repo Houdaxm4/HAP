@@ -1,9 +1,9 @@
 {
-  "analysis_id": "44f4d41f-1e20-47ee-8f57-9b0f3a2b6059",
+  "analysis_id": "d74e1f47-3608-425b-8aea-5cbe08cf9610",
   "ticker": "IDCC",
   "schema_version": "1.0.0",
   "milestone": "roic_nopat_invested_capital_review",
-  "workbook_path": "C:\\Users\\Soulaymane Kachani\\Downloads\\HAP2\\backend\\storage\\outputs\\44f4d41f-1e20-47ee-8f57-9b0f3a2b6059\\completed_workbook.xlsx",
+  "workbook_path": "C:\\Users\\Soulaymane Kachani\\Downloads\\HAP2\\backend\\storage\\outputs\\d74e1f47-3608-425b-8aea-5cbe08cf9610\\completed_workbook.xlsx",
   "methodology": {
     "ic_sheet": "IC & NOPAT & ROIC ",
     "invested_capital_formula": "Operating Assets - Operating Liabilities + Capitalized Leases + Capitalized R&D",
