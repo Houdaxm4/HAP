@@ -278,13 +278,9 @@ def test_original_ev_cells_untouched_when_disclosure_written(tmp_path: Path):
     wb = load_workbook(path, data_only=False)
     try:
         ev = wb["Enterprise Value"]
-        found = False
-        for row in ev.iter_rows():
-            for cell in row:
-                if cell.value == "OE BASE — HAP ANALYTICAL OBSERVATION":
-                    found = True
-                    assert ev.cell(cell.row, cell.column + 1).value == disc.display_text
-        assert found
+        notes_text = [str(c.value) for row in ev.iter_rows() for c in row if c.value]
+        assert "Notes" in notes_text
+        assert " ".join(disc.display_text.split()) in notes_text            # the disclosure is one plain-language note
     finally:
         wb.close()
     assert judge.oe_base_analysis is not None

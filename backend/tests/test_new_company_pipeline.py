@@ -1318,7 +1318,9 @@ def test_rd_override_writes_audit_trail(tmp_path: Path):
     # apply writes the visible warning
     svc.apply(analysis_id="a", ticker="MSFT", workbook_path=path, fiscal_years=FY, decision=second)
     wb = load_workbook(path)
-    assert "HAP ANALYSIS" in str(wb["R&D"]["A1"].value)
+    assert "HAP ANALYSIS" not in str(wb["R&D"]["A1"].value)          # no scattered warning; one Notes block instead
+    blob = " ".join(str(c.value or "") for row in wb["R&D"].iter_rows() for c in row)
+    assert "R&D useful life set at 6 years by the analyst" in blob or "by the analyst" in blob
     wb.close()
 
 
@@ -1539,9 +1541,9 @@ def test_supported_lease_does_not_pause_before_com(tmp_path: Path, out_svc: Outp
     wb = load_workbook(tmp_path / "working.xlsx")
     try:
         found = False
-        for row in wb["Leases"].iter_rows(min_row=1, max_row=20, max_col=20):
+        for row in wb["Leases"].iter_rows(min_row=1, max_col=20):
             for cell in row:
-                if "HAP ANALYSIS" in str(cell.value or ""):
+                if "Lease discount rate set at" in str(cell.value or ""):
                     found = True
         assert found
     finally:
@@ -2176,8 +2178,8 @@ def test_lease_disclosed_rate_does_not_overwrite_long_term_formulas(tmp_path: Pa
     try:
         assert str(wb["Leases"]["C18"].value).startswith("=Inputs!")
         blob = " ".join(str(c.value or "") for row in wb["Leases"].iter_rows() for c in row)
-        assert "ASC 842" in blob
-        assert "Interest Expense / Total Debt" in blob
+        assert "Lease discount rate set at 4.50%" in blob
+        assert "interest expense divided by total debt" in blob
         assert report.review.selected_rate == pytest.approx(0.045)
     finally:
         wb.close()
@@ -2228,7 +2230,7 @@ def test_rd_selected_life_rewrites_three_year_schedule_formulas(tmp_path: Path):
         assert isinstance(wb["R&D"]["B2"].value, (int, float))
         assert wb["R&D"]["B20"].value is not None
         blob = " ".join(str(c.value or "") for row in wb["R&D"].iter_rows() for c in row)
-        assert "R&D!B8" in blob
+        assert "R&D useful life set at 5 years" in blob
     finally:
         wb.close()
     assert report.useful_life == 5
@@ -2464,9 +2466,9 @@ def test_autonomous_rd_does_not_derive_life_from_spend_and_does_not_pause(tmp_pa
     try:
         assert wb["R&D"]["B8"].value == 5 or wb["R&D"]["C8"].value == 5 or wb["R&D"]["B2"].value == 5
         hap = False
-        for row in wb["R&D"].iter_rows(min_row=1, max_row=20, max_col=22):
+        for row in wb["R&D"].iter_rows(min_row=1, max_col=22):
             for cell in row:
-                if "HAP ANALYSIS" in str(cell.value or "") or "useful life" in str(cell.value or "").lower():
+                if "R&D useful life set at" in str(cell.value or ""):
                     hap = True
         assert hap
         assert report.lookback_complete or report.expenses
@@ -2576,11 +2578,10 @@ def test_lease_notes_and_rate_cell_are_written(tmp_path: Path):
             for row in wb["Leases"].iter_rows()
             for cell in row
         )
-        assert "HAP ANALYSIS" in blob
-        assert "Classification" in blob
-        assert "Source filing" in blob
-        assert "Why HAP selected" in blob
-        assert "Material uncertainty" in blob
+        assert "Notes" in blob
+        assert "Lease discount rate set at 4.50%" in blob
+        assert "Source: the company's" in blob            # the source is always named
+        assert "AUTONOMOUS_AGENT_DECISION" not in blob     # no internal codes in the notes
         rate_vals = [wb["Leases"].cell(18, c).value for c in range(3, 13)]
         assert any(isinstance(v, (int, float)) and abs(float(v) - 0.045) < 1e-9 for v in rate_vals)
         assert wb["Expected Returns & Buybacks"]["A11"].value == 0.04

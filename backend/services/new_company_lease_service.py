@@ -18,6 +18,7 @@ from models.new_company import (
 from services.annual_period_service import detect_year_columns
 from services.hap_analysis_layout_service import HapAnalysisLayoutService
 from services.sec_service import SecService
+from services.tab_notes import add_notes, note
 
 _COMMITMENT_TAGS = {
     "year_1": (
@@ -800,49 +801,38 @@ class NewCompanyLeaseService:
                 applied = (
                     f"Selected {rate_txt} written to Leases row {rate_row} where cells were not formulas."
                 )
-            rows = [
-                ("Lease discount rate (selected)", rate_txt),
-                ("Classification", review.classification or (proposal.classification if proposal else "—")),
-                ("Decision class", review.decision_class),
-                (
-                    "Source filing / period",
-                    (
-                        f"{(proposal.source_form if proposal else '') or 'SEC'} "
-                        f"{(proposal.source_fiscal_year if proposal else '') or ''} "
-                        f"{(proposal.source_accession if proposal else '') or ''}"
-                    ).strip()
-                    or "—",
-                ),
-                (
-                    "Disclosure / methodology",
-                    (proposal.methodology if proposal else None) or "—",
-                ),
-                (
-                    "ASC 842 WtdAvg vs model long-term rate",
-                    (
-                        f"Selected {rate_txt} is the company-disclosed weighted-average operating-lease "
-                        "discount rate (ASC 842). The Industrial Template's Estimated Long-Term Rate "
-                        f"on Leases row {rate_row} is Interest Expense / Total Debt and is what NPV/PV "
-                        "capitalization uses when those cells are formulas."
-                    ),
-                ),
-                ("Workbook input cell", applied),
-                ("Dependent calculation / schedule", model_input),
-                (
-                    "Why HAP selected this rate",
-                    "; ".join((review.supporting_evidence or [])[:3]) or review.summary,
-                ),
-                (
-                    "Material uncertainty / limitations",
-                    (proposal.limitations if proposal else None)
-                    or (
-                        "A disclosed remaining-lease-term weighted-average rate is not always equal "
-                        "to the model's required long-term discount rate. Original row-18 formulas "
-                        "are the model's rate. Optional analyst override is available."
-                    ),
+            form = (proposal.source_form if proposal else None) or "SEC filing"
+            year = (proposal.source_fiscal_year if proposal else None) or ""
+            sources = {
+                "disclosed": f"the company's {form} {year} lease note".replace("  ", " "),
+                "disclosed_historical": f"the company's earlier {form} lease note",
+                "derived": "the company's lease commitments and lease liability in the 10-K",
+                "estimated": "the company's debt cost and market benchmark rates",
+            }
+            source = sources.get(review.classification or "", "the company's 10-K")
+            how = {
+                "disclosed": "it is the discount rate the company itself reports for its operating leases",
+                "disclosed_historical": "the latest year gives no rate, so the most recent reported rate was used",
+                "derived": "the company gives no rate, so it was worked out from the lease payments and the lease liability",
+                "estimated": "the company gives no rate, so it was estimated from its cost of debt",
+            }.get(review.classification or "", "it is the best supported rate available")
+            lines = [
+                note(f"Lease discount rate set at {rate_txt}", how, source),
+                note(
+                    "The long-term rate row on this tab keeps its formula (interest expense divided by total debt) in years where the result is realistic",
+                    "that is the template's own method",
+                    "the Inputs tab",
                 ),
             ]
-            written = HapAnalysisLayoutService().write_notes_section(ws, rows)
+            if rate_row:
+                lines.append(
+                    note(
+                        "Years where the formula result was blank, below 1% or above 10% were replaced with a justified rate",
+                        "a rate outside that range is not realistic for a lease",
+                        "the company's lease note, neighbouring years, or a credit-based estimate (listed in the HAP Adjustments tab)",
+                    )
+                )
+            written = add_notes(ws, lines, replace_containing=("Lease discount rate set at", "long-term rate row on this tab", "Years where the formula result"))
             wb.save(path)
             return written
         finally:

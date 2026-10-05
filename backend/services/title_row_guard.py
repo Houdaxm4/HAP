@@ -14,6 +14,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
+from openpyxl.styles import PatternFill
 from openpyxl.worksheet.worksheet import Worksheet
 
 STATEMENT_SHEETS = (
@@ -83,5 +84,6 @@ def clear_title_rows(wb, sheets: tuple[str, ...] = STATEMENT_SHEETS) -> TitleRow
                 value = cell.value
                 if isinstance(value, (int, float)) and not isinstance(value, bool):
                     cell.value = None
+                    cell.fill = PatternFill(fill_type=None)
                     report.cleared.append(f"{name}!{cell.coordinate}")
     return report

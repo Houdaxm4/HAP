@@ -203,7 +203,7 @@ class LeaseRateRowService:
                 )
             if report.fixes:
                 report.notes_rows = self._write_notes(ws, report, rate_row)
-            wb.save(path)
+                wb.save(path)
         finally:
             wb.close()
         return report
@@ -241,11 +241,19 @@ class LeaseRateRowService:
 
     @staticmethod
     def _write_notes(ws, report: LeaseRowReport, rate_row: int) -> list[int]:
-        """One pointer line under the table; the detail lives in the HAP Adjustments tab."""
-        start = max(NOTES_START_ROW, (ws.max_row or 0) + 2)
+        """One plain-language note in the tab's single Notes block; the detail is in the HAP Adjustments tab."""
+        from services.tab_notes import add_notes, note
+
         years = ", ".join(fix.fiscal_year for fix in report.fixes)
-        ws.cell(start, 1).value = (
-            f"HAP replaced the long-term rate for {years} (formula was blank, N/A, below {RATE_MIN * 100:.0f}% or above "
-            f"{RATE_MAX * 100:.0f}%). Details and originals: see the HAP Adjustments tab."
+        written = add_notes(
+            ws,
+            [
+                note(
+                    f"The long-term lease rate for {years} was replaced",
+                    f"the template formula gave a blank or unrealistic result (outside {RATE_MIN * 100:.0f}% to {RATE_MAX * 100:.0f}%)",
+                    "the company's lease note, neighbouring years, or a credit-based estimate; details are in the HAP Adjustments tab",
+                )
+            ],
+            replace_containing=("The long-term lease rate for",),
         )
-        return [start]
+        return [int("".join(ch for ch in cell.split("!")[-1] if ch.isdigit())) for cell in written]

@@ -83,7 +83,7 @@ def test_one_time_charge_is_removed_from_component_and_total(tmp_path: Path):
     ws = load_workbook(path)["Income - GAAP"]
     assert ws["D28"].value == 3.0 and ws["D22"].value == 108.0
     assert ws["C28"].value == 15.0 and ws["C22"].value == 120.0  # earlier year untouched in annual mode
-    assert "ADJ-" in ws["D28"].comment.text
+    assert ws["D28"].comment is None and ws["D28"].fill.fill_type == "solid"
     ledger = load_workbook(path)["HAP Adjustments"]
     cats = {ledger.cell(r, 5).value for r in range(5, 8) if ledger.cell(r, 1).value}
     assert cats == {"One-time operating income"}

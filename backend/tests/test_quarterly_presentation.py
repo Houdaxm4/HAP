@@ -17,6 +17,7 @@ from services.quarterly_health_service import (
     decide_presentation,
 )
 from services.quarterly_presentation_service import QuarterlyPresentationService
+from tests.ledger_util import entry, notes_text
 from services.sec_10q_statement_service import (
     classify_duration_from_dates,
     extract_sec_10q_statement,
@@ -318,7 +319,7 @@ def test_income_notes_are_placed_below_margin_formulas():
     header_rows = [
         row
         for row in range(1, (ws.max_row or 1) + 1)
-        if ws.cell(row, 1).value == "HAP ANALYSIS — NOTES"
+        if ws.cell(row, 1).value == "Notes"
     ]
     assert header_rows and header_rows[0] > 79
 
@@ -494,7 +495,7 @@ def test_preserve_does_not_rewrite_healthy(healthy_quarterly_wb: Path, tmp_path:
         assert after["Last Quarter IS Standardized"]["A12"].value == "Cost of Revenue"
         assert after["Last Quarter IS Standardized"]["C2"].value == "=C4"
         assert any(
-            after["Last Quarter IS Standardized"].cell(row, 1).value == "HAP ANALYSIS — NOTES"
+            after["Last Quarter IS Standardized"].cell(row, 1).value == "Notes"
             for row in range(1, (after["Last Quarter IS Standardized"].max_row or 1) + 1)
         )
     finally:
@@ -591,7 +592,7 @@ def test_labeled_blank_cash_flow_is_filled_from_sec(tmp_path: Path):
         sheet = out["Last Quarter CF Standardized"]
         assert sheet["A11"].value == "Cash from Operating Activities"
         assert sheet["C11"].value == pytest.approx(80.0)  # the cash-flow sheet is cumulative: 6M YTD, not the standalone Q2 (50)
-        assert "HAP FILLED" in sheet["C11"].comment.text
+        assert sheet["C11"].comment is None and entry(out, "Last Quarter CF Standardized", "C11", "Filled from filing")
         assert sheet["G11"].value in (None, "")
         assert sheet["E11"].value == '=IF(C11="","",C11)'
     finally:

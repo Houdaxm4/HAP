@@ -458,6 +458,7 @@ class NewCompanyRunner:
                     ),
                 )
                 val_report, er_rep, judgment, circular, recalc_post, analytical = val_pack
+                self._save_input_review(analysis_id, getattr(self.valuation_judgment, "last_input_review", None))
                 if recalc_post is not None:
                     recalc = recalc_post
                 mapped_wacc, mapped_wacc_src = (
@@ -762,6 +763,27 @@ class NewCompanyRunner:
         if roic is not None and wacc is not None:
             update["projected_roic_wacc"] = roic - wacc
         return projection.model_copy(update=update)
+
+    def _save_input_review(self, analysis_id: str, review) -> None:
+        """Keep the realism review of the valuation inputs next to the other reports so the analyst can discuss it."""
+        if review is None:
+            return
+        try:
+            self.output_service.write_json(
+                analysis_id,
+                "valuation_inputs_review.json",
+                {
+                    "flagged_for_discussion": [f.text for f in review.flagged],
+                    "findings": [
+                        {"topic": f.topic, "metric": f.metric, "verdict": f.verdict, "text": f.text} for f in review.findings
+                    ],
+                    "alternatives": review.alternatives,
+                    "skipped": review.skipped,
+                    "note": "Flags only: no model value was changed.",
+                },
+            )
+        except Exception:  # noqa: BLE001 - advisory
+            pass
 
     @staticmethod
     def _clear_title_rows(path: Path) -> list[str]:

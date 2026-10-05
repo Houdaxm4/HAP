@@ -31,11 +31,47 @@ CATEGORY_FILL = {
     "Operating liabilities": "FDE9D9",
     "One-time operating income": "EADCF4",
     "SEC override of Bloomberg": "FFF1C2",
+    "Filled from filing": "E6F4EA",
+    "Differs from filing": "FDE2E2",
+    "Missing figure": "FDE2E2",
+    "Recast to latest definition": "FFF1C2",
+    "Formula problem": "FCE4D6",
+    "Suggestion": "FDE2E2",
+    "Adjustment": "FFF1C2",
     "Cumulative from 10-Q": "E6F4EA",
     "Projection": "E0E7FF",
 }
 THIN = Side(style="thin", color="C9CED6")
 MARK = "◆"  # diamond: the marker shown in the comment title
+
+
+METHOD_LABELS = {
+    "sec_10q": "SEC 10-Q filing",
+    "derived": "Calculated from SEC figures",
+    "yahoo_quarterly_sum": "Yahoo Finance quarters added up (indicative)",
+    "company_disclosed": "Company's own disclosure",
+    "nearest_realistic_years": "Middle value of neighbouring years",
+    "business_estimate": "Credit-based estimate",
+    "formula_term_removed": "Line taken out of the formula",
+    "formula_term_added": "Line added to the formula",
+    "one_time_item": "One-time item removed",
+    "sec_override": "SEC figure replaces Bloomberg",
+    "house_projection_method": "House projection method",
+    "flag_only": "Flagged for review, not changed",
+}
+
+
+def human_method(method: str) -> str:
+    return METHOD_LABELS.get(method, method.replace("_", " ").capitalize())
+
+
+def human_source(source: str) -> str:
+    """Drop XBRL tag names so the source reads as a filing, not as code."""
+    import re
+
+    text = re.sub(r"\s*,?\s*us-gaap:[A-Za-z0-9_]+(?:\s*\+\s*[A-Za-z0-9_]+)*", "", str(source))
+    text = text.replace("sec_xbrl", "SEC filing").replace("sec_10q", "SEC 10-Q filing")
+    return " ".join(text.split()).strip(" ,;")
 
 
 @dataclass
@@ -96,10 +132,11 @@ class AdjustmentLedger:
         method: str,
         confidence: str = "medium",
         mark_cell: bool = True,
+        status: str = "Applied",
     ) -> Adjustment:
         row = self._next_row()
         adj_id = f"ADJ-{row - 4:03d}"
-        values = (adj_id, fiscal_year or "", sheet, cell, category, what, str(original), str(new), amount, reason, source, method, confidence, "Applied")
+        values = (adj_id, fiscal_year or "", sheet, cell, category, what, str(original), str(new), amount, reason, human_source(source), human_method(method), confidence, status)
         fill = PatternFill("solid", fgColor=CATEGORY_FILL.get(category, "FFFFFF"))
         for col, value in enumerate(values, start=1):
             c = self.ws.cell(row, col, value)
@@ -128,21 +165,8 @@ class AdjustmentLedger:
         return text if len(text) <= limit else text[: limit - 1] + "…"
 
     def _mark(self, cell, adj_id: str, category: str, original: Any, new: Any, reason: str, source: str, ledger_row: int) -> None:
+        """Shade the changed cell. No comment box: each tab has one Notes block, and every change is listed in this tab."""
         cell.fill = CELL_FILL
-        body = (
-            f"{MARK} {adj_id} · {category}\n"
-            f"Before: {self._short(original)}\n"
-            f"After:  {self._short(new)}\n"
-            f"Why: {self._short(reason, 160)}\n"
-            f"Source: {self._short(source, 100)}\n"
-            f"Full detail: '{LEDGER_SHEET}' row {ledger_row}"
-        )
-        existing = cell.comment.text.strip() if cell.comment and cell.comment.text else ""
-        if adj_id in existing:
-            return
-        comment = Comment((existing + "\n\n" + body).strip() if existing else body, "HAP")
-        comment.width, comment.height = 380, 170
-        cell.comment = comment
 
     def summary_rows(self) -> dict[str, int]:
         counts: dict[str, int] = {}

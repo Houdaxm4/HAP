@@ -13,6 +13,7 @@ from services.hap_analysis_layout_service import HapAnalysisLayoutService, disco
 from services.new_company_buyback_service import NewCompanyBuybackService
 from services.quarterly_dependency_service import QuarterlyDependencyService
 from services.sec_10q_statement_service import derive_standalone_from_ytd
+from tests.ledger_util import entry, notes_text
 
 
 def test_notes_sit_below_hidden_and_formula_rows_without_shifting(tmp_path: Path):
@@ -207,7 +208,7 @@ def test_buyback_rows_87_88_fill_blanks_and_do_not_invent_zero(tmp_path: Path):
         notes = [
             sheet.cell(row, 1).value
             for row in range(1, (sheet.max_row or 1) + 1)
-            if sheet.cell(row, 1).value == "HAP ANALYSIS — NOTES"
+            if sheet.cell(row, 1).value == "Notes"
         ]
         assert notes
     finally:
@@ -257,7 +258,7 @@ def test_annual_buyback_preserves_history_and_fills_new_year(tmp_path: Path):
         assert sheet["D87"].value == 2
         assert discrepancies
         assert discrepancies[0]["fiscal_year"] == "FY2024"
-        assert sheet["C88"].comment is not None
+        assert sheet["C88"].comment is None and entry(out, "Income Statement", "C88", "Differs from filing")
     finally:
         out.close()
 

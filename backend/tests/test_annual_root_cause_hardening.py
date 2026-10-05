@@ -30,6 +30,7 @@ from services.statement_validation_service import StatementValidationService
 from services.workbook_flag_service import STRUCTURAL_COMMENT, SUGGESTION_COMMENT
 from workbook_mapping.engine import IntentDecision, WriteIntent, WriteIntentReport
 from models.statement_validation import StatementValidationDecision
+from tests.ledger_util import entry, notes_text
 
 
 def _headers(ws, years: list[int], row: int = 7, start_col: int = 3) -> None:
@@ -177,7 +178,7 @@ def test_preexisting_circular_reference_is_flagged_not_repaired(tmp_path: Path):
     fwb.save(flagged)
     fwb.close()
     fwb = lw(flagged)
-    assert STRUCTURAL_COMMENT in (fwb["Inputs"]["C121"].comment.text or "")
+    assert fwb["Inputs"]["C121"].comment is None and entry(fwb, "Inputs", "C121", "Formula problem")
     assert fwb["Inputs"]["C121"].value == "=C121"
     fwb.close()
 
@@ -318,9 +319,8 @@ def test_historical_fs_discrepancy_flagged_not_overwritten(tmp_path: Path):
     assert e2018.decision == StatementValidationDecision.DISCREPANCY
     wb = load_workbook(path)
     assert wb["Income - GAAP"]["E9"].value == original
-    comment = wb["Income - GAAP"]["E9"].comment
-    assert comment and "FINANCIAL-STATEMENT DISCREPANCY" in comment.text
-    assert "Value was NOT automatically changed" in comment.text
+    flagged = entry(wb, "Income - GAAP", "E9", "Differs from filing")
+    assert flagged and flagged["status"] == "Flagged only" and "was not changed" in flagged["reason"]
     wb.close()
 
 
@@ -345,7 +345,7 @@ def test_new_fy_discrepancy_not_rewritten(tmp_path: Path):
     )
     wb = load_workbook(path)
     assert wb["Income - GAAP"]["F11"].value == pytest.approx(10.0)
-    assert wb["Income - GAAP"]["F11"].comment is not None
+    assert entry(wb, "Income - GAAP", "F11", "Differs from filing") and wb["Income - GAAP"]["F11"].fill.fill_type == "solid"
     wb.close()
 
 
@@ -491,9 +491,8 @@ def test_ambiguous_lease_adjustment_is_not_guessed(tmp_path: Path):
     )
     wb = load_workbook(path)
     assert wb["Leases"]["G18"].value == pytest.approx(0.12)
-    comment = wb["Leases"]["G18"].comment
     if report.suggestion_only:
-        assert comment and SUGGESTION_COMMENT in comment.text
+        assert entry(wb, "Leases", "G18", "Suggestion")
     wb.close()
     assert report.methodology_carried is False
     assert report.normalized_to_prior is False
@@ -514,7 +513,7 @@ def test_lease_suggestion_does_not_overwrite(tmp_path: Path):
     )
     wb = load_workbook(path)
     if report.suggestion_only:
-        assert SUGGESTION_COMMENT in (wb["Leases"]["G18"].comment.text or "")
+        assert entry(wb, "Leases", "G18", "Suggestion")
         assert wb["Leases"]["G18"].value == pytest.approx(0.12)
     wb.close()
 
@@ -693,8 +692,8 @@ def test_unrealistic_assumptions_write_hap_analysis_beside_originals(tmp_path: P
         for c in row
         if c.value
     )
-    assert "HAP ANALYSIS — NOTES" in hap_text
-    assert "HAP" in hap_text
+    assert "Notes" in hap_text
+    assert "was calculated beside the original, which was left unchanged" in hap_text
     wb.close()
     assert judge.hap_analysis_cells
     assert er.selected_methodology == "EPS_GROWTH"

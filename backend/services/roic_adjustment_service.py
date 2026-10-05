@@ -269,11 +269,47 @@ class RoicAdjustmentService:
                 if fy in income_cols:
                     self._operating_income(wb, cached, ledger, report, fy, income_cols[fy], company_facts, multiplier, filing_hint)
             if report.changed:
+                self._notes(wb, report)
                 wb.save(path)
         finally:
             wb.close()
             cached.close()
         return report
+
+    @staticmethod
+    def _notes(wb, report) -> None:
+        """One plain-language note per kind of adjustment, in the Notes block of the tab that was changed."""
+        from services.tab_notes import add_notes, note
+
+        def years(items) -> str:
+            ys = sorted({a.fiscal_year for a in items})
+            return ", ".join(ys) if len(ys) <= 3 else f"{ys[0]} to {ys[-1]}"
+
+        added = [a for a in report.adjustments if a.category == "Operating assets" and a.description.startswith("Added")]
+        removed_assets = [a for a in report.adjustments if a.category == "Operating assets" and a.description.startswith("Removed")]
+        removed_liab = [a for a in report.adjustments if a.category == "Operating liabilities"]
+        one_time = [a for a in report.adjustments if a.category == "One-time operating income"]
+        inputs_notes: list[str] = []
+        if added:
+            inputs_notes.append(note(
+                f"Other asset lines were added to operating assets in {years(added)}",
+                "the 10-K shows operating items inside them and their amount cannot be separated, so the whole line is counted (the cautious choice)",
+                "the company's 10-K notes"))
+        if removed_assets or removed_liab:
+            inputs_notes.append(note(
+                f"Non-operating lines were taken out of operating assets or liabilities in {years(removed_assets + removed_liab)}",
+                "they are not part of the operating business",
+                "the balance sheet"))
+        if inputs_notes and INPUTS in wb.sheetnames:
+            add_notes(wb[INPUTS], inputs_notes, replace_containing=("Other asset lines were added", "Non-operating lines were taken out"))
+        if one_time and INCOME in wb.sheetnames:
+            labels = sorted({a.description.split(":")[0] for a in one_time})
+            add_notes(
+                wb[INCOME],
+                [note(f"One-time items ({', '.join(labels)}) were removed from operating expenses in {years(one_time)}",
+                      "ROIC should reflect recurring operations", "the company's SEC filings")],
+                replace_containing=("One-time items (",),
+            )
 
     # ------------------------------------------------------------------ balance sheet lines
     def _balance_sheet(self, wb, cached, ledger, report, fy: str, col: str, evidence: dict[str, list[str]]) -> None:

@@ -4,6 +4,7 @@ from openpyxl import Workbook, load_workbook
 
 from services.formula_dependencies import MetricDependencies
 from services.new_company_statement_validation_service import NewCompanyStatementValidationService
+from tests.ledger_util import entry, notes_text
 
 
 def test_metric_dependencies_follow_ranges_and_chains():
@@ -45,10 +46,11 @@ def test_blank_cells_are_filled_flagged_or_ignored_by_importance(tmp_path):
     )
     ws = load_workbook(path)["Income - GAAP"]
     # filled from SEC, shaded, source in the comment
-    assert ws["C9"].value == 500.0 and "HAP FILLED" in ws["C9"].comment.text
+    wbk = ws.parent
+    assert ws["C9"].value == 500.0 and ws["C9"].comment is None and entry(wbk, "Income - GAAP", "C9", "Filled from filing")
     assert [f.concept for f in report.filled_missing] == ["revenue"]
     # needed by a metric but unavailable anywhere -> flagged as missing data (not invented)
-    assert ws["C30"].value is None and "DATA MISSING" in ws["C30"].comment.text
+    assert ws["C30"].value is None and entry(wbk, "Income - GAAP", "C30", "Missing figure")
     assert report.flagged_missing == ["FY2025:operating_income:Income - GAAP!C30"]
     # not used by any metric -> left alone and not flagged
     assert ws["C19"].value is None and ws["C19"].comment is None

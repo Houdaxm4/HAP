@@ -4,6 +4,7 @@ from openpyxl import Workbook, load_workbook
 
 from services.new_company_statement_validation_service import NewCompanyStatementValidationService
 from services.statement_row_rules import STATEMENT_ROW_RULES, sign_for
+from tests.ledger_util import entry, notes_text
 
 
 def build(path, *, debt=None, capex=None):
@@ -45,7 +46,7 @@ def test_blank_debt_and_capex_are_filled_into_the_right_rows_with_the_workbook_s
     report = validate(path)
     wb = load_workbook(path)
     bs, cf = wb["Balance Sheet - Standardized"], wb["Cash Flow - Standardized"]
-    assert bs["C87"].value == 300.0 and "HAP FILLED" in bs["C87"].comment.text
+    assert bs["C87"].value == 300.0 and bs["C87"].comment is None and entry(wb, "Balance Sheet - Standardized", "C87", "Filled from filing")
     assert cf["C32"].value == -25.0  # Bloomberg shows the outflow as a negative number
     assert bs["C86"].value == 7.0 and bs["C124"].value == 2.4  # other rows untouched
     assert sorted(f.concept for f in report.filled_missing) == ["capex", "debt"]

@@ -17,6 +17,7 @@ from models.new_company import (
 )
 from services.annual_period_service import detect_year_columns
 from services.sec_service import SecService, SecServiceError
+from services.tab_notes import add_notes, note
 
 _DOLLAR_TAGS = (
     "PaymentsForRepurchaseOfCommonStock",
@@ -987,32 +988,29 @@ class NewCompanyBuybackService:
 
     @staticmethod
     def _write_buyback_notes(ws, years: list[BuybackYearResult], write_policy: str) -> None:
-        from services.hap_analysis_layout_service import HapAnalysisLayoutService
-
-        lines = []
-        for year in years:
-            kind = (
-                "reported_zero"
-                if year.absence_class == BuybackAbsenceClass.REPORTED_ZERO
-                else "derived"
-                if year.shares_derived
-                else "explicit"
-                if year.dollars is not None or year.shares is not None
-                else "missing"
-            )
-            lines.append(
-                f"{year.fiscal_year}: dollars={year.dollars} shares={year.shares} ({kind})"
-            )
-        HapAnalysisLayoutService().write_notes_section(
-            ws,
-            [
-                ("Buyback definition", NewCompanyBuybackService.DOLLARS_DEFINITION),
-                ("Write policy", write_policy),
-                ("Source hierarchy", "SEC 10-K cash flow, repurchase table, and annual XBRL. Yahoo is not gross repurchase dollars."),
-                ("Year coverage", "; ".join(lines[:12])),
-                (
-                    "Not used as buybacks",
-                    "Share-count changes, treasury balances, program-to-date cumulative counts, and withholding.",
-                ),
-            ],
+        sec_years = [y.fiscal_year for y in years if y.dollars is not None]
+        zero_years = [y.fiscal_year for y in years if y.absence_class == BuybackAbsenceClass.REPORTED_ZERO]
+        policy = (
+            "in every year" if write_policy != "annual_update" else "for the newest year (earlier years were copied from the previous file)"
         )
+        lines = [
+            note(
+                f"Buyback dollars and shares were replaced with the SEC figures {policy}",
+                "Bloomberg's buyback numbers are not relied on",
+                "the company's 10-K cash flow statements and share repurchase disclosures",
+            ),
+            note(
+                "Buybacks are counted as the gross cash paid to repurchase shares, leaving out changes in shares outstanding and employee tax withholding",
+                "that is the amount the company chose to spend on repurchases",
+                "the company's 10-K",
+            ),
+        ]
+        if zero_years:
+            lines.append(
+                note(
+                    f"{', '.join(zero_years)} {'shows' if len(zero_years) == 1 else 'show'} zero buybacks",
+                    "the company reports no repurchases in those years",
+                    "the company's 10-K",
+                )
+            )
+        add_notes(ws, lines, replace_containing=("Buyback dollars and shares", "Buybacks are counted as", "Buybacks mean the gross", "zero buybacks"))

@@ -9,6 +9,7 @@ from research.yahoo_fundamentals import YahooFallback, yahoo_fallback_enabled
 from services.annual_statement_validation_service import AnnualStatementValidationService
 from services.new_company_statement_validation_service import NewCompanyStatementValidationService
 from services.report_flags import collect_flags
+from tests.ledger_util import entry, notes_text
 
 
 def payload(**series):
@@ -74,7 +75,10 @@ def test_new_company_check_uses_yahoo_only_when_sec_has_nothing(tmp_path):
     report = NewCompanyStatementValidationService().validate(
         analysis_id="a", ticker="T", workbook_path=path, fiscal_years=["FY2025"], yahoo_fallback=YahooFallback(fetcher))
     cell = load_workbook(path)["Balance Sheet - Standardized"]["C9"]
-    assert cell.value == 5500.0 and "Yahoo Finance" in cell.comment.text and "indicative" in cell.comment.text
+    wbk = load_workbook(path)
+    logged = entry(wbk, "Balance Sheet - Standardized", "C9", "Filled from filing")
+    assert cell.value == 5500.0 and cell.comment is None and logged and "Yahoo Finance" in logged["source"]
+    assert "Yahoo Finance (unofficial, indicative)" in notes_text(wbk["Balance Sheet - Standardized"])
     assert [(f.concept, f.source.startswith("Yahoo")) for f in report.filled_missing] == [("total_assets", True)]
     # SEC wins when it has the figure: Yahoo is never consulted for that cell
     path2 = tmp_path / "w2.xlsx"

@@ -19,6 +19,7 @@ from models.annual_update import (
 )
 from models.write_actions import WriteActionClass
 from services.formula_utils import is_formula
+from services.tab_notes import add_notes
 from services.hap_analysis_layout_service import HapAnalysisLayoutService
 
 _BV_DEFAULT = "BOOK_VALUE_GROWTH"
@@ -599,6 +600,26 @@ class AnnualJudgmentService:
         return er_report, judgment
 
     @staticmethod
+    def _live_rows(rows: list[tuple[str, Any]]) -> list[tuple[str, Any]]:
+        """Only the formula rows (the HAP alternative calculated beside the model). Prose goes to the single Notes block."""
+        return [(label, value) for label, value in rows
+                if isinstance(value, str) and value.startswith("=") and str(label).upper().startswith("HAP")]
+
+    @staticmethod
+    def _valuation_note(what: str, change: str, hap_value: Any, *, kind: str) -> list[str]:
+        """What HAP did with one valuation assumption, in plain language."""
+        from services.tab_notes import note
+
+        source = "the company's financial history in this workbook"
+        if change == "ACCEPTED":
+            return [note(f"The {what} was reviewed and left as it is", "it looks consistent with the company's history", source)]
+        if change == "INSUFFICIENT_EVIDENCE":
+            return [note(f"No alternative {what} was proposed", "the evidence was not strong enough to replace the workbook's assumption", source)]
+        rate = f" ({float(hap_value) * 100:.1f}% a year)" if isinstance(hap_value, (int, float)) else ""
+        return [note(f"An alternative {what}{rate} was calculated beside the original, which was left unchanged",
+                     "the original assumption looks distorted or hard to sustain", source)]
+
+    @staticmethod
     def _oe_base_disclosure_rows(disc: NormalizedBaseDisclosure | None) -> list[tuple[str, Any]]:
         if disc is None or disc.decision != DISCLOSE_DISTORTED_BASE:
             return []
@@ -712,7 +733,17 @@ class AnnualJudgmentService:
                             ("HAP rationale", er_reason),
                         ]
                     )
-                written.extend(layout.place_analysis_notes(ws, rows))
+                written.extend(layout.place_analysis_notes(ws, self._live_rows(rows)))
+                review = getattr(self, "input_review", None)
+                er_review_notes = review.notes("expected_return") if review else []
+                add_notes(
+                    ws,
+                    ([] if er_review_notes and er_change in {"ACCEPTED", "INSUFFICIENT_EVIDENCE"}
+                     else self._valuation_note("book value growth used for the expected return", er_change, er_hap, kind="er"))
+                    + er_review_notes,
+                    replace_containing=("book value growth used for the expected return", "inputs behind this valuation", "return on equity and the book value growth", "No model value was changed",
+                                        "expected return and flagged", "typical return on equity"),
+                )
                 if ws["B5"].value != orig_b5 or [ws[f"D{r}"].value for r in range(17, 27)] != orig_d17:
                     ws["B5"].value = orig_b5
                     for i, val in enumerate(orig_d17):
@@ -759,7 +790,15 @@ class AnnualJudgmentService:
                         ]
                     )
                 rows.extend(self._oe_base_disclosure_rows(oe_base_disclosure))
-                written.extend(layout.place_analysis_notes(ws, rows))
+                written.extend(layout.place_analysis_notes(ws, self._live_rows(rows)))
+                review = getattr(self, "input_review", None)
+                oe_review_notes = review.notes("owner_earnings") if review else []
+                ev_notes = (
+                    [] if oe_review_notes and oe_change in {"ACCEPTED", "INSUFFICIENT_EVIDENCE"}
+                    else self._valuation_note("owner's earnings growth rate", oe_change, oe_hap, kind="oe")
+                ) + oe_review_notes
+                if oe_base_disclosure is not None and oe_base_disclosure.decision == DISCLOSE_DISTORTED_BASE and oe_base_disclosure.display_text:
+                    ev_notes.append(" ".join(oe_base_disclosure.display_text.split()))
                 if oe_change not in {"ACCEPTED", "INSUFFICIENT_EVIDENCE"} and oe_hap is not None:
                     written.extend(self._clone_ev_projections(ws, float(oe_hap)))
                 ws["B6"].value = orig_b6
@@ -798,7 +837,14 @@ class AnnualJudgmentService:
                             ("HAP rationale", eps_reason),
                         ]
                     )
-                written.extend(layout.place_analysis_notes(ws, graham_rows, live_start_col=10))
+                written.extend(layout.place_analysis_notes(ws, self._live_rows(graham_rows), live_start_col=10))
+                ev_notes += self._valuation_note("growth rate used in the Graham valuation", eps_change, eps_hap, kind="graham")
+                add_notes(
+                    ws,
+                    ev_notes,
+                    replace_containing=("owner's earnings growth rate", "growth rate used in the Graham valuation", "inputs behind this valuation",
+                                        "No model value was changed", "owner's earnings growth rate used", "typical basis"),
+                )
 
             wb.save(path)
         finally:

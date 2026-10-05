@@ -25,6 +25,7 @@ from pathlib import Path
 from typing import Any
 
 from openpyxl import load_workbook
+from openpyxl.styles import Font, PatternFill
 from openpyxl.utils import get_column_letter
 
 from services.adjustment_ledger_service import AdjustmentLedger
@@ -154,6 +155,7 @@ class IcProjectionWriter:
                     continue
                 cell.value = formula
                 report.written.append(f"{IC}!{addr}")
+            self._format(ws, last)
             if report.changed:
                 quarter_word = {1: "x 4", 2: "x 2", 3: "x 4/3"}[latest_quarter]
                 AdjustmentLedger(wb).record(
@@ -163,12 +165,46 @@ class IcProjectionWriter:
                     reason=(f"Q{latest_quarter}: revenue and operating income = Last Quarter IS cumulative {quarter_word}; ROCE = cash from operations "
                             f"{quarter_word} / total assets. Capitalized leases and R&D, lease and R&D expenses and amortization = previous year; "
                             "operating taxes scale with operating income."),
-                    source="Last Quarter IS / CF / BS Standardized tabs", method="house_projection_method", confidence="high",
+                    source="Last Quarter IS / CF / BS Standardized tabs", method="house_projection_method", confidence="high", mark_cell=False,
                 )
-                wb.save(path)
+                from services.tab_notes import add_notes, note
+
+                add_notes(
+                    ws,
+                    [
+                        note(
+                            f"Projected ROIC (column {M}) and ROCE (column {N}) were calculated for the current year",
+                            f"the year is not finished; revenue, operating income and cash from operations from the latest quarter were scaled up ({quarter_word})",
+                            "the Last Quarter income statement, cash flow and balance sheet tabs",
+                        ),
+                        note(
+                            "Capitalized leases, capitalized R&D, lease and R&D expenses and amortization are kept at last year's level, and operating taxes move with operating income",
+                            "they do not change within the year",
+                            "the previous annual column of this tab",
+                        ),
+                    ],
+                    replace_containing=("Projected ROIC (column", "Capitalized leases, capitalized R&D, lease and R&D"),
+                )
+            wb.save(path)
         finally:
             wb.close()
         return report
+
+    @staticmethod
+    def _format(ws, last: int) -> None:
+        """Projection columns M and N are coloured; ROIC, WACC, ROIC - WACC and ROCE are shown as percentages."""
+        m, n = last + 1, last + 2
+        for col, color in ((m, "DDEBF7"), (n, "FCE4D6")):
+            for row in range(1, 26):
+                ws.cell(row, col).fill = PatternFill("solid", fgColor=color)
+        for col in (m, n):
+            ws.cell(1, col).font = Font(bold=True)
+            ws.column_dimensions[get_column_letter(col)].width = max(ws.column_dimensions[get_column_letter(col)].width or 0, 16)
+        for col in range(2, m + 1):
+            ws.cell(23, col).number_format = "0.0%"          # ROIC
+        for row in (24, 25):                                  # WACC and ROIC - WACC
+            ws.cell(row, m).number_format = "0.0%"
+        ws.cell(4, n).number_format = "0.0%"                  # ROCE
 
     @staticmethod
     def _last_annual_column(ws) -> int | None:

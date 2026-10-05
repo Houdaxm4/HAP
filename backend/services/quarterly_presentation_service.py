@@ -29,6 +29,7 @@ from services.quarterly_health_service import (
     assess_all_quarterly_statements,
     iter_statement_rows,
 )
+from services.tab_notes import add_notes, fmt_period, note
 from services.sec_10q_statement_service import (
     extract_sec_10q_statement,
     select_latest_10q_period,
@@ -253,10 +254,13 @@ class QuarterlyPresentationService:
             )
             if item.value is not None
         ]
+        from services.title_row_guard import title_rows
+
+        titles = title_rows(ws)  # section titles repeat a data row's label and must stay blank
         filled: list[dict[str, Any]] = []
         missing: list[str] = []
         for row in iter_statement_rows(ws):
-            if row["populated"] or row["formula"]:
+            if row["populated"] or row["formula"] or row["row"] in titles:
                 continue
             cell = ws.cell(row["row"], VALUE_COL)
             if cell.value not in (None, ""):
@@ -445,31 +449,35 @@ class QuarterlyPresentationService:
                 continue
             if entry.decision in _INCOMPLETE_DECISIONS and not entry.derivation_notes:
                 continue
-            rows: list[tuple[str, Any]] = [
-                ("Reporting period", f"FY{fy} {fp}" if fy and fp else (fp or "latest filed quarter")),
-                ("Presentation decision", entry.decision.value),
-                ("Primary source", entry.data_source_primary or "bloomberg"),
+            period = fmt_period(f"FY{fy} {fp}" if fy and fp else "")
+            statement = {
+                QuarterlyStatementKind.INCOME: "income statement",
+                QuarterlyStatementKind.CASH_FLOW: "cash flow statement",
+            }.get(entry.statement, "statement")
+            lines: list[str] = [
+                note(
+                    f"The {period} quarter columns of the {statement} were kept as Bloomberg supplied them",
+                    "Bloomberg figures are not overwritten without your approval",
+                    "Bloomberg, checked against the company's 10-Q" if entry.sec_accession else "Bloomberg",
+                )
             ]
-            if entry.sec_accession:
-                rows.append(("SEC accession", entry.sec_accession))
-            if entry.derivation_notes:
-                rows.append(("Derivation", "; ".join(entry.derivation_notes[:4])))
             if entry.source_discrepancies:
-                rows.append(
-                    (
-                        "SEC reconciliation",
-                        f"{len(entry.source_discrepancies)} populated value(s) differ from SEC "
-                        "and were flagged for upstream correction. Supplied values were not overwritten.",
+                lines.append(
+                    note(
+                        f"{len(entry.source_discrepancies)} supplied values differ from the SEC filing and were left unchanged",
+                        "Bloomberg values are not overwritten without your approval",
+                        "the company's 10-Q",
                     )
                 )
             if entry.unresolved_facts:
-                rows.append(
-                    (
-                        "Unresolved",
-                        "; ".join(
-                            f"{u.get('label')}: {u.get('reason')}" for u in entry.unresolved_facts[:4]
-                        ),
+                labels = ", ".join(str(u.get("label")) for u in entry.unresolved_facts[:3])
+                lines.append(
+                    note(
+                        f"Some lines could not be matched to the filing ({labels})",
+                        "the filing does not report them in a comparable form",
+                        "the company's 10-Q",
                     )
                 )
-            layout.write_notes_section(workbook[entry.sheet], rows)
+            add_notes(workbook[entry.sheet], lines, replace_containing=("quarter columns of the", "supplied values differ", "could not be matched"))
+
 

@@ -204,6 +204,14 @@ class NewCompanyValuationService:
             ctx["oe_base_analysis"] = base_obj.model_dump()
             ctx["analytical_research"] = analytical
 
+        from services.valuation_inputs_review_service import ValuationInputsReviewService
+
+        self.last_input_review = None
+        try:
+            self.last_input_review = ValuationInputsReviewService().review(path, company_facts)
+        except Exception:  # noqa: BLE001 - the review is advisory and must never stop the run
+            self.last_input_review = None
+        self.judgment.input_review = self.last_input_review
         er_rep, judge = self.judgment.apply(
             analysis_id=analysis_id,
             ticker=ticker,

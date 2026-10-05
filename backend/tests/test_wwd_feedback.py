@@ -140,7 +140,9 @@ def test_cumulative_income_statement_and_cash_flow_are_filled(tmp_path: Path):
     assert is_ws["K21"].value == "=G21/G11" and is_ws["L21"].value == "=H21/H11"
     assert is_ws["K32"].value == "=G32/G11" and is_ws["K64"].value == "=G64/G11"
     # notes in D/E (column B is where field codes live and is hidden in the real tab)
-    assert any(is_ws.cell(r, 4).value and "Cumulative source" in str(is_ws.cell(r, 4).value) for r in range(60, is_ws.max_row + 1))
+    notes = [str(is_ws.cell(r, 4).value) for r in range(1, is_ws.max_row + 1) if is_ws.cell(r, 4).value]
+    assert "Notes" in notes and any("year-to-date columns of the income statement were filled" in n for n in notes)
+    assert all(is_ws.cell(r, 2).value is None or str(is_ws.cell(r, 2).value).isupper() or "_" in str(is_ws.cell(r, 2).value) or "&" in str(is_ws.cell(r, 2).value) for r in range(60, is_ws.max_row + 1))
     ledger = wb["HAP Adjustments"]
     assert ledger["E5"].value == "Cumulative from 10-Q"
 
@@ -268,3 +270,37 @@ def test_cumulative_service_uses_yahoo_only_where_sec_has_nothing(tmp_path: Path
     assert ws["G11"].value == 3196.727                                            # from SEC
     assert any(f.concept == "net_income" and f.method == "yahoo_quarterly_sum" for f in report.fills)
     assert ws["H60"].value is None                                                # prior year: Yahoo has no such history, nothing guessed
+
+
+def test_zero_left_in_the_empty_year_to_date_column_is_replaced(tmp_path: Path):
+    path = _quarter_workbook(tmp_path / "wb.xlsx")
+    wb = load_workbook(path)
+    wb[LQ_IS]["G25"] = 0          # the template leaves 0 in some year-to-date cells; that is not a reported figure
+    wb[LQ_IS]["G25"].value = 0
+    wb[LQ_IS].cell(25, 2).value = "IS_SG&A_EXPENSE"
+    wb.save(path)
+    NewCompanyCumulativeService().apply(workbook_path=path, company_facts=_facts(), latest_quarter=3)
+    assert load_workbook(path)[LQ_IS]["G25"].value == 300.0
+
+
+def test_quarterly_fill_never_writes_to_a_title_row(tmp_path: Path):
+    from services.quarterly_presentation_service import QuarterlyPresentationService
+    from models.quarterly_presentation import QuarterlyStatementKind
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = LQ_CF
+    ws["A11"] = "Cash from Operating Activities"                 # title row: no field code in column B
+    ws["A27"], ws["B27"] = "Cash from Operating Activities", "CF_CASH_FROM_OPER"
+    facts = {"facts": {"us-gaap": {"NetCashProvidedByUsedInOperatingActivities": {"units": {"USD": [
+        {"start": "2025-10-01", "end": "2026-06-30", "val": 351_937_000, "form": "10-Q", "fp": "Q3", "fy": 2026, "accn": "0001", "filed": "2026-07-30"}]}}}}}
+    from services.title_row_guard import title_rows
+
+    assert title_rows(ws) == {11}
+    QuarterlyPresentationService._fill_blanks_from_sec(wb, QuarterlyStatementKind.CASH_FLOW, LQ_CF, facts, 2026, "Q3", _NoDeps())
+    assert ws["C11"].value is None
+
+
+class _NoDeps:
+    def feeds_metrics(self, *_args) -> bool:
+        return False

@@ -3,6 +3,7 @@
 from openpyxl import Workbook, load_workbook
 
 from services.annual_statement_validation_service import AnnualStatementValidationService
+from tests.ledger_util import entry, notes_text
 
 
 def build(path, *, formula_in_revenue=False):
@@ -44,8 +45,9 @@ def test_blank_filled_missing_needed_flagged_and_supplied_kept(tmp_path):
     assert (report.filled, report.missing_important, report.discrepancies) == (2, 1, 1)
     wb = load_workbook(path)
     income = wb["Income - GAAP"]
-    assert income["D11"].value == 500.0 and "HAP FILLED" in income["D11"].comment.text
-    assert income["D12"].value is None and "DATA MISSING" in income["D12"].comment.text
+    assert income["D11"].value == 500.0 and income["D11"].comment is None and entry(wb, "Income - GAAP", "D11", "Filled from filing")
+    assert income["D12"].value is None and income["D12"].comment is None and entry(wb, "Income - GAAP", "D12", "Missing figure")
+    assert "Beige cells were filled from a filing" in notes_text(income) and "Red cells are missing a figure" in notes_text(income)
     assert income["D13"].value == 100.0  # a supplied value is never overwritten
 
 

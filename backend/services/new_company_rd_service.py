@@ -20,6 +20,7 @@ from services.annual_period_service import detect_workbook_years, detect_year_co
 from services.annual_rd_service import AnnualRdService
 from services.hap_analysis_layout_service import HapAnalysisLayoutService
 from services.sec_service import SecService
+from services.tab_notes import add_notes, note
 
 _PERMITTED = (1, 10)
 _LIFE_CELLS = ("B8", "C8", "B2")
@@ -522,10 +523,6 @@ class NewCompanyRdService:
         if "R&D" not in wb.sheetnames:
             return
         ws = wb["R&D"]
-        warning = (
-            "HAP ANALYSIS: R&D useful life is an autonomous agent decision. "
-            "Override it if the economic life differs."
-        )
         for addr in _LIFE_CELLS:
             cell = ws[addr]
             if isinstance(cell.value, str) and cell.value.startswith("="):
@@ -533,56 +530,38 @@ class NewCompanyRdService:
             cell.value = life
             written.append(f"R&D!{addr}")
             break
-        # Visible warning — do not overwrite formulas.
-        warn_cell = ws["A1"]
-        existing = str(warn_cell.value or "")
-        if not (isinstance(warn_cell.value, str) and warn_cell.value.startswith("=")):
-            if "ANALYST WARNING" not in existing and "HAP ANALYSIS" not in existing:
-                warn_cell.value = warning
-                written.append("R&D!A1")
 
     @staticmethod
     def _write_decision_notes(wb, decision: RdUsefulLifeDecision, lookback: list[str], written: list[str]) -> list[str]:
         if "R&D" not in wb.sheetnames:
             return []
-        override = (
-            f"Analyst override to {decision.analyst_override} years ({decision.analyst_override_reason})."
-            if decision.analyst_override is not None
-            else "None — AUTONOMOUS_AGENT_DECISION"
+        life = decision.selected_useful_life
+        if decision.analyst_override is not None:
+            lines = [
+                note(
+                    f"R&D useful life set at {life} years by the analyst",
+                    decision.analyst_override_reason or "the analyst judged this to be the economic life of the company's R&D",
+                    "analyst decision",
+                )
+            ]
+        else:
+            evidence = (decision.company_evidence or [""])[-1]
+            why = evidence.split(": ", 1)[-1].split(" Key phrases")[0].rstrip(".") if evidence else "the company's industry and business describe how long R&D benefits last"
+            lines = [
+                note(
+                    f"R&D useful life set at {life} years",
+                    why[:1].lower() + why[1:] if why else "of the company's industry",
+                    "the business description in the latest 10-K",
+                )
+            ]
+        lines.append(
+            note(
+                "Capitalized R&D and its amortization are spread evenly over that life using past R&D expense",
+                "this treats R&D as an investment that pays back over several years",
+                "the company's reported R&D expense",
+            )
         )
-        lookback_txt = f"{lookback[0]}–{lookback[-1]}" if lookback else "—"
-        rows = [
-            ("R&D useful life (selected)", f"{decision.selected_useful_life} years"),
-            ("Decision class", "ANALYST_OVERRIDE" if decision.analyst_override is not None else "AUTONOMOUS_AGENT_DECISION"),
-            ("Source disclosures", "; ".join((decision.filing_citations or [])[:2]) or "—"),
-            (
-                "Economic rationale",
-                decision.rationale or "; ".join((decision.industry_evidence or [])[:2]),
-            ),
-            (
-                "Capitalization methodology",
-                f"Straight-line remaining-life weights over {decision.selected_useful_life} years; "
-                f"lookback {lookback_txt}. R&D!B8 is the designated useful-life input. "
-                f"Asset (row 3) and amortization (row 4) formulas are generated from that life.",
-            ),
-            (
-                "Workbook input cell",
-                f"R&D!B8 = {decision.selected_useful_life} years "
-                "(template life cell; not derived from annual R&D spend).",
-            ),
-            (
-                "Dependent calculation / schedule",
-                "R&D rows 3–4 (capitalized asset and amortization) for each displayed FY; "
-                "Invested Capital Capitalized R&D references R&D row 3. Pre-window expense "
-                f"values and extra lookback on R&D row {_EXTRA_LOOKBACK_ROW} feed the {decision.selected_useful_life}-year window.",
-            ),
-            (
-                "Material uncertainty",
-                "; ".join(decision.blocking_reasons) or "Optional analyst override is available.",
-            ),
-            ("Override", override),
-        ]
-        notes = HapAnalysisLayoutService().write_notes_section(wb["R&D"], rows)
+        notes = add_notes(wb["R&D"], lines, replace_containing=("R&D useful life set at", "Capitalized R&D and its amortization"))
         written.extend(notes)
         return notes
 

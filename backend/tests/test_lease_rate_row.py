@@ -66,7 +66,7 @@ def test_idcc_years_above_ten_percent_are_fixed_and_flagged(tmp_path: Path):
     for fix in report.fixes:
         cell = after_formulas[fix.cell.split("!")[1]]
         assert is_realistic(cell.value) and not str(cell.value).startswith("=")
-        assert "ADJ-" in cell.comment.text and fix.method in {"nearest_realistic_years", "company_disclosed"}
+        assert cell.comment is None and cell.fill.fill_type == "solid" and fix.method in {"nearest_realistic_years", "company_disclosed"}
     ledger = load_workbook(path)["HAP Adjustments"]
     assert ledger["A5"].value == "ADJ-001" and ledger["E5"].value == "Lease rate"
     assert str(ledger["G5"].value).startswith("=")  # original formula kept as text
@@ -113,3 +113,20 @@ def test_lease_year_data_disclosed_rate_is_used(tmp_path: Path):
         workbook_path=path, lease_years=[SimpleNamespace(fiscal_year="FY2024", reported_discount_rate=4.2)]
     )
     assert report.fixes[0].method == "company_disclosed" and report.fixes[0].new == pytest.approx(0.042)
+
+
+def test_nothing_to_fix_means_the_file_is_not_rewritten(tmp_path: Path):
+    """Re-saving with openpyxl drops Excel's calculated values, which the valuation step needs: only save when a rate was replaced."""
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Leases"
+    ws["A1"] = "Year"
+    for i, fy in enumerate(("FY2023", "FY2024"), start=2):
+        ws.cell(1, i).value = fy
+    ws["A18"] = "Estimated Long-Term Rate"
+    ws["B18"], ws["C18"] = 0.05, 0.06
+    path = tmp_path / "ok.xlsx"
+    wb.save(path)
+    before = path.read_bytes()
+    report = LeaseRateRowService().apply(workbook_path=path)
+    assert not report.changed and path.read_bytes() == before

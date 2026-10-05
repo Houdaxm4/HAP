@@ -1,6 +1,7 @@
 from openpyxl import Workbook, load_workbook
 
 from services.cost_recast_writer import CostRecastWriter
+from tests.ledger_util import entry, notes_text
 
 STATEMENT_22 = ("CONSOLIDATED STATEMENTS OF INCOME (in thousands) OPERATING EXPENSES: Research and portfolio development 185,202 200,484 204,360 "
                 "Licensing 71,419 64,625 50,464 General and administrative 47,377 61,217 48,999 Restructuring activities 3,280 27,877 - "
@@ -48,7 +49,8 @@ def test_recast_keeps_totals_and_flags_cells(tmp_path):
     assert (cost, rd, other) == (64.625, 200.484, 27.877)
     assert round(425.409 - cost - opex, 3) == 71.206 and round(gp, 3) == round(425.409 - cost, 3)
     assert abs(ws.cell(23, 3).value + rd + other - opex) < 1e-6
-    assert "Original (data provider): 175.741" in ws.cell(14, 3).comment.text
+    recast = entry(ws.parent, ws.title, "C14", "Recast to latest definition")
+    assert recast and recast["original"] == "175.741"          # the original is kept in the HAP Adjustments tab
     assert ws.cell(14, 4).value == 71.419 and ws.cell(14, 4).comment is None  # already on the latest definition: untouched
 
 

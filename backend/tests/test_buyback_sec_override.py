@@ -42,7 +42,7 @@ def test_new_company_overrides_every_year_even_small_differences(tmp_path: Path)
     assert [ws.cell(11, c).value for c in (3, 4, 5)] == [5.2, 8.1, 10.4]
     ledger = load_workbook(path)["HAP Adjustments"]
     assert ledger["E5"].value == "SEC override of Bloomberg"
-    assert "ADJ-" in ws["C10"].comment.text
+    assert ws["C10"].comment is None and ws["C10"].fill.fill_type == "solid"   # shaded; the explanation is in the notes and HAP Adjustments
 
 
 def test_annual_update_overrides_only_the_newest_year(tmp_path: Path):
