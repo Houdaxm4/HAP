@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import re
+
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -39,6 +41,83 @@ _INDUSTRY_LIFE = (
 )
 
 
+# Business-description evidence: phrases in the 10-K business section that show how long R&D benefits last.
+# (group, life in years, reason, weighted phrases)
+_BUSINESS_GROUPS: tuple[tuple[str, int, str, tuple[tuple[str, float], ...]], ...] = (
+    ("pharma_biotech", 8, "drug and biologic development runs through clinical trials and regulatory approval, and benefits last through patent life",
+     (("clinical trial", 3), ("fda approval", 3), ("new drug application", 3), ("drug candidate", 3), ("product candidate", 3),
+      ("pipeline", 1), ("orphan drug", 2), ("biologic", 2), ("phase 3", 3), ("phase iii", 3), ("regulatory exclusivity", 2))),
+    ("medical_devices", 6, "medical device development follows a multi-year design, validation and regulatory clearance cycle",
+     (("510(k)", 3), ("premarket approval", 3), ("medical device", 2), ("clinical study", 2), ("clearance", 1), ("implant", 1))),
+    ("aerospace_defense", 7, "aerospace and defense programs are developed over many years and earn returns over long program lives",
+     (("aircraft", 1), ("defense contract", 2), ("military", 1), ("multi-year program", 3), ("airframe", 2), ("space systems", 2), ("long-term program", 2))),
+    ("software_internet", 3, "software and internet products are rewritten or replaced within a few years",
+     (("software-as-a-service", 3), ("saas", 3), ("subscription", 1), ("cloud", 1), ("software", 1), ("platform", 0.5),
+      ("release", 0.5), ("developer", 1), ("mobile app", 2), ("end users", 0.5))),
+    ("semiconductor_hardware", 4, "chip and hardware products follow a short design-win and product-generation cycle",
+     (("semiconductor", 3), ("wafer", 3), ("foundry", 2), ("design win", 3), ("integrated circuit", 3), ("firmware", 1),
+      ("hardware", 1), ("product generation", 2), ("fabless", 3))),
+    ("ip_licensing", 5, "patent-licensing businesses earn returns through standards and technology generations, roughly five years each",
+     (("licens", 1), ("patent portfolio", 3), ("standards", 1), ("royalt", 1.5), ("wireless", 1), ("standard-essential", 3))),
+    ("consumer_retail", 3, "consumer and retail product cycles are short, so R&D benefits fade quickly",
+     (("private label", 2), ("stores", 1), ("merchandise", 2), ("restaurants", 2), ("brands", 1), ("flavor", 1), ("packaged", 1), ("grocery", 2))),
+    ("industrial_materials", 5, "industrial products and materials are developed over a few years and sold for many",
+     (("engineered", 1), ("machinery", 2), ("manufactur", 0.5), ("chemical", 1), ("irrigation", 2), ("equipment", 0.5),
+      ("industrial", 0.5), ("automotive", 1), ("steel", 1))),
+)
+_MIN_BUSINESS_SCORE = 12.0
+_MIN_BUSINESS_MARGIN = 1.25
+
+
+def _item1_window(text: str, max_chars: int = 90_000) -> str:
+    """Business section of a 10-K (Item 1 up to Item 1A). Falls back to the opening of the filing."""
+    starts = [m.start() for m in re.finditer(r"(?i)item\s*1\s*[\.\:\-\u2014]?\s*business", text)]
+    # The table of contents also matches; the real section is the last start that leaves enough text before Item 1A.
+    for start in reversed(starts):
+        end_match = re.search(r"(?i)item\s*1a\s*[\.\:\-\u2014]?\s*risk", text[start + 500:])
+        end = start + 500 + end_match.start() if end_match else start + max_chars
+        if end - start > 3000:
+            return text[start:min(end, start + max_chars)]
+    return text[:max_chars]
+
+
+def business_life_evidence(text: str | None) -> tuple[int, list[str], list[dict[str, Any]]] | None:
+    """Pick an R&D useful life from the 10-K business text.
+
+    Returns (life, evidence lines, ranked group scores) or None when the text does not clearly point to one business type.
+    """
+    if not text or len(text) < 3000:
+        return None
+    window = _item1_window(text).lower()
+    scored: list[tuple[float, str, int, str, list[str]]] = []
+    for group, life, reason, phrases in _BUSINESS_GROUPS:
+        score = 0.0
+        hits: list[str] = []
+        for phrase, weight in phrases:
+            n = window.count(phrase)
+            if n:
+                score += weight * min(n, 15)
+                hits.append(f"{phrase} x{n}")
+        scored.append((score, group, life, reason, hits))
+    scored.sort(key=lambda item: item[0], reverse=True)
+    ranking = [{"group": g, "score": round(sc, 1), "life": life} for sc, g, life, _r, _h in scored if sc > 0]
+    top, second = scored[0], scored[1]
+    if top[0] < _MIN_BUSINESS_SCORE:
+        return None
+    if second[0] > 0 and top[0] / second[0] < _MIN_BUSINESS_MARGIN:
+        blended = int((top[2] * top[0] + second[2] * second[0]) / (top[0] + second[0]) + 0.5)
+        evidence = [
+            f"The 10-K business section mixes two activities: {top[1].replace('_', ' ')} ({', '.join(top[4][:4])}) and "
+            f"{second[1].replace('_', ' ')} ({', '.join(second[4][:4])}). The life is blended to {blended} years."
+        ]
+        return blended, evidence, ranking
+    evidence = [
+        f"The 10-K business section points to {top[1].replace('_', ' ')}: {top[3]}. "
+        f"Key phrases: {', '.join(top[4][:5])}."
+    ]
+    return top[2], evidence, ranking
+
+
 def _num(v: Any) -> float | None:
     if isinstance(v, (int, float)) and not isinstance(v, bool):
         return float(v)
@@ -67,6 +146,8 @@ class NewCompanyRdService:
         override: int | None = None,
         override_reason: str | None = None,
         prior_decision: RdUsefulLifeDecision | None = None,
+        business_text: str | None = None,
+        business_source: str | None = None,
     ) -> RdUsefulLifeDecision:
         industry, sic = self._industry(company_facts, sec_manifest)
         company_ev: list[str] = []
@@ -110,12 +191,23 @@ class NewCompanyRdService:
         selected = industry_life
         if cycle_life:
             selected = cycle_life[0]
+        business = business_life_evidence(business_text)
+        if business is not None:
+            selected = business[0]
+            company_ev.extend(business[1])
+            alternatives.insert(0, {"life": business[0], "reason": "10-K business description", "ranking": business[2][:4]})
+            if industry_life != business[0]:
+                industry_ev.append(
+                    f"SIC/name evidence suggested {industry_life} years, but the business description is more specific and decided."
+                )
         selected = max(_PERMITTED[0], min(_PERMITTED[1], int(selected)))
 
         confidence = 0.55
         if industry_reason and positive:
             confidence = 0.7
-        if not industry_reason:
+        if business is not None and positive:
+            confidence = 0.8
+        if not industry_reason and business is None:
             confidence = 0.4
             blocking.append("RD_USEFUL_LIFE_EVIDENCE_WEAK")
         if not positive and "retail" not in blob and "food" not in blob:
@@ -163,12 +255,14 @@ class NewCompanyRdService:
                 )
 
         citations.append("SEC 10-K business description / SIC (companyfacts DEI + submissions)")
+        if business is not None and business_source:
+            citations.append(f"10-K Item 1 business description: {business_source}")
         if sec_manifest and sec_manifest.get("selected_filings"):
             citations.append(str(sec_manifest["selected_filings"][0].get("document_url") or "SEC 10-K"))
 
         rationale = (
             f"Selected {selected}-year straight-line R&D capitalization life. "
-            f"{industry_reason or 'Industry/SIC evidence was thin, so HAP used a 5-year industrial economic mid-point rather than deriving life from annual R&D spending.'} "
+            f"{(business[1][0] if business else None) or industry_reason or 'Industry/SIC evidence was thin, so HAP used a 5-year industrial economic mid-point rather than deriving life from annual R&D spending.'} "
             "This is an AUTONOMOUS_AGENT_DECISION, not a measured accounting fact. "
             "An analyst may override it with a documented reason."
         )
@@ -199,6 +293,31 @@ class NewCompanyRdService:
             industry=industry,
             sic=str(sic) if sic else None,
         )
+
+    @staticmethod
+    def fetch_business_text(
+        sec_manifest: dict[str, Any] | None, *, cache_dir: Path | None = None
+    ) -> tuple[str | None, str | None]:
+        """Latest 10-K in the manifest as plain text. Returns (text, url); (None, None) when it cannot be fetched."""
+        from services.new_company_buyback_service import html_to_text
+        from services.sec_service import SecServiceError
+
+        if not sec_manifest:
+            return None, None
+        cik = str(sec_manifest.get("cik") or "")
+        sec = SecService(cache_dir=cache_dir)
+        for filing in sec_manifest.get("selected_filings") or []:
+            if str(filing.get("filing_type") or "").upper() not in {"10-K", "10-K/A"}:
+                continue
+            url = filing.get("document_url")
+            if not url or "Archives/edgar" not in str(url):
+                continue
+            try:
+                html = sec.fetch_document_text(url, cik=cik or None, cache_name=f"10k_business_{filing.get('fiscal_year')}.htm")
+            except (SecServiceError, OSError):
+                continue
+            return html_to_text(html), str(url)
+        return None, None
 
     def apply(
         self,

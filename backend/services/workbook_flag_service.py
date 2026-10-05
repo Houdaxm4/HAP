@@ -118,3 +118,19 @@ def flag_recast(ws: Worksheet, addr: str, *, old_value: Any, new_value: Any, sou
             f"Reason: {issue}"
         ),
     )
+
+
+def flag_adjustment(ws: Worksheet, addr: str, *, original: Any, new: Any, reason: str, source: str) -> None:
+    """Mark a cell HAP adjusted on purpose (lease rate, ROIC input), keeping the original in the comment."""
+    cell = ws[addr]
+    cell.fill = HAP_FILL
+    set_comment(
+        cell,
+        (
+            "HAP ADJUSTMENT - analyst-style override, flagged for review.\n"
+            f"Original: {original}\n"
+            f"New: {new}\n"
+            f"Source: {source}\n"
+            f"Reason: {reason}"
+        ),
+    )

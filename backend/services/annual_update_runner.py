@@ -16,6 +16,8 @@ from services.annual_formula_guard_service import AnnualFormulaGuardService
 from services.annual_inputs_service import AnnualInputsService
 from services.annual_judgment_service import AnnualJudgmentService
 from services.annual_leases_service import AnnualLeasesService
+from services.lease_rate_row_service import LeaseRateRowService
+from services.roic_adjustment_service import RoicAdjustmentService
 from services.annual_output_gate_service import AnnualOutputGateService
 from services.annual_rd_service import AnnualRdService
 from services.annual_research_service import AnnualResearchService
@@ -52,6 +54,8 @@ class AnnualUpdateRunner:
         self.tax = AnnualTaxService()
         self.rd = AnnualRdService()
         self.leases = AnnualLeasesService()
+        self.lease_rows = LeaseRateRowService()
+        self.roic_adjustments = RoicAdjustmentService()
         self.guard = AnnualFormulaGuardService()
         self.judgment = AnnualJudgmentService()
         self.research = AnnualResearchService()
@@ -239,6 +243,14 @@ class AnnualUpdateRunner:
                 event_note=lease_event_note,
             ),
         )
+        # Newest year only: earlier years already went through the adjustment and are copied from the previous file.
+        if new_fy:
+            timed(
+                "roic_adjustments",
+                lambda: self.roic_adjustments.apply(
+                    workbook_path=working_path, company_facts=company_facts, newest_only_fy=new_fy
+                ),
+            )
         roic, formulas = timed(
             "roic_ratios_final_metrics_guard",
             lambda: self.guard.inspect(
@@ -260,6 +272,22 @@ class AnnualUpdateRunner:
                 fiscal_year=new_fy,
             ),
         )
+        # Newest year only: earlier years already went through the adjustment and are copied from the previous file.
+        if new_fy:
+            lease_row_fix = timed(
+                "lease_rate_row_fix",
+                lambda: self.lease_rows.apply(workbook_path=working_path, newest_only_fy=new_fy),
+            )
+            if lease_row_fix.changed:
+                timed(
+                    "excel_recalculation_after_lease_rate_fix",
+                    lambda: self.excel_recalc.recalculate(
+                        analysis_id=analysis_id,
+                        ticker=ticker,
+                        workbook_path=working_path,
+                        fiscal_year=new_fy,
+                    ),
+                )
         research = timed(
             "annual_research",
             lambda: self.research.gather(

@@ -24,6 +24,8 @@ from services.excel_recalc_service import ExcelRecalcService, genuine_excel_com_
 from services.cost_recast_writer import CostRecastWriter
 from services.new_company_buyback_service import NewCompanyBuybackService
 from services.new_company_deliverables_service import NewCompanyDeliverablesService
+from services.lease_rate_row_service import LeaseRateRowService
+from services.roic_adjustment_service import RoicAdjustmentService
 from services.new_company_lease_service import NewCompanyLeaseService
 from services.new_company_output_gate_service import NewCompanyOutputGateService
 from services.new_company_pe10_service import NewCompanyPe10Service
@@ -85,6 +87,8 @@ class NewCompanyRunner:
         self.tax = NewCompanyTaxService()
         self.rd = NewCompanyRdService()
         self.leases = NewCompanyLeaseService()
+        self.lease_rows = LeaseRateRowService()
+        self.roic_adjustments = RoicAdjustmentService()
         self.buybacks = NewCompanyBuybackService()
         self.cost_recast = CostRecastWriter()
         self.seasonality = NewCompanySeasonalityService()
@@ -183,6 +187,9 @@ class NewCompanyRunner:
                 year_inputs=tax_year_inputs,
             ),
         )
+        business_text, business_source = self.rd.fetch_business_text(
+            sec_manifest, cache_dir=self.output_service.analysis_output_dir(analysis_id) / "sec_cache"
+        )
         rd_decision = timed(
             "rd_useful_life_decision",
             lambda: self.rd.select_useful_life(
@@ -194,6 +201,8 @@ class NewCompanyRunner:
                 sec_manifest=sec_manifest,
                 override=(rd_override or {}).get("life"),
                 override_reason=(rd_override or {}).get("reason"),
+                business_text=business_text,
+                business_source=business_source,
             ),
         )
         extra_lookback = []
@@ -271,6 +280,15 @@ class NewCompanyRunner:
         cost_recast = timed(
             "cost_of_revenue_recast",
             lambda: self.cost_recast.apply(workbook_path=working_path, filings_dir=_filing_dirs[0] if _filing_dirs else None),
+        )
+        # ROIC adjustments: operating assets/liabilities formulas (Inputs) and one-time operating income items (Income tab), every year.
+        roic_adjustments = timed(
+            "roic_adjustments",
+            lambda: self.roic_adjustments.apply(
+                workbook_path=working_path,
+                company_facts=company_facts,
+                filing_hint=(sec_manifest or {}).get("company_name") and f"{(sec_manifest or {}).get('company_name')} 10-K (SEC XBRL)" or "SEC 10-K (XBRL company facts)",
+            ),
         )
         current_refresh = self.current.apply(
             analysis_id=analysis_id,
@@ -380,6 +398,24 @@ class NewCompanyRunner:
                     fiscal_year=years[-1] if years else None,
                 ),
             )
+            if genuine_excel_com_recalc(recalc):
+                # Leases tab: replace blank, N/A, <1% or >10% long-term rates with a flagged, justified number, then recalculate.
+                lease_row_fix = timed(
+                    "lease_rate_row_fix",
+                    lambda: self.lease_rows.apply(workbook_path=working_path, lease_years=leases.years),
+                )
+                if lease_row_fix.changed:
+                    lease_review = self._lease_review_after_row_fix(lease_review, lease_row_fix)
+                    leases = leases.model_copy(update={"review": lease_review})
+                    recalc = timed(
+                        "excel_recalculation_after_lease_rate_fix",
+                        lambda: self.excel_recalc.recalculate(
+                            analysis_id=analysis_id,
+                            ticker=ticker,
+                            workbook_path=working_path,
+                            fiscal_year=years[-1] if years else None,
+                        ),
+                    )
             fy_int = _fy_int(years[-1]) if years else 0
             if genuine_excel_com_recalc(recalc):
                 val_pack = timed(
@@ -673,6 +709,35 @@ class NewCompanyRunner:
             "timings": timings,
             "certification_status": cert,
         }
+
+    @staticmethod
+    def _lease_review_after_row_fix(review, row_fix):
+        """When the rate table needed fixing and no single rate had been selected, record the estimate as the decision."""
+        if review is None:
+            return review
+        evidence = [f"{fix.fiscal_year}: {fix.new * 100:.2f}% ({fix.method}) - {fix.reason}" for fix in row_fix.fixes]
+        rows = [f"Leases!A{r}" for r in row_fix.notes_rows]
+        update = {
+            "supporting_evidence": list(review.supporting_evidence or []) + evidence,
+            "notes_written": list(review.notes_written or []) + rows,
+        }
+        if review.selected_rate is None and review.proposed_rate is None:
+            latest = row_fix.fixes[-1]
+            update.update(
+                {
+                    "status": "autonomous_selected",
+                    "selected_rate": latest.new,
+                    "proposed_rate": latest.new,
+                    "decision_class": "AUTONOMOUS_AGENT_DECISION",
+                    "classification": "estimated",
+                    "blocking": False,
+                    "summary": (
+                        "AUTONOMOUS_AGENT_DECISION: no lease footnote rate was available, so the rate row was filled with "
+                        f"justified estimates (latest {latest.new * 100:.2f}% via {latest.method}). Flagged in the Leases tab."
+                    ),
+                }
+            )
+        return review.model_copy(update=update)
 
     def _load_persisted_lease_review(self, analysis_id: str) -> LeaseRateReview | None:
         try:

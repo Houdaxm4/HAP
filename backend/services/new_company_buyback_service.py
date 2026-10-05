@@ -78,6 +78,7 @@ def _num(v: Any) -> float | None:
 
 
 _MATERIAL_BUYBACK = 0.05
+_ROUNDING_TOLERANCE = 0.001  # data-provider figures are not trusted: anything beyond rounding is replaced by SEC
 
 
 def _fy_token(raw: str | None) -> str | None:
@@ -708,7 +709,7 @@ class NewCompanyBuybackService:
                     )
                     historical = write_policy == "annual_update" and year.fiscal_year != new_token
                     allow_fill = write_policy != "annual_update" or annual_new_year
-                    correct_material = write_policy != "annual_update"
+                    correct_material = write_policy != "annual_update" or annual_new_year
                     if d_row:
                         year.dollars_cell = f"{sheet_name}!{ws.cell(d_row, col).coordinate}"
                         current = ws.cell(d_row, col).value
@@ -823,7 +824,7 @@ class NewCompanyBuybackService:
             if numeric is None:
                 return "preserved_non_numeric"
             relative = abs(float(numeric) - evidence) / max(abs(evidence), abs(float(numeric)), 1e-9)
-            if relative <= _MATERIAL_BUYBACK:
+            if relative <= _ROUNDING_TOLERANCE:
                 return "preserved"
             record = {
                 "fiscal_year": year.fiscal_year,
@@ -851,6 +852,22 @@ class NewCompanyBuybackService:
                 )
                 cell.value = current
                 return "discrepancy_flagged"
+            from services.adjustment_ledger_service import AdjustmentLedger
+
+            AdjustmentLedger(ws.parent).record(
+                sheet=ws.title,
+                cell=cell.coordinate,
+                fiscal_year=year.fiscal_year,
+                category="SEC override of Bloomberg",
+                what="Share repurchase " + ("dollars" if metric == "dollars" else "shares"),
+                original=numeric,
+                new=evidence,
+                amount=evidence - float(numeric),
+                reason="Data-provider buyback figures are not trusted; the SEC filing figure replaces them.",
+                source=str(record["source"] or "SEC 10-K cash flow statement / equity statement"),
+                method="sec_override",
+                confidence="high",
+            )
             cell.value = evidence
             written.append(ref)
             return "corrected_from_sec"
