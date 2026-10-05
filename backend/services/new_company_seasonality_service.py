@@ -184,6 +184,20 @@ class NewCompanySeasonalityService:
                     sec_tags,
                     ytd_bucket,
                 )
+                derived_note = None
+                if metric in {"operating_income", "ebit"} and not self._has_tag(company_facts, "OperatingIncomeLoss"):
+                    derived_hist = {
+                        fy: v
+                        for fy in hist_years
+                        if (v := self._derived_operating_income(company_facts, fy, ytd_bucket)) is not None
+                    }
+                    if len(derived_hist) > len(hist_ytd):
+                        hist_ytd = derived_hist
+                        derived_note = "historical YTD operating income derived from SEC revenue less cost of goods sold, SG&A and R&D"
+                    if ytd is None:
+                        derived_ytd = self._derived_operating_income(company_facts, current_fy, ytd_bucket)
+                        if derived_ytd is not None:
+                            ytd, ytd_src = derived_ytd, f"sec_xbrl_derived:{ytd_bucket}:{current_fy}"
                 props: dict[str, float] = {}
                 exclusions: list[str] = []
                 for fy, fy_val in hist_fy.items():
@@ -230,6 +244,8 @@ class NewCompanySeasonalityService:
                     reason = "unstable or negative YTD-to-FY proportion"
                 if ytd_src:
                     reason = (reason + f"; ytd_source={ytd_src}") if reason else f"ytd_source={ytd_src}"
+                if derived_note:
+                    reason = (reason + f"; {derived_note}") if reason else derived_note
                 components.append(
                     SeasonalityComponent(
                         metric=metric,
@@ -380,6 +396,41 @@ class NewCompanySeasonalityService:
                 if prior is not None and years[-1] not in out:
                     out[years[-1]] = prior
         return out
+
+    @staticmethod
+    def _has_tag(company_facts: dict[str, Any] | None, tag: str) -> bool:
+        gaap = ((company_facts or {}).get("facts") or {}).get("us-gaap") or {}
+        return bool((gaap.get(tag) or {}).get("units"))
+
+    def _derived_operating_income(
+        self, company_facts: dict[str, Any] | None, fy: str | None, bucket: str | None
+    ) -> float | None:
+        """Operating income as the template defines it: revenue - cost of goods sold - SG&A - R&D (SEC duration facts).
+
+        Used only when the company reports no operating income line (no OperatingIncomeLoss tag), for example Woodward.
+        Needs revenue, cost of goods sold and SG&A; R&D counts as zero only when the company has no R&D tag at all.
+        """
+        if not company_facts or not fy or not bucket:
+            return None
+
+        def first(tags: tuple[str, ...]) -> float | None:
+            for tag in tags:
+                value = self._sec_duration_value(company_facts, (tag,), fy, bucket)
+                if value is not None:
+                    return value
+            return None
+
+        revenue = first(("Revenues", "RevenueFromContractWithCustomerExcludingAssessedTax", "SalesRevenueNet"))
+        cost = first(("CostOfGoodsAndServicesSold", "CostOfRevenue", "CostOfGoodsSold"))
+        sga = first(("SellingGeneralAndAdministrativeExpense",))
+        if revenue is None or cost is None or sga is None:
+            return None
+        rd = first(("ResearchAndDevelopmentExpense",))
+        if rd is None:
+            if self._has_tag(company_facts, "ResearchAndDevelopmentExpense"):
+                return None
+            rd = 0.0
+        return revenue - cost - sga - rd
 
     @staticmethod
     def _sec_duration_value(

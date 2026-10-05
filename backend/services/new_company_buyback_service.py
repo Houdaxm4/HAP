@@ -179,6 +179,89 @@ def parse_share_repurchase_program_table(text: str) -> dict[int, dict[str, Any]]
     return out
 
 
+_YEAR = r"(?P<year>20\d\s?\d)"
+_AMOUNTS = (
+    r"(?P<shares>\d[\d,]*(?:\.\d+)?)\s*(?P<unit>million\s+)?shares[^$.]{0,100}?"
+    r"for\s+(?:approximately\s+)?\$\s*(?P<dollars>\d[\d,]*(?:\.\d+)?)\s*(?P<dunit>million|billion)?"
+)
+# "During fiscal year 2025, we repurchased 864 shares of our common stock for $170,083" (also "purchased", "fiscal year ended Sept 30, 2016")
+_REPURCHASE_SENTENCE = re.compile(
+    r"(?:during|in)\s+(?:the\s+)?(?:fiscal\s+year(?:\s+ended\s+[A-Za-z]+\s+\d{1,2},)?|fiscal)\s+" + _YEAR + r",?[^.]{0,120}?"
+    r"(?:re)?purchased\s+(?:approximately\s+)?" + _AMOUNTS,
+    re.IGNORECASE,
+)
+# "We utilized $125,000 to repurchase 2,635 shares of our common stock in fiscal year 2016"
+_REPURCHASE_UTILIZED = re.compile(
+    r"(?:utilized|used|spent)\s+(?:approximately\s+)?\$\s*(?P<dollars>\d[\d,]*(?:\.\d+)?)\s*(?P<dunit>million|billion)?\s+to\s+"
+    r"(?:re)?purchase\s+(?P<shares>\d[\d,\s]*(?:\.\d+)?)\s*(?P<unit>million\s+)?shares[^.]{0,80}?in\s+(?:the\s+)?fiscal\s+(?:year\s+)?" + _YEAR,
+    re.IGNORECASE,
+)
+
+
+def parse_repurchase_sentences(text: str) -> dict[int, list[tuple[float, float]]]:
+    """Parse narrative sentences such as "During fiscal year 2025, we repurchased 864 shares of our common stock for $170,083".
+
+    Returns fiscal year -> distinct (shares_millions, dollars_millions) pairs. A year can have several sentences (one per
+    repurchase program, or a cash figure and a total), so the caller picks the combination that reconciles with the cash flow.
+
+    Footnote figures are usually in thousands. The scale is read from the dollar amount: 10,000 or more means thousands for both
+    numbers, a smaller dollar amount means millions, and "million" or "billion" written out is used as stated. A sentence is
+    skipped when its implied price per share is not between $1 and $5,000.
+    """
+    out: dict[int, list[tuple[float, float]]] = {}
+    matches = list(_REPURCHASE_SENTENCE.finditer(text)) + list(_REPURCHASE_UTILIZED.finditer(text))
+    for match in matches:
+        year = int(match.group("year").replace(" ", ""))
+        shares_raw = float(match.group("shares").replace(",", "").replace(" ", ""))
+        dollars_raw = float(match.group("dollars").replace(",", ""))
+        if shares_raw <= 0 or dollars_raw <= 0:
+            continue
+        dunit = (match.group("dunit") or "").lower()
+        if dunit == "billion":
+            dollars_m = dollars_raw * 1_000.0
+        elif dunit == "million":
+            dollars_m = dollars_raw
+        elif dollars_raw >= 10_000:
+            dollars_m = dollars_raw / 1_000.0
+        else:
+            dollars_m = dollars_raw
+        if match.group("unit"):
+            shares_m = shares_raw
+        elif dollars_raw >= 10_000 and not dunit:
+            shares_m = shares_raw / 1_000.0
+        else:
+            shares_m = shares_raw
+        price = dollars_m / shares_m if shares_m else 0.0
+        if not 1.0 <= price <= 5_000.0:
+            continue
+        pair = (round(shares_m, 6), round(dollars_m, 6))
+        if pair not in out.setdefault(year, []):
+            out[year].append(pair)
+    return out
+
+
+def choose_sentence_shares(candidates: list[tuple[float, float]], target_dollars: float | None, tolerance: float = 0.06) -> float | None:
+    """Shares for a year: the smallest set of sentences whose dollars add up to the cash-flow dollars (within 6%).
+
+    One sentence is tried first, then pairs, then larger sets. Returns None when nothing reconciles, so a partial or double-counted
+    figure is never used.
+    """
+    from itertools import combinations
+
+    if not candidates or not target_dollars or target_dollars <= 0:
+        return None
+    for size in range(1, min(len(candidates), 4) + 1):
+        best: tuple[float, float] | None = None
+        for combo in combinations(candidates, size):
+            dollars = sum(d for _s, d in combo)
+            gap = abs(dollars - target_dollars) / target_dollars
+            if gap <= tolerance and (best is None or gap < best[0]):
+                best = (gap, sum(sh for sh, _d in combo))
+        if best is not None:
+            return best[1]
+    return None
+
+
 def parse_no_shares_repurchased_narrative(text: str) -> dict[int, dict[str, Any]]:
     """Parse explicit 10-K statements that no shares were repurchased.
 
@@ -373,7 +456,14 @@ class NewCompanyBuybackService:
             if disclosed:
                 kind = disclosed.get("source_kind") or ""
                 src = disclosed.get("source") or "sec_10k:share_repurchase_disclosure"
-                if disclosed.get("shares") is not None:
+                if kind == "10k_repurchase_sentence":
+                    candidate = choose_sentence_shares(disclosed.get("candidates") or [], dollars)
+                    if candidate is None:
+                        year_warnings.append("BUYBACK_10K_SENTENCE_SHARES_DO_NOT_RECONCILE_WITH_CASH_FLOW")
+                    else:
+                        shares = candidate
+                        s_src = src
+                elif disclosed.get("shares") is not None:
                     shares = float(disclosed["shares"])
                     s_src = src
                 if dollars is None and disclosed.get("dollars") is not None:
@@ -622,6 +712,7 @@ class NewCompanyBuybackService:
                     warnings.append(f"BUYBACK_10K_RETRIEVAL_FAILED: FY{fy}: {exc}")
                     continue
                 texts.append((f"FY{fy}", html, url))
+        sentence_pairs: dict[int, dict[tuple[float, float], str]] = {}
         for label, body, url in texts:
             plain = html_to_text(body)
             filing_year = _fy_int(label)
@@ -656,6 +747,21 @@ class NewCompanyBuybackService:
                 row = dict(payload)
                 row["source"] = c_src
                 out[year] = row
+            for year, pairs in parse_repurchase_sentences(plain).items():
+                bucket = sentence_pairs.setdefault(year, {})
+                for pair in pairs:
+                    bucket.setdefault(pair, f"sec_10k:repurchase_sentence:{label}" + (f":{url}" if url else ""))
+        for year, bucket in sentence_pairs.items():
+            if year in out:
+                continue
+            out[year] = {
+                "shares": None,
+                "dollars": None,
+                "candidates": list(bucket),
+                "units": "narrative_sentences",
+                "source_kind": "10k_repurchase_sentence",
+                "source": next(iter(bucket.values())),
+            }
         return out
 
     @staticmethod
