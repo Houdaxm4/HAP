@@ -17,7 +17,7 @@ from services.annual_inputs_service import AnnualInputsService
 from services.annual_judgment_service import AnnualJudgmentService
 from services.annual_leases_service import AnnualLeasesService
 from services.lease_rate_row_service import LeaseRateRowService
-from services.roic_adjustment_service import RoicAdjustmentService
+from services.roic_adjustment_service import RoicAdjustmentService, fetch_filing_texts
 from services.annual_output_gate_service import AnnualOutputGateService
 from services.annual_rd_service import AnnualRdService
 from services.annual_research_service import AnnualResearchService
@@ -248,7 +248,8 @@ class AnnualUpdateRunner:
             timed(
                 "roic_adjustments",
                 lambda: self.roic_adjustments.apply(
-                    workbook_path=working_path, company_facts=company_facts, newest_only_fy=new_fy
+                    workbook_path=working_path, company_facts=company_facts, newest_only_fy=new_fy,
+                    filing_texts=fetch_filing_texts(sec_manifest, cache_dir=self.output_service.analysis_output_dir(analysis_id) / "sec_cache"),
                 ),
             )
         roic, formulas = timed(

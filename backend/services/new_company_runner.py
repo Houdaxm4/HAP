@@ -25,7 +25,7 @@ from services.cost_recast_writer import CostRecastWriter
 from services.new_company_buyback_service import NewCompanyBuybackService
 from services.new_company_deliverables_service import NewCompanyDeliverablesService
 from services.lease_rate_row_service import LeaseRateRowService
-from services.roic_adjustment_service import RoicAdjustmentService
+from services.roic_adjustment_service import RoicAdjustmentService, fetch_filing_texts
 from services.new_company_lease_service import NewCompanyLeaseService
 from services.new_company_output_gate_service import NewCompanyOutputGateService
 from services.new_company_pe10_service import NewCompanyPe10Service
@@ -287,6 +287,7 @@ class NewCompanyRunner:
             lambda: self.roic_adjustments.apply(
                 workbook_path=working_path,
                 company_facts=company_facts,
+                filing_texts=fetch_filing_texts(sec_manifest, cache_dir=self.output_service.analysis_output_dir(analysis_id) / "sec_cache"),
                 filing_hint=(sec_manifest or {}).get("company_name") and f"{(sec_manifest or {}).get('company_name')} 10-K (SEC XBRL)" or "SEC 10-K (XBRL company facts)",
             ),
         )

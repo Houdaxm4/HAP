@@ -114,7 +114,8 @@ def test_operating_assets_added_conservatively_and_no_liabilities_added(tmp_path
         wb[BSN][f"{col}57"] = 7.0    # other non-current assets (miscellaneous)
         wb["Inputs"][f"{col}82"] = "=" + _term(col, 11)  # a non-current formula that can take the extra term
     wb.save(path)
-    report = RoicAdjustmentService().apply(workbook_path=path, newest_only_fy="FY2024")
+    texts = {"FY2024": "Other current assets consist of deferred contract costs and deposits. Other assets include capitalized software and prepaid royalties."}
+    report = RoicAdjustmentService().apply(workbook_path=path, newest_only_fy="FY2024", filing_texts=texts)
     ws = load_workbook(path)["Inputs"]
     assert "29" not in ws["D81"].value                       # held-for-sale taken out of operating assets
     assert "D19" in ws["D81"].value and "D33" in ws["D81"].value   # unbilled revenues and the whole other current assets line
@@ -132,7 +133,8 @@ def test_small_other_lines_are_still_added_for_assets(tmp_path: Path):
     wb = load_workbook(path)
     wb[BSN]["D33"] = 0.5
     wb.save(path)
-    RoicAdjustmentService().apply(workbook_path=path, newest_only_fy="FY2024")
+    texts = {"FY2024": "Other current assets include prepaid expenses and deposits."}
+    RoicAdjustmentService().apply(workbook_path=path, newest_only_fy="FY2024", filing_texts=texts)
     assert "D33" in load_workbook(path)["Inputs"]["D81"].value
 
 
@@ -158,3 +160,35 @@ def test_overlapping_impairment_tags_are_counted_once(tmp_path: Path):
     facts["facts"]["us-gaap"]["ImpairmentOfIntangibleAssetsExcludingGoodwill"] = facts["facts"]["us-gaap"]["AssetImpairmentCharges"]
     RoicAdjustmentService().apply(workbook_path=path, company_facts=facts, newest_only_fy="FY2024")
     assert load_workbook(path)["Income - GAAP"]["D22"].value == 108.0  # 120 - 12, not 120 - 24
+
+
+def test_other_lines_are_not_added_without_10k_evidence(tmp_path: Path):
+    path = _workbook(tmp_path / "wb.xlsx", unbilled=0.0)
+    wb = load_workbook(path)
+    wb[BSN]["D33"], wb[BSN]["D57"] = 12.0, 7.0
+    wb["Inputs"]["D82"] = "=" + _term("D", 11)
+    wb.save(path)
+    nothing = {"FY2024": "Other current assets consist of investments in marketable securities and derivative contracts."}
+    report = RoicAdjustmentService().apply(workbook_path=path, newest_only_fy="FY2024", filing_texts=nothing)
+    ws = load_workbook(path)["Inputs"]
+    assert "D33" not in ws["D81"].value and "D57" not in ws["D82"].value
+    assert sum("no 10-K evidence" in s for s in report.skipped) == 2
+    assert not RoicAdjustmentService().apply(workbook_path=path, newest_only_fy="FY2024").changed
+
+
+def test_xbrl_component_tags_count_as_evidence(tmp_path: Path):
+    from services.roic_adjustment_service import asset_evidence
+    from datetime import date
+
+    facts = {"facts": {"us-gaap": {"DeferredCostsCurrent": {"units": {"USD": [{"end": "2024-12-31", "val": 5e6, "form": "10-K", "filed": "2025-02-20"}]}}}}}
+    ev = asset_evidence(facts, date(2024, 12, 31), None)
+    assert ev["current"] == ["XBRL us-gaap:DeferredCostsCurrent"] and ev["noncurrent"] == []
+    assert asset_evidence(facts, date(2022, 12, 31), None) == {"current": [], "noncurrent": []}
+
+
+def test_note_evidence_reads_only_the_listed_components():
+    from services.roic_adjustment_service import _OTHER_CURRENT, note_evidence
+
+    assert note_evidence("Other current assets consist of prepaid taxes and deferred contract costs.", _OTHER_CURRENT)[:2] == ["prepaid", "deferred contract cost"]
+    assert note_evidence("Other current assets are not significant.", _OTHER_CURRENT) == []
+    assert note_evidence(None, _OTHER_CURRENT) == []

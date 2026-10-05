@@ -3,8 +3,9 @@
 Operating assets / operating liabilities (Inputs tab): the formulas add up Balance Sheet lines. HAP edits those formulas
 - removes a line that is clearly non-operating (held for sale, discontinued operations, derivatives, investments), and
 - adds operating assets the formula leaves out, always on the conservative side: a known operating line (unbilled revenues) is
-  added, and the whole "other" line (miscellaneous short-term and long-term assets) is added because it hides operating assets and
-  the exact amount is not known. A higher invested capital means a lower ROIC.
+  added, and the whole "other" line (miscellaneous short-term and long-term assets) is added ONLY when the company's 10-K shows
+  operating items inside it (note text or XBRL component tags) and the exact amount cannot be separated. No evidence, no addition.
+  A higher invested capital means a lower ROIC.
 - adds NO extra operating liabilities: only what is sure is counted, and the template formula already holds those.
 
 Operating income (Income - GAAP tab): a one-time charge or gain that sits inside operating expenses is taken out by changing the
@@ -49,9 +50,79 @@ NON_OPERATING_ASSET_ROWS = {12: "ST investments", 28: "ST derivative and hedging
 # Conservative rule: when operating assets are known to hide inside an "other" line and the amount is not known, the whole line is added.
 OPERATING_ASSET_ADDITIONS = (
     (19, "current", "Unbilled revenues", "a known operating asset the formula leaves out"),
-    (33, "current", "Other current assets (miscellaneous)", "operating assets hide inside other current assets and the exact amount is not known, so the whole line is added (conservative: higher invested capital, lower ROIC)"),
-    (57, "noncurrent", "Other non-current assets (miscellaneous)", "operating assets hide inside other non-current assets and the exact amount is not known, so the whole line is added (conservative: higher invested capital, lower ROIC)"),
+    (33, "current", "Other current assets (miscellaneous)", "the 10-K shows operating items inside other current assets and their amount cannot be separated, so the whole line is added (conservative: higher invested capital, lower ROIC)"),
+    (57, "noncurrent", "Other non-current assets (miscellaneous)", "the 10-K shows operating items inside other non-current assets and their amount cannot be separated, so the whole line is added (conservative: higher invested capital, lower ROIC)"),
 )
+# Evidence that operating items sit inside the "other" asset lines.
+# XBRL balance-sheet component tags (instant facts) that are operating assets Bloomberg would lump into the miscellaneous lines.
+OPERATING_XBRL_CURRENT = ("DeferredCostsCurrent", "CapitalizedContractCostNetCurrent", "DepositsAssetsCurrent", "AdvancesOnInventoryPurchases")
+OPERATING_XBRL_NONCURRENT = ("DeferredCostsNoncurrent", "CapitalizedContractCostNetNoncurrent", "DepositsAssetsNoncurrent",
+                             "CapitalizedComputerSoftwareNet", "PrepaidExpenseOtherNoncurrent")
+# Words in the 10-K note that describe what "other current/non-current assets" consist of, when they name operating items.
+OPERATING_NOTE_KEYWORDS = ("prepaid", "deferred contract cost", "contract cost", "deferred cost", "deferred commission", "capitalized commission",
+                           "deposit", "inventor", "supplies", "spare parts", "advances to suppliers", "vendor", "rebates receivable",
+                           "capitalized software", "tooling", "deferred charges", "unbilled", "contract asset")
+_OTHER_CURRENT = re.compile(r"other\s+current\s+assets", re.I)
+_OTHER_NONCURRENT = re.compile(r"other\s+(?:non-?\s?current|long-?\s?term)\s+assets|other\s+assets", re.I)
+_CUE = re.compile(r"consist(?:s|ed)?\s+of|includ(?:e|es|ed|ing)|comprised\s+of|primarily|mainly|related\s+to", re.I)
+
+
+def note_evidence(text: str | None, pattern: re.Pattern) -> list[str]:
+    """Operating items the 10-K note names as part of an 'other assets' line. Empty when the note names none."""
+    if not text:
+        return []
+    found: list[str] = []
+    for match in pattern.finditer(text):
+        tail = text[match.end(): match.end() + 700]
+        cue = _CUE.search(tail[:160])
+        if not cue:
+            continue
+        window = tail[cue.end(): cue.end() + 450].lower()
+        for word in OPERATING_NOTE_KEYWORDS:
+            if word in window and word not in found:
+                found.append(word)
+        if len(found) >= 4:
+            break
+    return found
+
+
+def instant_value(company_facts: dict[str, Any] | None, tag: str, year_end: date | None) -> float | None:
+    """Balance-sheet (instant) USD value of a us-gaap tag at a fiscal year end."""
+    if not company_facts or year_end is None:
+        return None
+    entries = (((company_facts.get("facts") or {}).get("us-gaap") or {}).get(tag) or {}).get("units", {}).get("USD") or []
+    best: tuple[str, float] | None = None
+    for item in entries:
+        if not str(item.get("form") or "").startswith("10-K") or item.get("start"):
+            continue
+        try:
+            end = date.fromisoformat(str(item.get("end")))
+        except (TypeError, ValueError):
+            continue
+        if abs((end - year_end).days) > 7:
+            continue
+        filed = str(item.get("filed") or "")
+        if best is None or filed > best[0]:
+            best = (filed, float(item.get("val")))
+    return best[1] if best and best[1] else None
+
+
+def asset_evidence(company_facts: dict[str, Any] | None, year_end: date | None, filing_text: str | None) -> dict[str, list[str]]:
+    """Per section ('current', 'noncurrent'): evidence strings showing operating items inside the 'other' lines."""
+    out: dict[str, list[str]] = {"current": [], "noncurrent": []}
+    for tag in OPERATING_XBRL_CURRENT:
+        if instant_value(company_facts, tag, year_end):
+            out["current"].append(f"XBRL us-gaap:{tag}")
+    for tag in OPERATING_XBRL_NONCURRENT:
+        if instant_value(company_facts, tag, year_end):
+            out["noncurrent"].append(f"XBRL us-gaap:{tag}")
+    for word in note_evidence(filing_text, _OTHER_CURRENT):
+        out["current"].append(f"10-K note names {word}")
+    for word in note_evidence(filing_text, _OTHER_NONCURRENT):
+        out["noncurrent"].append(f"10-K note names {word}")
+    return out
+
+
 # Conservative rule for liabilities: no extra lines. Only what is sure is counted, and the template formula already holds it.
 OPERATING_LIABILITY_ADDITIONS: tuple[tuple[int, str, str, str], ...] = ()
 NON_OPERATING_LIABILITY_ROWS = {67: "Interest and dividends payable", 79: "ST derivatives and hedging", 81: "Liabilities of discontinued operations (ST)",
@@ -174,6 +245,7 @@ class RoicAdjustmentService:
         company_facts: dict[str, Any] | None = None,
         newest_only_fy: str | None = None,
         filing_hint: str = "SEC 10-K (XBRL company facts)",
+        filing_texts: dict[str, str] | None = None,
     ) -> RoicAdjustmentReport:
         report = RoicAdjustmentReport()
         path = Path(workbook_path)
@@ -191,7 +263,9 @@ class RoicAdjustmentService:
                 if newest_only_fy is not None and fy != newest_only_fy:
                     continue
                 letter = wb[INPUTS].cell(1, col_idx).column_letter
-                self._balance_sheet(wb, cached, ledger, report, fy, letter)
+                year_end = self._year_end(cached[INCOME], income_cols[fy]) if fy in income_cols else None
+                evidence = asset_evidence(company_facts, year_end, (filing_texts or {}).get(fy))
+                self._balance_sheet(wb, cached, ledger, report, fy, letter, evidence)
                 if fy in income_cols:
                     self._operating_income(wb, cached, ledger, report, fy, income_cols[fy], company_facts, multiplier, filing_hint)
             if report.changed:
@@ -202,7 +276,7 @@ class RoicAdjustmentService:
         return report
 
     # ------------------------------------------------------------------ balance sheet lines
-    def _balance_sheet(self, wb, cached, ledger, report, fy: str, col: str) -> None:
+    def _balance_sheet(self, wb, cached, ledger, report, fy: str, col: str, evidence: dict[str, list[str]]) -> None:
         ws = wb[INPUTS]
         cws = cached[INPUTS]
         bs_cached = cached[BS]
@@ -240,6 +314,12 @@ class RoicAdjustmentService:
                 amount = _num(bs_cached[f"{col}{bs_row}"].value)
                 if not amount or amount <= 0:
                     continue
+                proof = evidence.get(section, []) if bs_row in (33, 57) else []
+                if bs_row in (33, 57) and not proof:
+                    report.skipped.append(f"{fy} {label}: no 10-K evidence of operating items inside; not added.")
+                    continue
+                if proof:
+                    why = f"{why} Evidence: {'; '.join(proof[:4])}"
                 new_formula = add_term(formula, col, bs_row)
                 share = f" ({abs(amount) / total:.1%} of {category.lower()})" if total and total > 0 else ""
                 self._record(ledger, report, cell, fy, category, f"Added {label} to {category.lower()}",
@@ -359,3 +439,26 @@ class RoicAdjustmentService:
         if "thousands" in text:
             return 1_000.0
         return 1_000_000.0
+
+
+def fetch_filing_texts(sec_manifest: dict[str, Any] | None, *, cache_dir: Path | None = None) -> dict[str, str]:
+    """Plain text of each 10-K in the manifest, keyed by FY token. Reuses the buyback download cache names."""
+    from services.new_company_buyback_service import html_to_text
+    from services.sec_service import SecService, SecServiceError
+
+    if not sec_manifest:
+        return {}
+    cik = str(sec_manifest.get("cik") or "")
+    sec = SecService(cache_dir=cache_dir)
+    texts: dict[str, str] = {}
+    for filing in sec_manifest.get("selected_filings") or []:
+        if str(filing.get("filing_type") or "").upper() not in {"10-K", "10-K/A"}:
+            continue
+        url, fy = filing.get("document_url"), filing.get("fiscal_year")
+        if not url or not fy or "Archives/edgar" not in str(url) or f"FY{fy}" in texts:
+            continue
+        try:
+            texts[f"FY{fy}"] = html_to_text(sec.fetch_document_text(url, cik=cik or None, cache_name=f"10k_buybacks_{fy}.htm"))
+        except (SecServiceError, OSError):
+            continue
+    return texts
