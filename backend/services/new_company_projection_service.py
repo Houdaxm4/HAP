@@ -85,6 +85,25 @@ def resolve_workbook_wacc(path: Path) -> tuple[float | None, str | None]:
     return None, None
 
 
+def final_metrics_rows(ws) -> tuple[int, int]:
+    """Rows of ROCE and ROIC on the Final Metrics tab, found by label (defaults 5 and 6 in the house template).
+
+    "ROIC in - WACC" (the spread) is a different row and must never be read as ROIC.
+    """
+    roce_row, roic_row = 5, 6
+    if ws is None:
+        return roce_row, roic_row
+    for row in range(1, min(ws.max_row or 1, 20) + 1):
+        label = str(ws.cell(row, 1).value or "").strip().lower()
+        if not label:
+            continue
+        if label.startswith("roce"):
+            roce_row = row
+        elif label.startswith("roic") and "wacc" not in label and " - " not in label:
+            roic_row = row
+    return roce_row, roic_row
+
+
 class NewCompanyProjectionService:
     def apply(
         self,
@@ -266,8 +285,9 @@ class NewCompanyProjectionService:
                 actual_roic = None
                 actual_roce = None
                 if fm is not None and fy in fm_cols:
-                    actual_roce = _num(fm.cell(5, fm_cols[fy]).value)
-                    actual_roic = _num(fm.cell(8, fm_cols[fy]).value)
+                    roce_row, roic_row = final_metrics_rows(fm)
+                    actual_roce = _num(fm.cell(roce_row, fm_cols[fy]).value)
+                    actual_roic = _num(fm.cell(roic_row, fm_cols[fy]).value)
                     if actual_roic is not None and abs(actual_roic) > 1.5:
                         actual_roic = actual_roic / 100.0
                     if actual_roce is not None and abs(actual_roce) > 1.5:
@@ -330,12 +350,13 @@ class NewCompanyProjectionService:
                     wb2.close()
             roics: list[float] = []
             roces: list[float] = []
+            roce_row, roic_row = final_metrics_rows(ws)
             for fy in fiscal_years:
                 col = cols.get(fy)
                 if not col:
                     continue
-                roce = _num(ws.cell(5, col).value)
-                roic = _num(ws.cell(8, col).value)
+                roce = _num(ws.cell(roce_row, col).value)
+                roic = _num(ws.cell(roic_row, col).value)
                 if roce is not None:
                     roces.append(roce / 100.0 if abs(roce) > 1.5 else roce)
                 if roic is not None:
