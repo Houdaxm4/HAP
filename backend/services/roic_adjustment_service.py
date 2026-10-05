@@ -2,7 +2,10 @@
 
 Operating assets / operating liabilities (Inputs tab): the formulas add up Balance Sheet lines. HAP edits those formulas
 - removes a line that is clearly non-operating (held for sale, discontinued operations, derivatives, investments), and
-- adds a clearly operating line that the formula leaves out when it is material (5% of the section total).
+- adds operating assets the formula leaves out, always on the conservative side: a known operating line (unbilled revenues) is
+  added, and the whole "other" line (miscellaneous short-term and long-term assets) is added because it hides operating assets and
+  the exact amount is not known. A higher invested capital means a lower ROIC.
+- adds NO extra operating liabilities: only what is sure is counted, and the template formula already holds those.
 
 Operating income (Income - GAAP tab): a one-time charge or gain that sits inside operating expenses is taken out by changing the
 component line and its total by the same amount, so the tab still adds up. Evidence is the company's own SEC XBRL facts for
@@ -35,7 +38,6 @@ ROW_OP_ASSETS_TOTAL, ROW_OP_LIAB_TOTAL = 80, 83
 # Income - GAAP rows
 ROW_OPEX_TOTAL, ROW_OPEX_OTHER, ROW_OPEX_SGA, ROW_OPERATING_INCOME = 22, 28, 23, 30
 
-BS_MATERIALITY = 0.05
 OI_MATERIALITY = 0.02
 
 # Balance-sheet lines that are clearly non-operating (removed from operating assets if they were included)
@@ -43,9 +45,15 @@ NON_OPERATING_ASSET_ROWS = {12: "ST investments", 28: "ST derivative and hedging
                             30: "ST deferred tax assets", 32: "Assets of discontinued operations (ST)", 44: "LT investments",
                             45: "LT marketable securities", 52: "LT deferred tax assets", 53: "LT derivative and hedging assets",
                             55: "Investments in affiliates", 56: "Assets of discontinued operations (LT)"}
-# Operating lines the template formula leaves out, added when material: (row, section, label)
-OPERATING_ASSET_ADDITIONS = ((19, "current", "Unbilled revenues"),)
-OPERATING_LIABILITY_ADDITIONS = ((66, "current", "Accrued taxes"), (93, "noncurrent", "Accrued liabilities (LT)"))
+# Operating assets the template formula leaves out, added in every year (row, section, label, why).
+# Conservative rule: when operating assets are known to hide inside an "other" line and the amount is not known, the whole line is added.
+OPERATING_ASSET_ADDITIONS = (
+    (19, "current", "Unbilled revenues", "a known operating asset the formula leaves out"),
+    (33, "current", "Other current assets (miscellaneous)", "operating assets hide inside other current assets and the exact amount is not known, so the whole line is added (conservative: higher invested capital, lower ROIC)"),
+    (57, "noncurrent", "Other non-current assets (miscellaneous)", "operating assets hide inside other non-current assets and the exact amount is not known, so the whole line is added (conservative: higher invested capital, lower ROIC)"),
+)
+# Conservative rule for liabilities: no extra lines. Only what is sure is counted, and the template formula already holds it.
+OPERATING_LIABILITY_ADDITIONS: tuple[tuple[int, str, str, str], ...] = ()
 NON_OPERATING_LIABILITY_ROWS = {67: "Interest and dividends payable", 79: "ST derivatives and hedging", 81: "Liabilities of discontinued operations (ST)",
                                 100: "LT derivatives and hedging", 101: "Liabilities of discontinued operations (LT)"}
 
@@ -221,7 +229,7 @@ class RoicAdjustmentService:
                                  f"{bad_rows[bs_row]} ({amount:,.1f}) is not an operating item, so it should not be in invested capital.",
                                  f"{BS}!{col}{bs_row} (balance sheet line)", "formula_term_removed", "medium")
                     formula = new_formula
-            for bs_row, section, label in additions:
+            for bs_row, section, label, why in additions:
                 row_no = cur_row if section == "current" else non_row
                 cell = ws[f"{col}{row_no}"]
                 formula = cell.value
@@ -230,14 +238,15 @@ class RoicAdjustmentService:
                 if any(bs_row in formula_rows(ws[f"{col}{r}"].value, col) for r in (cur_row, non_row)):
                     continue
                 amount = _num(bs_cached[f"{col}{bs_row}"].value)
-                if not amount or total is None or total <= 0 or abs(amount) / total < BS_MATERIALITY:
+                if not amount or amount <= 0:
                     continue
                 new_formula = add_term(formula, col, bs_row)
-                sign = amount if category == "Operating assets" else amount
+                share = f" ({abs(amount) / total:.1%} of {category.lower()})" if total and total > 0 else ""
                 self._record(ledger, report, cell, fy, category, f"Added {label} to {category.lower()}",
-                             formula, new_formula, sign,
-                             f"{label} ({amount:,.1f}) is {abs(amount) / total:.1%} of {category.lower()} and is an operating item the formula left out.",
-                             f"{BS}!{col}{bs_row} (balance sheet line)", "formula_term_added", "medium")
+                             formula, new_formula, amount,
+                             f"{label} of {amount:,.1f}{share}: {why}.",
+                             f"{BS}!{col}{bs_row} (balance sheet line)", "formula_term_added",
+                             "high" if bs_row == 19 else "conservative")
 
     # ------------------------------------------------------------------ one-time operating items
     def _operating_income(self, wb, cached, ledger, report, fy, col_idx, company_facts, multiplier, filing_hint) -> None:

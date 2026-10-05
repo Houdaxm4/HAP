@@ -28,7 +28,7 @@ def _facts(tag: str, value: float, end: str = "2024-12-31", start: str = "2024-0
     ]}}}}}
 
 
-def _workbook(path: Path, *, other_opex=15.0, sga=40.0, opex_total=120.0, held_for_sale_in_formula=False, unbilled=5.0, accrued=2.0) -> Path:
+def _workbook(path: Path, *, other_opex=15.0, sga=40.0, opex_total=120.0, held_for_sale_in_formula=False, unbilled=0.0, accrued=0.0) -> Path:
     wb = Workbook()
     inputs = wb.active
     inputs.title = "Inputs"
@@ -106,16 +106,34 @@ def test_one_time_gain_is_added_back_only_when_visible_in_opex(tmp_path: Path):
     assert not report.changed and any("not visible" in s for s in report.skipped)
 
 
-def test_operating_lines_are_added_and_non_operating_removed(tmp_path: Path):
+def test_operating_assets_added_conservatively_and_no_liabilities_added(tmp_path: Path):
     path = _workbook(tmp_path / "wb.xlsx", held_for_sale_in_formula=True, unbilled=60.0, accrued=20.0)
+    wb = load_workbook(path)
+    for col in ("C", "D"):
+        wb[BSN][f"{col}33"] = 12.0   # other current assets (miscellaneous)
+        wb[BSN][f"{col}57"] = 7.0    # other non-current assets (miscellaneous)
+        wb["Inputs"][f"{col}82"] = "=" + _term(col, 11)  # a non-current formula that can take the extra term
+    wb.save(path)
     report = RoicAdjustmentService().apply(workbook_path=path, newest_only_fy="FY2024")
     ws = load_workbook(path)["Inputs"]
-    assert "29" not in ws["D81"].value                      # held-for-sale taken out of operating assets
-    assert "D19" in ws["D81"].value                          # unbilled revenues (60 of 500 = 12%) added
-    assert "D66" in ws["D84"].value                          # accrued taxes (20 of 200 = 10%) added
-    assert "29" in ws["C81"].value                           # earlier year untouched
-    cats = {a.category for a in report.adjustments}
-    assert cats == {"Operating assets", "Operating liabilities"}
+    assert "29" not in ws["D81"].value                       # held-for-sale taken out of operating assets
+    assert "D19" in ws["D81"].value and "D33" in ws["D81"].value   # unbilled revenues and the whole other current assets line
+    assert "D57" in ws["D82"].value                          # whole other non-current assets line
+    assert ws["D84"].value == "=" + _term("D", 65)           # liabilities: nothing added, even with accrued taxes present
+    assert "D66" not in ws["D84"].value and "D93" not in ws["D85"].value
+    assert "29" in ws["C81"].value and "D33" not in ws["C81"].value   # earlier year untouched
+    assert {a.category for a in report.adjustments} == {"Operating assets"}
+    conservative = [a for a in report.adjustments if "whole line" in a.reason]
+    assert len(conservative) == 2
+
+
+def test_small_other_lines_are_still_added_for_assets(tmp_path: Path):
+    path = _workbook(tmp_path / "wb.xlsx")
+    wb = load_workbook(path)
+    wb[BSN]["D33"] = 0.5
+    wb.save(path)
+    RoicAdjustmentService().apply(workbook_path=path, newest_only_fy="FY2024")
+    assert "D33" in load_workbook(path)["Inputs"]["D81"].value
 
 
 def test_new_company_adjusts_every_year(tmp_path: Path):
