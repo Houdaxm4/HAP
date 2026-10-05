@@ -307,8 +307,13 @@ class NewCompanyStatementValidationService:
         Priority: exact label (with or without the marker) beats a substring match, and a substring match is only
         allowed on unmarked rows, so a sub-line can never be mistaken for the total it feeds.
         """
+        from services.title_row_guard import title_rows
+
         substring_hit = None
+        titles = title_rows(ws)  # section titles repeat the label of the real data row and must stay blank
         for row in range(1, min(ws.max_row or 1, 160) + 1):
+            if row in titles:
+                continue
             raw = str(ws.cell(row, 1).value or "").strip().lower()
             if not raw:
                 continue

@@ -31,6 +31,8 @@ CATEGORY_FILL = {
     "Operating liabilities": "FDE9D9",
     "One-time operating income": "EADCF4",
     "SEC override of Bloomberg": "FFF1C2",
+    "Cumulative from 10-Q": "E6F4EA",
+    "Projection": "E0E7FF",
 }
 THIN = Side(style="thin", color="C9CED6")
 MARK = "◆"  # diamond: the marker shown in the comment title

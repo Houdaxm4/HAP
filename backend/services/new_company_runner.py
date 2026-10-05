@@ -25,6 +25,8 @@ from services.cost_recast_writer import CostRecastWriter
 from services.new_company_buyback_service import NewCompanyBuybackService
 from services.new_company_deliverables_service import NewCompanyDeliverablesService
 from services.lease_rate_row_service import LeaseRateRowService
+from services.ic_projection_writer import IcProjectionWriter
+from services.new_company_cumulative_service import NewCompanyCumulativeService
 from services.roic_adjustment_service import RoicAdjustmentService, fetch_filing_texts
 from services.new_company_lease_service import NewCompanyLeaseService
 from services.new_company_output_gate_service import NewCompanyOutputGateService
@@ -88,6 +90,8 @@ class NewCompanyRunner:
         self.rd = NewCompanyRdService()
         self.leases = NewCompanyLeaseService()
         self.lease_rows = LeaseRateRowService()
+        self.cumulative = NewCompanyCumulativeService()
+        self.ic_projection = IcProjectionWriter()
         self.roic_adjustments = RoicAdjustmentService()
         self.buybacks = NewCompanyBuybackService()
         self.cost_recast = CostRecastWriter()
@@ -340,6 +344,23 @@ class NewCompanyRunner:
                     already_copied=True,
                 ),
             )
+        if quarterly_analysis_required("new_company", periods.latest_quarter):
+            # Cumulative (year-to-date) sections of the Last Quarter IS and CF tabs, then the projection columns that read them.
+            timed(
+                "cumulative_statements",
+                lambda: self.cumulative.apply(
+                    workbook_path=working_path,
+                    company_facts=company_facts,
+                    latest_quarter=periods.latest_quarter,
+                    ticker=ticker,
+                    yahoo=self.yahoo,
+                ),
+            )
+            timed(
+                "ic_projection_columns",
+                lambda: self.ic_projection.apply(workbook_path=working_path, latest_quarter=periods.latest_quarter),
+            )
+        timed("title_rows_blank", lambda: self._clear_title_rows(working_path))
         seasonality = timed(
             "seasonality",
             lambda: self.seasonality.project(
@@ -457,6 +478,8 @@ class NewCompanyRunner:
                         wacc_source=mapped_wacc_src if mapped_wacc is not None else None,
                     ),
                 )
+            if projection is not None and quarterly_analysis_required("new_company", periods.latest_quarter):
+                projection = self._projection_from_workbook(projection, working_path)
             pe_fy = next((o.value for o in reversed(pe10.fiscal_year_pe10) if o.value is not None), None)
             pe_fy_label = years[-1] if years else None
             pe_fy_asof = next((o.as_of_date for o in reversed(pe10.fiscal_year_pe10) if o.as_of_date), None)
@@ -710,6 +733,51 @@ class NewCompanyRunner:
             "timings": timings,
             "certification_status": cert,
         }
+
+    @staticmethod
+    def _projection_from_workbook(projection, path: Path):
+        """Use the projected ROIC and ROCE the workbook itself computes (IC tab columns M and N, house method)."""
+        from openpyxl import load_workbook
+
+        wb = load_workbook(path, data_only=True)
+        try:
+            if "IC & NOPAT & ROIC " not in wb.sheetnames:
+                return projection
+            ws = wb["IC & NOPAT & ROIC "]
+            def num(addr):
+                v = ws[addr].value
+                return float(v) if isinstance(v, (int, float)) and not isinstance(v, bool) else None
+            roic, roce, nopat, capital = num("M23"), num("N4"), num("M20"), num("M7")
+        finally:
+            wb.close()
+        if roic is None and roce is None:
+            return projection
+        update = {
+            "ytd_unadjusted_annualized_roic": roic,
+            "ytd_unadjusted_annualized_roce": roce,
+            "projected_nopat": nopat,
+            "projected_invested_capital": capital,
+        }
+        wacc = projection.wacc
+        if roic is not None and wacc is not None:
+            update["projected_roic_wacc"] = roic - wacc
+        return projection.model_copy(update=update)
+
+    @staticmethod
+    def _clear_title_rows(path: Path) -> list[str]:
+        """Section-title rows in the statement tabs must stay blank (see title_row_guard)."""
+        from openpyxl import load_workbook
+
+        from services.title_row_guard import clear_title_rows
+
+        wb = load_workbook(path, data_only=False)
+        try:
+            report = clear_title_rows(wb)
+            if report.changed:
+                wb.save(path)
+            return report.cleared
+        finally:
+            wb.close()
 
     @staticmethod
     def _lease_review_after_row_fix(review, row_fix):

@@ -168,12 +168,15 @@ class HapAnalysisLayoutService:
         if not rows:
             return []
         written: list[str] = []
+        # Column B is hidden on the Last Quarter tabs: notes go to columns D (label) and E (text) there.
+        b_hidden = bool(ws.column_dimensions["B"].hidden) if "B" in ws.column_dimensions else False
+        label_col, value_col = (4, 5) if b_hidden else (1, 2)
         header_row = self._notes_header_row(ws, header)
         if header_row is None:
             end = discover_occupied_end_row(ws)
             row = max(end, 0) + 2
             while cell_is_occupied_or_formula(ws, ws.cell(row, 1).coordinate) or cell_is_occupied_or_formula(
-                ws, ws.cell(row, 2).coordinate
+                ws, ws.cell(row, value_col).coordinate
             ):
                 row += 1
                 if row > end + 500:
@@ -187,14 +190,14 @@ class HapAnalysisLayoutService:
             row = header_row + 1
         limit = row + 500
         for label, value in rows:
-            while cell_is_occupied_or_formula(ws, ws.cell(row, 1).coordinate) or cell_is_occupied_or_formula(
-                ws, ws.cell(row, 2).coordinate
+            while cell_is_occupied_or_formula(ws, ws.cell(row, label_col).coordinate) or cell_is_occupied_or_formula(
+                ws, ws.cell(row, value_col).coordinate
             ):
                 row += 1
                 if row > limit:
                     return written
-            label_cell = ws.cell(row, 1)
-            value_cell = ws.cell(row, 2)
+            label_cell = ws.cell(row, label_col)
+            value_cell = ws.cell(row, value_col)
             label_cell.value = label
             style_hap_analysis_cell(label_cell)
             value_cell.value = value
