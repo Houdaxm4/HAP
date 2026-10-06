@@ -118,8 +118,11 @@ class NewCompanyLeaseService:
         written: list[str] = []
         regimes: set[str] = set()
 
+        filing_cache: dict[str, Any] = {}
         for fy in fiscal_years:
             rec, raw = self._year_from_facts(sec, company_facts, fy)
+            if rec.regime in {"unknown", "pre_asc_842"} and rec.year_1 is None and rec.rou_asset is None and rec.total_undiscounted is None:
+                rec, raw = self._commitments_from_filing(sec, ticker, fy, rec, raw, filing_cache)
             rec.raw_labels = raw
             years.append(rec)
             regimes.add(rec.regime)
@@ -618,6 +621,41 @@ class NewCompanyLeaseService:
         data["regime"] = regime
         data["source"] = "sec_edgar_10k"
         return LeaseYearData.model_validate(data), raw
+
+    @staticmethod
+    def _commitments_from_filing(sec: SecService, ticker: str, fy: str, rec: LeaseYearData, raw: list, cache: dict[str, Any]):
+        """A pre-ASC 842 year with no structured lease data: read the commitments table in that year's own 10-K note."""
+        from services.lease_text_parsers import parse_operating_lease_commitments
+        from services.new_company_buyback_service import html_to_text
+
+        if "by_year" not in cache:
+            try:
+                cik = sec.resolve_cik(ticker)
+                filings = sec.list_recent_filings(cik, forms={"10-K", "10-K/A"})
+            except Exception:  # noqa: BLE001 - a fallback: the year stays incomplete and the gate says so
+                cik, filings = None, []
+            by_year: dict[int, dict[str, Any]] = {}
+            for filing in filings:
+                year = filing.get("fiscal_year")
+                if year and filing.get("document_url"):
+                    current = by_year.get(int(year))
+                    if current is None or (current.get("filing_type") != "10-K" and filing.get("filing_type") == "10-K"):
+                        by_year[int(year)] = filing          # the original 10-K, not a Part III amendment (10-K/A)
+            cache.update({"by_year": by_year, "cik": cik})
+        filing = cache["by_year"].get(int(fy[2:])) if str(fy).startswith("FY") and fy[2:].isdigit() else None
+        if filing is None:
+            return rec, raw
+        try:
+            html = sec.fetch_document_text(filing["document_url"], cik=cache["cik"], cache_name=f"10k_lease_{fy[2:]}.htm")
+        except Exception:  # noqa: BLE001
+            return rec, raw
+        parsed = parse_operating_lease_commitments(html_to_text(html))
+        if not parsed:
+            return rec, raw
+        label = f"sec_10k_text:operating_lease_commitments:{fy}"
+        update = {**parsed, "regime": "pre_asc_842", "source": "sec_edgar_10k_text"}
+        raw = list(raw) + [{"field": key, "label": label, "value": value, "form": "10-K"} for key, value in parsed.items()]
+        return rec.model_copy(update=update), raw
 
     @staticmethod
     def _infer_from_liability(years: list[LeaseYearData]) -> float | None:

@@ -393,6 +393,8 @@ def _quarter_vs_block(f: Facts, heading: str, *, with_ytd: bool, margin_digits: 
 
     def cmp_line(label: str, pair: tuple, money: bool, per_share: bool = False) -> str:
         cur, pri = pair
+        if cur is None and pri is None:
+            return ""
         fmt = usd if per_share else money_m
         return f"{label} {pct(change(cur, pri), 2, sign=True)} ({fmt(cur)} vs. {fmt(pri)})"
 
@@ -403,8 +405,10 @@ def _quarter_vs_block(f: Facts, heading: str, *, with_ytd: bool, margin_digits: 
         ni_key, ni_label = "net_common", "Net Income available to Common (after preferred dividends)"
     for label, key, per_share in (("Revenue", "revenue", False), (ni_label, ni_key, False), ("EPS Diluted (GAAP)", "eps", True)):
         if key in y and y[key].get(basis):
-            lines.append(cmp_line(label, y[key][basis], True, per_share))
-    if "cfo" in y:
+            line = cmp_line(label, y[key][basis], True, per_share)
+            if line:
+                lines.append(line)
+    if "cfo" in y and None not in y["cfo"]["ytd"]:
         cur, pri = y["cfo"]["ytd"]
         lines.append(f"Cash from Ops {pct(change(cur, pri), 2, sign=True)} ({money_m(cur)} vs. {money_m(pri)})")
     def pick(key: str):
@@ -412,13 +416,14 @@ def _quarter_vs_block(f: Facts, heading: str, *, with_ytd: bool, margin_digits: 
         return d.get(basis) or d.get("q") or d.get("ytd")      # in Q1 the year-to-date columns are the quarter
 
     rev, opi, ni, gp = pick("revenue"), pick("op_income"), pick("net_income"), pick("gross_profit")
-    if rev and gp and rev[0] and rev[1]:
-        lines.append(f"Gross Margin {pct(gp[0] / rev[0], margin_digits)} vs. {pct(gp[1] / rev[1], margin_digits)}")
-    if rev and opi and rev[0] and rev[1] and opi[0] is not None and opi[1] is not None:
-        lines.append(f"Operating Margin {pct(opi[0] / rev[0], margin_digits)} vs. {pct(opi[1] / rev[1], margin_digits)}")
-    if rev and ni and rev[0] and rev[1] and ni[0] is not None and ni[1] is not None:
-        lines.append(f"Net Margin {pct(ni[0] / rev[0], margin_digits)} vs. {pct(ni[1] / rev[1], margin_digits)}")
-    return lines
+    def margin(label: str, num) -> None:
+        if rev and num and None not in (rev[0], rev[1], num[0], num[1]) and rev[0] and rev[1]:
+            lines.append(f"{label} {pct(num[0] / rev[0], margin_digits)} vs. {pct(num[1] / rev[1], margin_digits)}")
+
+    margin("Gross Margin", gp)
+    margin("Operating Margin", opi)
+    margin("Net Margin", ni)
+    return lines if len(lines) > 1 else []        # nothing to compare: leave the whole block out
 
 
 def _qoq_block(f: Facts, heading: str) -> list[str]:
@@ -553,3 +558,14 @@ class EmailDraftService:
         msg.set_content(body)
         eml.write_bytes(bytes(msg))
         return {"subject": subject, "text_path": str(txt), "eml_path": str(eml), "body": body}
+
+    def produce_safe(self, **kwargs: Any) -> dict[str, Any]:
+        """Like produce(), but a problem with the email never stops an analysis: the paths are None and `error` says what went wrong."""
+        try:
+            return self.produce(**kwargs)
+        except Exception as exc:  # noqa: BLE001 - the email is advisory
+            return {"subject": None, "text_path": None, "eml_path": None, "body": None, "error": f"{type(exc).__name__}: {exc}"}
+
+
+def file_name(path: str | None) -> str | None:
+    return Path(path).name if path else None

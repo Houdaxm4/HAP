@@ -10,7 +10,7 @@ from docx import Document
 from docx.shared import Pt, RGBColor
 
 from services.deliverable_text import headline_lines
-from services.email_draft_service import EmailDraftService, word_report_enabled
+from services.email_draft_service import EmailDraftService, file_name, word_report_enabled
 from services.report_flags import collect_flags, write_flags_section
 from services.report_opinion import write_assessment_sections
 from services.margin_history import note_text, read_history, table_rows
@@ -114,7 +114,7 @@ class NewCompanyDeliverablesService:
         else:
             word_name = None
             word_path = None
-        email = EmailDraftService().produce(
+        email = EmailDraftService().produce_safe(
             analysis_type="new_company",
             ticker=ticker,
             company=company,
@@ -130,13 +130,13 @@ class NewCompanyDeliverablesService:
             excel_path=str(excel_path),
             word_filename=word_name,
             word_path=str(word_path) if word_path else None,
-            email_filename=Path(email["text_path"]).name,
+            email_filename=file_name(email["text_path"]),
             email_path=email["text_path"],
             eml_path=email["eml_path"],
             authorized=authorized,
             summary=(
                 f"Deliverables: {excel_name}"
-                + f"; {Path(email['text_path']).name}"
+                + f"; {file_name(email['text_path'])}"
                 + ("" if authorized else " (NOT AUTHORIZED: review the HAP Adjustments tab and the gate report)")
             ),
         )

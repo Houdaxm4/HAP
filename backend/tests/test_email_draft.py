@@ -127,3 +127,24 @@ def test_eml_is_an_unsent_draft_addressed_to_the_analyst_and_the_word_report_is_
     assert msg["To"] == "houda@vlixes.us" and msg["X-Unsent"] == "1"
     assert Path(out["text_path"]).read_text(encoding="utf-8").startswith("Subject: ")
     assert not list(tmp_path.glob("*.docx"))
+
+
+def test_missing_gross_profit_or_revenue_does_not_break_the_comparison_block():
+    f = _facts()
+    f.q_yoy["gross_profit"] = {"ytd": (None, 1400.0)}
+    f.q_yoy["op_income"] = {"ytd": (None, None)}
+    _s, body = render_new_company(f)
+    assert "Gross Margin" not in body and "Operating Margin" not in body and "Net Margin" in body
+
+
+def test_email_problems_never_stop_an_analysis(tmp_path: Path):
+    out = EmailDraftService().produce_safe(analysis_type="annual_update", ticker="XYZ", workbook_path=tmp_path / "missing.xlsx", output_dir=tmp_path)
+    assert out["text_path"] is None and out["error"]
+
+
+def test_a_quarter_block_with_no_data_is_left_out_not_filled_with_na():
+    f = _facts()
+    f.q_yoy = {k: {"q": (None, None), "ytd": (None, None)} for k in ("revenue", "net_income", "eps", "op_income", "gross_profit")}
+    f.q_yoy["cfo"] = {"ytd": (None, None)}
+    _s, body = render_new_company(f)
+    assert "Q3 2026 vs. Q3 2025" not in body and "n/a ($" not in body and "Revenue n/a" not in body

@@ -17,7 +17,7 @@ from models.quarterly_update import (
     QuarterlyValuationReport,
 )
 from services.deliverable_naming import email_deliverable_name
-from services.email_draft_service import EmailDraftService, word_report_enabled
+from services.email_draft_service import EmailDraftService, file_name, word_report_enabled
 from services.report_flags import collect_flags, write_flags_section
 from services.report_opinion import write_assessment_sections
 
@@ -117,7 +117,7 @@ class QuarterlyDeliverablesService:
                 judgment=judgment,
                 authorized=authorize_word,
             )
-        email = EmailDraftService().produce(
+        email = EmailDraftService().produce_safe(
             analysis_type="quarterly_update",
             ticker=ticker,
             workbook_path=excel_path,
@@ -134,10 +134,10 @@ class QuarterlyDeliverablesService:
             excel_path=str(excel_path),
             word_filename=word_name if word_on else None,
             word_path=str(word_path) if word_on else None,
-            email_filename=Path(email["text_path"]).name,
+            email_filename=file_name(email["text_path"]),
             email_path=email["text_path"],
             eml_path=email["eml_path"],
-            summary=f"Deliverables: {excel_name}; {Path(email['text_path']).name}"
+            summary=f"Deliverables: {excel_name}; {file_name(email['text_path'])}"
             + ("" if authorize_word else " (NOT AUTHORIZED: review the HAP Adjustments tab and the gate report)"),
         )
 

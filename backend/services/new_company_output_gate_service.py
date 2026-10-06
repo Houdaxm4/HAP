@@ -216,7 +216,7 @@ class NewCompanyOutputGateService:
             else:
                 gates["G_buybacks"] = "pass"
             for w in buybacks.warnings:
-                if "DERIVED" in w:
+                if "DERIVED" in w or "NOT_DISCLOSED" in w:
                     warnings.append(w)
                 elif "RECONCILIATION" in w:
                     warnings.append("BUYBACK_RECONCILIATION_FAILED")

@@ -273,6 +273,9 @@ class AnnualOutputGateService:
             year.dollars is not None and (year.shares is not None or year.shares_derived)
         ):
             gates["buybacks"] = "pass"
+        elif year.dollars is not None and year.absence_class == BuybackAbsenceClass.NOT_DISCLOSED:
+            warnings.append(f"BUYBACK_SHARES_NOT_DISCLOSED_IN_FILINGS: {token}")        # dollars known, share count not in any filing
+            gates["buybacks"] = "pass"
         elif year.dollars is None:
             blockers.append(f"BUYBACK_DOLLARS_COVERAGE_INCOMPLETE: {token}")
             gates["buybacks"] = "fail"

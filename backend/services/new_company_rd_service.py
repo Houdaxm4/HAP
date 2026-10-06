@@ -19,8 +19,10 @@ from models.new_company import (
 from services.annual_period_service import detect_workbook_years, detect_year_columns
 from services.annual_rd_service import AnnualRdService
 from services.hap_analysis_layout_service import HapAnalysisLayoutService
+from services.new_company_buyback_service import html_to_text
 from services.sec_service import SecService
 from services.rd_layout import insert_lookback_columns, rd_year_columns
+from services.rd_text_parsers import parse_rd_costs
 from services.tab_notes import add_notes, note
 
 _PERMITTED = (1, 10)
@@ -346,7 +348,7 @@ class NewCompanyRdService:
         try:
             self._write_useful_life(wb, life, written)
             amounts = self._collect_rd(
-                wb, lookback, fiscal_years, company_facts, workbook_path
+                wb, lookback, fiscal_years, company_facts, workbook_path, ticker=ticker
             )
             for fy in lookback:
                 rec = amounts.get(fy)
@@ -461,6 +463,7 @@ class NewCompanyRdService:
         displayed: list[str],
         company_facts: dict[str, Any] | None,
         workbook_path: Path,
+        ticker: str | None = None,
     ) -> dict[str, RdYearAmount]:
         out: dict[str, RdYearAmount] = {}
         sec = SecService()
@@ -484,6 +487,7 @@ class NewCompanyRdService:
                 if "r&d expense" in lab or (lab.startswith("r&d") and "expense" in lab):
                     inp_row = row
                     break
+        filing_cache: dict[str, Any] = {}
         for fy in lookback:
             amount = None
             source = None
@@ -505,6 +509,10 @@ class NewCompanyRdService:
                         amount = val
                         source = f"sec_xbrl:{tag}"
                         break
+            if amount is None and ticker:
+                found = self._rd_from_filings(sec, ticker, [fy], filing_cache)
+                if fy in found:
+                    amount, source = found[fy]
             zero_flag = None
             if amount == 0:
                 zero_flag = "reported_zero"
@@ -518,6 +526,45 @@ class NewCompanyRdService:
                 lookback=fy not in displayed,
                 displayed=fy in displayed,
             )
+        return out
+
+    @staticmethod
+    def _rd_from_filings(sec: SecService, ticker: str, years: list[str], cache: dict[str, Any]) -> dict[str, tuple[float, str]]:
+        """R&D for years the structured data lacks, read from the 10-K note of that year or of the next two years (their comparatives)."""
+        if not years:
+            return {}
+        if "by_year" not in cache:
+            try:
+                cik = sec.resolve_cik(ticker)
+                filings = sec.list_recent_filings(cik, forms={"10-K", "10-K/A"})
+            except Exception:  # noqa: BLE001 - this is a fallback; the gate reports what stays missing
+                cik, filings = None, []
+            by_year: dict[int, dict[str, Any]] = {}
+            for filing in filings:
+                fy = filing.get("fiscal_year")
+                if fy and filing.get("document_url"):
+                    current = by_year.get(int(fy))
+                    if current is None or (current.get("filing_type") != "10-K" and filing.get("filing_type") == "10-K"):
+                        by_year[int(fy)] = filing          # the original 10-K, not a Part III amendment (10-K/A)
+            cache.update({"by_year": by_year, "cik": cik, "parsed": {}})
+        by_year, cik, parsed = cache["by_year"], cache["cik"], cache["parsed"]
+        out: dict[str, tuple[float, str]] = {}
+        for token in years:
+            year_n = _fy_int(token)
+            for filing_year in (year_n, year_n + 1, year_n + 2):
+                filing = by_year.get(filing_year)
+                if filing is None:
+                    continue
+                if filing_year not in parsed:
+                    try:
+                        html = sec.fetch_document_text(filing["document_url"], cik=cik, cache_name=f"10k_rd_{filing_year}.htm")
+                    except Exception:  # noqa: BLE001
+                        parsed[filing_year] = {}
+                        continue
+                    parsed[filing_year] = parse_rd_costs(html_to_text(html), filing_year)
+                if year_n in parsed[filing_year]:
+                    out[token] = (parsed[filing_year][year_n], f"sec_10k_text:research_and_development_note:FY{filing_year}")
+                    break
         return out
 
     @staticmethod

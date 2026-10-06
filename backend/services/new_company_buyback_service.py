@@ -16,6 +16,11 @@ from models.new_company import (
     NewCompanyBuybackReport,
 )
 from services.annual_period_service import detect_year_columns
+from services.buyback_text_parsers import (
+    parse_annual_shares_narrative,
+    parse_equity_statement_repurchases,
+    parse_multi_year_repurchases,
+)
 from services.sec_service import SecService, SecServiceError
 from services.tab_notes import add_notes, note
 
@@ -152,7 +157,8 @@ def html_to_text(html: str) -> str:
     text = re.sub(r"(?is)<[^>]+>", " ", text)
     text = re.sub(r"&#8217;|&rsquo;", "'", text)
     text = re.sub(r"&#8212;|&mdash;|&ndash;", "-", text)
-    text = re.sub(r"&#32;|&nbsp;|&#160;", " ", text)
+    text = re.sub(r"&#32;|&nbsp;|&#160;|&#[xX][aA]0;|\u00a0", " ", text)
+    text = re.sub(r"&#8217;|&#[xX]2019;", "'", text)
     text = re.sub(r"[ \t]+", " ", text)
     text = re.sub(r"\n[ \t]+", "\n", text)
     return text
@@ -393,6 +399,8 @@ class NewCompanyBuybackService:
         new_fiscal_year: str | None = None,
     ) -> NewCompanyBuybackReport:
         sec = SecService(cache_dir=cache_dir)
+        self._searched_filings = False
+        closes = self._year_close_prices(workbook_path)
         years: list[BuybackYearResult] = []
         warnings: list[str] = []
         sbc_total = 0.0
@@ -458,7 +466,31 @@ class NewCompanyBuybackService:
                 kind = disclosed.get("source_kind") or ""
                 src = disclosed.get("source") or "sec_10k:share_repurchase_disclosure"
                 if kind == "10k_repurchase_sentence":
-                    candidate = choose_sentence_shares(disclosed.get("candidates") or [], dollars)
+                    cands = disclosed.get("candidates") or []
+                    with_dollars = [c for c in cands if c[1] is not None]
+                    shares_only = sorted({c[0] for c in cands if c[1] is None})
+                    candidate = choose_sentence_shares(with_dollars, dollars)
+                    if candidate is None and dollars:
+                        # The cash-flow line can cover only the shares kept in treasury while the note states the total cost of all shares
+                        # repurchased (some are retired). A note total above the cash-flow figure, with a price in line with the stock, replaces it.
+                        totals = [
+                            c for c in with_dollars
+                            if c[1] > dollars * 1.06 and self._implied_price_ok(c[1], c[0]) and self._price_fits_market(c[1], c[0], year_n, closes)
+                        ]
+                        if len(totals) == 1:
+                            candidate, dollars = totals[0][0], totals[0][1]
+                            d_src = src
+                            year_warnings.append("BUYBACK_DOLLARS_RAISED_TO_10K_TOTAL_COST_INCLUDING_RETIRED_SHARES")
+                    if (
+                        candidate is None
+                        and len(shares_only) == 1
+                        and dollars
+                        and self._implied_price_ok(dollars, shares_only[0])
+                        and self._price_fits_market(dollars, shares_only[0], year_n, closes)
+                    ):
+                        # a share count stated for the year without dollars: used when it is the only one and the implied price is sensible
+                        candidate = shares_only[0]
+                        year_warnings.append("BUYBACK_SHARES_FROM_10K_TEXT_WITHOUT_DOLLARS_PRICE_CHECKED_AGAINST_YEAR_END_CLOSES")
                     if candidate is None:
                         year_warnings.append("BUYBACK_10K_SENTENCE_SHARES_DO_NOT_RECONCILE_WITH_CASH_FLOW")
                     else:
@@ -503,9 +535,14 @@ class NewCompanyBuybackService:
                 )
             elif dollars == 0 and (shares is None or shares == 0):
                 absence = BuybackAbsenceClass.REPORTED_ZERO
+            elif shares is None and dollars is not None and not derived and self._searched_filings:
+                # The dollars are known and the 10-Ks were searched (XBRL, summary sentences, equity statement, notes) without finding a share
+                # count: the company did not disclose it. A warning, not a blocker: the share cell stays blank and is never invented.
+                absence = BuybackAbsenceClass.NOT_DISCLOSED
+                warnings.append(f"BUYBACK_SHARES_NOT_DISCLOSED_IN_FILINGS: {fy}")
             if dollars is None and shares is not None:
                 warnings.append(f"BUYBACK_DOLLARS_COVERAGE_INCOMPLETE: {fy}")
-            if shares is None and dollars is not None and not derived:
+            if shares is None and dollars is not None and not derived and absence != BuybackAbsenceClass.NOT_DISCLOSED:
                 warnings.append(f"BUYBACK_SHARES_COVERAGE_INCOMPLETE: {fy}")
             if derived:
                 warnings.append(f"BUYBACK_SHARES_DERIVED: {fy}")
@@ -629,6 +666,38 @@ class NewCompanyBuybackService:
         )
 
     @staticmethod
+    def _year_close_prices(workbook_path: Path) -> dict[int, float]:
+        """Fiscal-year closing prices from the Final Metrics tab ('Stock Close Price'); empty when not available."""
+        try:
+            wb = load_workbook(workbook_path, data_only=True)
+        except Exception:  # noqa: BLE001 - advisory data
+            return {}
+        try:
+            if "Final Metrics" not in wb.sheetnames:
+                return {}
+            ws = wb["Final Metrics"]
+            row = next((r for r in range(1, min(ws.max_row or 1, 80) + 1) if str(ws.cell(r, 1).value or "").strip().lower() == "stock close price"), None)
+            if row is None:
+                return {}
+            out: dict[int, float] = {}
+            for fy, col in detect_year_columns(ws, wb).items():
+                value = _num(ws.cell(row, col).value)
+                if str(fy).startswith("FY") and value:
+                    out[_fy_int(fy)] = value
+            return out
+        finally:
+            wb.close()
+
+    @staticmethod
+    def _price_fits_market(dollars_m: float, shares_m: float, year_n: int, closes: dict[int, float]) -> bool:
+        """The implied repurchase price must sit near the stock's price: between 0.4x the lower and 2.5x the higher of the year-end closes."""
+        refs = [closes[y] for y in (year_n - 1, year_n) if y in closes]
+        if not refs or not shares_m:
+            return True                                    # no market reference: the plain range check applies
+        implied = dollars_m / shares_m
+        return 0.4 * min(refs) <= implied <= 2.5 * max(refs)
+
+    @staticmethod
     def _implied_price_ok(dollars_m: float, shares_m: float) -> bool:
         if shares_m in (None, 0) or dollars_m is None:
             return True
@@ -713,6 +782,7 @@ class NewCompanyBuybackService:
                     warnings.append(f"BUYBACK_10K_RETRIEVAL_FAILED: FY{fy}: {exc}")
                     continue
                 texts.append((f"FY{fy}", html, url))
+        self._searched_filings = bool(texts)
         sentence_pairs: dict[int, dict[tuple[float, float], str]] = {}
         for label, body, url in texts:
             plain = html_to_text(body)
@@ -748,10 +818,16 @@ class NewCompanyBuybackService:
                 row = dict(payload)
                 row["source"] = c_src
                 out[year] = row
-            for year, pairs in parse_repurchase_sentences(plain).items():
-                bucket = sentence_pairs.setdefault(year, {})
-                for pair in pairs:
-                    bucket.setdefault(pair, f"sec_10k:repurchase_sentence:{label}" + (f":{url}" if url else ""))
+            for kind, parsed in (
+                ("repurchase_sentence", parse_repurchase_sentences(plain)),
+                ("multi_year_sentence", parse_multi_year_repurchases(plain)),
+                ("annual_summary_sentence", parse_annual_shares_narrative(plain, filing_year)),
+                ("equity_statement_treasury_row", parse_equity_statement_repurchases(plain)),
+            ):
+                for year, pairs in parsed.items():
+                    bucket = sentence_pairs.setdefault(year, {})
+                    for pair in pairs:
+                        bucket.setdefault(pair, f"sec_10k:{kind}:{label}" + (f":{url}" if url else ""))
         for year, bucket in sentence_pairs.items():
             if year in out:
                 continue
@@ -980,7 +1056,7 @@ class NewCompanyBuybackService:
             return "corrected_from_sec"
         if not allow_fill:
             return "historical_blank_preserved"
-        if year.absence_class == BuybackAbsenceClass.NOT_DISCLOSED:
+        if year.absence_class == BuybackAbsenceClass.NOT_DISCLOSED and year.dollars is None and year.shares is None:
             return "missing_not_zero"
         cell.value = evidence
         written.append(ref)
@@ -1013,4 +1089,16 @@ class NewCompanyBuybackService:
                     "the company's 10-K",
                 )
             )
-        add_notes(ws, lines, replace_containing=("Buyback dollars and shares", "Buybacks are counted as", "Buybacks mean the gross", "zero buybacks"))
+        silent = [y.fiscal_year for y in years if y.absence_class == BuybackAbsenceClass.NOT_DISCLOSED and y.dollars is not None]
+        if silent:
+            lines.append(
+                note(
+                    f"The number of shares repurchased in {', '.join(silent)} is left blank",
+                    "the company states the dollars spent but no share count anywhere in its filings, so none was estimated",
+                    "the company's 10-K filings",
+                )
+            )
+        add_notes(
+            ws, lines,
+            replace_containing=("Buyback dollars and shares", "Buybacks are counted as", "Buybacks mean the gross", "zero buybacks", "number of shares repurchased in"),
+        )

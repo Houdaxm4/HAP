@@ -25,7 +25,7 @@ from services.annual_period_service import detect_year_columns
 from services.annual_valuation_extract_service import AnnualValuationExtractService
 from services.deliverable_naming import email_deliverable_name, excel_deliverable_name
 from services.deliverable_text import dedupe, headline_lines
-from services.email_draft_service import EmailDraftService, word_report_enabled
+from services.email_draft_service import EmailDraftService, file_name, word_report_enabled
 from services.report_flags import collect_flags, write_flags_section
 from services.report_opinion import write_assessment_sections
 
@@ -101,7 +101,7 @@ class AnnualDeliverablesService:
                 expected_return,
                 gate,
             )
-        email = EmailDraftService().produce(
+        email = EmailDraftService().produce_safe(
             analysis_type="annual_update",
             ticker=ticker,
             workbook_path=excel_path,
@@ -116,10 +116,10 @@ class AnnualDeliverablesService:
             excel_path=str(excel_path),
             word_filename=word_name if word_on else None,
             word_path=str(word_path) if word_on else None,
-            email_filename=Path(email["text_path"]).name,
+            email_filename=file_name(email["text_path"]),
             email_path=email["text_path"],
             eml_path=email["eml_path"],
-            summary=f"Deliverables: {excel_name}; {Path(email['text_path']).name}",
+            summary=f"Deliverables: {excel_name}; {file_name(email['text_path'])}",
         )
 
     def build_performance(
