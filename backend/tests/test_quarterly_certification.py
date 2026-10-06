@@ -278,7 +278,7 @@ def test_zero_prior_oi_blocks_tax(tmp_path: Path):
 
 def test_deliverable_filenames():
     x, w = deliverable_stems(2026, 2, "aapl")
-    assert x == "2026 Q2 AAPL Quarterly Update.xlsx"
+    assert x == "2026 Q2 AAPL FA.xlsx"
     assert w == "2026 Q2 AAPL Quarterly Update.docx"
 
 
@@ -307,7 +307,7 @@ def test_word_q1_excludes_projection_q3_includes(tmp_path: Path):
         projection=proj,
         review=QuarterlyReviewReport(analysis_id="d", ticker="AAPL"),
     )
-    assert out.excel_filename == "2026 Q3 AAPL Quarterly Update.xlsx"
+    assert out.excel_filename == "2026 Q3 AAPL FA.xlsx"
     assert out.word_filename == "2026 Q3 AAPL Quarterly Update.docx"
     assert (tmp_path / "out" / out.excel_filename).exists()
     assert (tmp_path / "out" / out.word_filename).exists()

@@ -662,6 +662,9 @@ class AnnualDeliverablesReport(BaseModel):
     excel_path: str | None = None
     word_filename: str | None = None
     word_path: str | None = None
+    email_filename: str | None = None
+    email_path: str | None = None
+    eml_path: str | None = None
     summary: str = ""
 
 

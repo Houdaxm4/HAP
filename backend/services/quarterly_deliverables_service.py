@@ -16,6 +16,8 @@ from models.quarterly_update import (
     QuarterlyReviewReport,
     QuarterlyValuationReport,
 )
+from services.deliverable_naming import email_deliverable_name
+from services.email_draft_service import EmailDraftService, word_report_enabled
 from services.report_flags import collect_flags, write_flags_section
 from services.report_opinion import write_assessment_sections
 
@@ -100,19 +102,28 @@ class QuarterlyDeliverablesService:
         word_path = output_dir / word_name
 
         shutil.copy2(completed_workbook_path, excel_path)
-        # The Word report is always produced; when the dependency gate failed its Flags section says so.
-        self._write_word(
-            word_path,
+        word_on = word_report_enabled()
+        if word_on:
+            self._write_word(
+                word_path,
+                ticker=ticker,
+                fiscal_year=fy,
+                fiscal_quarter=q,
+                workbook_path=excel_path,
+                projection=projection,
+                review=review,
+                research=research,
+                valuation=valuation,
+                judgment=judgment,
+                authorized=authorize_word,
+            )
+        email = EmailDraftService().produce(
+            analysis_type="quarterly_update",
             ticker=ticker,
-            fiscal_year=fy,
-            fiscal_quarter=q,
             workbook_path=excel_path,
-            projection=projection,
-            review=review,
-            research=research,
-            valuation=valuation,
-            judgment=judgment,
-            authorized=authorize_word,
+            output_dir=output_dir,
+            projection=self._email_projection(projection),
+            base_name=email_deliverable_name(fiscal_year=fy, ticker=ticker, fiscal_quarter=q),
         )
         return QuarterlyDeliverablesReport(
             analysis_id=analysis_id,
@@ -121,11 +132,31 @@ class QuarterlyDeliverablesService:
             fiscal_quarter=q,
             excel_filename=excel_name,
             excel_path=str(excel_path),
-            word_filename=word_name,
-            word_path=str(word_path),
-            summary=f"Deliverables: {excel_name}; {word_name}"
-            + ("" if authorize_word else " (NOT AUTHORIZED: see the Flags section)"),
+            word_filename=word_name if word_on else None,
+            word_path=str(word_path) if word_on else None,
+            email_filename=Path(email["text_path"]).name,
+            email_path=email["text_path"],
+            eml_path=email["eml_path"],
+            summary=f"Deliverables: {excel_name}; {Path(email['text_path']).name}"
+            + ("" if authorize_word else " (NOT AUTHORIZED: review the HAP Adjustments tab and the gate report)"),
         )
+
+    @staticmethod
+    def _email_projection(projection: QuarterlyProjectionReport | None) -> dict[str, Any] | None:
+        if projection is None or projection.status == "NOT_APPLICABLE" or projection.projected_roic_wacc is None:
+            return None
+        year = projection.next_fiscal_year
+        prior = None
+        if projection.prior_fy_roic is not None and projection.prior_fy_wacc is not None:
+            prior = projection.prior_fy_roic - projection.prior_fy_wacc
+        return {
+            "next_fy": str(year) if year else "Next year",
+            "fy": f"FY{year - 1}" if year else "last year",
+            "roic_wacc": projection.projected_roic_wacc,
+            "prior_spread": prior,
+            "roce": projection.projected_roce,
+            "prior_roce": projection.prior_fy_roce,
+        }
 
     def _infer_fy_q(self, path: Path) -> tuple[int, int]:
         wb = load_workbook(path, data_only=False)

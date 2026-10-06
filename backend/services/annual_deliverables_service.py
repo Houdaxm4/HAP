@@ -23,8 +23,9 @@ from models.annual_update import (
 )
 from services.annual_period_service import detect_year_columns
 from services.annual_valuation_extract_service import AnnualValuationExtractService
-from services.deliverable_naming import excel_deliverable_name
+from services.deliverable_naming import email_deliverable_name, excel_deliverable_name
 from services.deliverable_text import dedupe, headline_lines
+from services.email_draft_service import EmailDraftService, word_report_enabled
 from services.report_flags import collect_flags, write_flags_section
 from services.report_opinion import write_assessment_sections
 
@@ -88,15 +89,24 @@ class AnnualDeliverablesService:
         excel_path = output_dir / excel_name
         word_path = output_dir / word_name
         shutil.copy2(completed_workbook_path, excel_path)
-        self._write_word(
-            word_path,
-            ticker,
-            fiscal_year,
-            performance,
-            research,
-            judgment,
-            expected_return,
-            gate,
+        word_on = word_report_enabled()
+        if word_on:
+            self._write_word(
+                word_path,
+                ticker,
+                fiscal_year,
+                performance,
+                research,
+                judgment,
+                expected_return,
+                gate,
+            )
+        email = EmailDraftService().produce(
+            analysis_type="annual_update",
+            ticker=ticker,
+            workbook_path=excel_path,
+            output_dir=output_dir,
+            base_name=email_deliverable_name(fiscal_year=fiscal_year, ticker=ticker),
         )
         return AnnualDeliverablesReport(
             analysis_id=analysis_id,
@@ -104,9 +114,12 @@ class AnnualDeliverablesService:
             fiscal_year=fiscal_year,
             excel_filename=excel_name,
             excel_path=str(excel_path),
-            word_filename=word_name,
-            word_path=str(word_path),
-            summary=f"Deliverables: {excel_name}; {word_name}",
+            word_filename=word_name if word_on else None,
+            word_path=str(word_path) if word_on else None,
+            email_filename=Path(email["text_path"]).name,
+            email_path=email["text_path"],
+            eml_path=email["eml_path"],
+            summary=f"Deliverables: {excel_name}; {Path(email['text_path']).name}",
         )
 
     def build_performance(

@@ -10,6 +10,7 @@ from docx import Document
 from docx.shared import Pt, RGBColor
 
 from services.deliverable_text import headline_lines
+from services.email_draft_service import EmailDraftService, word_report_enabled
 from services.report_flags import collect_flags, write_flags_section
 from services.report_opinion import write_assessment_sections
 from services.margin_history import note_text, read_history, table_rows
@@ -72,7 +73,7 @@ class NewCompanyDeliverablesService:
         judgment: Any = None,
         valuation_report: NewCompanyValuationReport | None = None,
     ) -> NewCompanyDeliverablesReport:
-        from services.deliverable_naming import excel_deliverable_name
+        from services.deliverable_naming import email_deliverable_name, excel_deliverable_name
 
         output_dir.mkdir(parents=True, exist_ok=True)
         excel_name = excel_deliverable_name(
@@ -85,8 +86,8 @@ class NewCompanyDeliverablesService:
         excel_path = output_dir / excel_name
         word_path = output_dir / word_name
         shutil.copy2(completed_workbook_path, excel_path)
-        # The Word report is always produced: its first section lists every flag, including why it is not authorized.
-        if True:
+        word_on = word_report_enabled()
+        if word_on:
             self._write_word(
                 word_path,
                 ticker=ticker,
@@ -113,6 +114,14 @@ class NewCompanyDeliverablesService:
         else:
             word_name = None
             word_path = None
+        email = EmailDraftService().produce(
+            analysis_type="new_company",
+            ticker=ticker,
+            company=company,
+            workbook_path=excel_path,
+            output_dir=output_dir,
+            base_name=email_deliverable_name(fiscal_year=fiscal_year, ticker=ticker, fiscal_quarter=fiscal_quarter),
+        )
         return NewCompanyDeliverablesReport(
             analysis_id=analysis_id,
             ticker=ticker,
@@ -121,11 +130,14 @@ class NewCompanyDeliverablesService:
             excel_path=str(excel_path),
             word_filename=word_name,
             word_path=str(word_path) if word_path else None,
+            email_filename=Path(email["text_path"]).name,
+            email_path=email["text_path"],
+            eml_path=email["eml_path"],
             authorized=authorized,
             summary=(
                 f"Deliverables: {excel_name}"
-                + f"; {word_name}"
-                + ("" if authorized else " (NOT AUTHORIZED: see the Flags section)")
+                + f"; {Path(email['text_path']).name}"
+                + ("" if authorized else " (NOT AUTHORIZED: review the HAP Adjustments tab and the gate report)")
             ),
         )
 

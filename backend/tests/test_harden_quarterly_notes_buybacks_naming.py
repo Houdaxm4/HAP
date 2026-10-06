@@ -297,20 +297,20 @@ def test_deliverable_names_follow_incorporated_period():
         excel_deliverable_name(
             fiscal_year=2026, ticker="lnn", analysis_type="New Company", fiscal_quarter=2
         )
-        == "2026 Q2 LNN New Company.xlsx"
+        == "2026 Q2 LNN FA.xlsx"
     )
     assert (
         excel_deliverable_name(
             fiscal_year=2026, ticker="idcc", analysis_type="Quarterly Update", fiscal_quarter=2
         )
-        == "2026 Q2 IDCC Quarterly Update.xlsx"
+        == "2026 Q2 IDCC FA.xlsx"
     )
     assert (
         excel_deliverable_name(fiscal_year=2025, ticker="jbss", analysis_type="Annual Update")
-        == "2025 Fiscal Year JBSS Annual Update.xlsx"
+        == "2025 FY JBSS FA.xlsx"
     )
     assert (
         excel_deliverable_name(fiscal_year=2025, ticker="lnn", analysis_type="New Company")
-        == "2025 Fiscal Year LNN New Company.xlsx"
+        == "2025 FY LNN FA.xlsx"
     )
     assert QuarterlyStatementKind.CASH_FLOW.value

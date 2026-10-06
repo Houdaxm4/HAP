@@ -409,7 +409,7 @@ def test_word_report_flags_missing_call_and_includes_required_sections(tmp_path:
         performance=perf,
         research=research,
     )
-    assert report.excel_filename == "2025 Fiscal Year AAPL Annual Update.xlsx"
+    assert report.excel_filename == "2025 FY AAPL FA.xlsx"
     assert report.word_filename == "2025 AAPL Annual Update.docx"
     assert (tmp_path / report.excel_filename).exists()
     from docx import Document
