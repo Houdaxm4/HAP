@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import shutil
 import sys
@@ -102,7 +103,8 @@ def _period_of(excel: Path, deliv: dict) -> tuple[int | None, int | None]:
 def run_one(ticker: str, analysis_type: str, match: Match, sheet, results: Path) -> dict:
     import main as hap_main
     from models.analysis import AnalysisFiles, CreateAnalysisRequest
-    from services.deliverable_naming import email_deliverable_name
+    from services.deliverable_naming import business_deliverable_name, email_deliverable_name
+    from services.business_doc_service import BusinessDocService
     from services.email_draft_service import EmailDraftService
 
     analysis_service, file_service, output_service = hap_main.analysis_service, hap_main.file_service, hap_main.output_service
@@ -145,11 +147,22 @@ def run_one(ticker: str, analysis_type: str, match: Match, sheet, results: Path)
     out_dir = output_service.analysis_output_dir(analysis_id)
     excel = Path(deliv["excel_path"])
     fy, fq = _period_of(excel, deliv)
+    projection = None
+    if analysis_type == "quarterly_update":
+        try:
+            from models.quarterly_update import QuarterlyProjectionReport
+            from services.quarterly_deliverables_service import QuarterlyDeliverablesService
+
+            projection = QuarterlyDeliverablesService._email_projection(
+                QuarterlyProjectionReport.model_validate(output_service.read_json(analysis_id, "quarterly_projection_report.json"))
+            )
+        except Exception:  # noqa: BLE001 - the projection lines are optional (Q2 and Q3 only)
+            projection = None
     # email again with the daily sheet's fields (the pipeline's own draft has no access to the sheet)
     base = email_deliverable_name(fiscal_year=fy or 0, ticker=ticker, fiscal_quarter=fq)
     email = EmailDraftService().produce_safe(
         analysis_type=analysis_type, ticker=ticker, company=company, workbook_path=excel, output_dir=out_dir,
-        sheet=sheet.fields(ticker) if sheet else None, base_name=base,
+        sheet=sheet.fields(ticker) if sheet else None, base_name=base, fiscal_year=fy, fiscal_quarter=fq, projection=projection,
     )
     results.mkdir(parents=True, exist_ok=True)
     final = {}
@@ -158,6 +171,16 @@ def run_one(ticker: str, analysis_type: str, match: Match, sheet, results: Path)
         notes.append(f"email draft not produced: {email['error']}")
     else:
         files += [("email_txt", Path(email["text_path"])), ("email_eml", Path(email["eml_path"]))]
+    if analysis_type == "new_company":
+        biz = BusinessDocService().produce_safe(
+            ticker=ticker, company=company, workbook_path=excel, output_dir=out_dir,
+            base_name=business_deliverable_name(fiscal_year=fy or 0, ticker=ticker, fiscal_quarter=fq),
+            search_dir=out_dir, sheet_fields=sheet.fields(ticker) if sheet else None,
+        )
+        if biz.get("path"):
+            files.append(("business_doc", Path(biz["path"])))
+        else:
+            notes.append(f"business document not produced: {biz.get('error')}")
     for label, src in files:
         dest = results / src.name
         shutil.copy2(src, dest)
@@ -174,14 +197,14 @@ def main() -> int:
     ap.add_argument("jobs", nargs="+", help="TICKER:analysis_type, for example WWD:new_company")
     ap.add_argument("--work", default=str(DOWNLOADS / "HAP work"))
     ap.add_argument("--results", default=str(DOWNLOADS / "HAP results"))
+    ap.add_argument("--sheet-url", default=None, help="published .xlsx link of the Google Sheet (or set HAP_SHEET_URL); falls back to the newest download")
     args = ap.parse_args()
     work, results = Path(args.work), Path(args.results)
 
-    from services.daily_sheet_service import DailySheet, find_latest_sheet
+    from services.daily_sheet_service import open_daily_sheet
 
-    sheet_path = find_latest_sheet(work)
-    sheet = DailySheet(sheet_path) if sheet_path else None
-    print(f"Daily sheet: {sheet_path.name if sheet_path else 'NOT FOUND (email fields will be marked)'}")
+    sheet, source = open_daily_sheet(work, args.sheet_url or os.environ.get("HAP_SHEET_URL"))
+    print(f"Daily sheet: {source if sheet else 'NOT FOUND (email fields will be marked)'}")
 
     report = []
     for job in args.jobs:

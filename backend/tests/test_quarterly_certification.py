@@ -16,7 +16,7 @@ from services.accounting_concept_matcher import (
 )
 from services.quarterly_deliverables_service import (
     QuarterlyDeliverablesService,
-    deliverable_stems,
+    deliverable_excel_name,
 )
 from services.quarterly_projection_service import (
     QuarterlyProjectionService,
@@ -277,12 +277,10 @@ def test_zero_prior_oi_blocks_tax(tmp_path: Path):
 
 
 def test_deliverable_filenames():
-    x, w = deliverable_stems(2026, 2, "aapl")
-    assert x == "2026 Q2 AAPL FA.xlsx"
-    assert w == "2026 Q2 AAPL Quarterly Update.docx"
+    assert deliverable_excel_name(2026, 2, "aapl") == "2026 Q2 AAPL FA.xlsx"
 
 
-def test_word_q1_excludes_projection_q3_includes(tmp_path: Path):
+def test_email_q1_excludes_projection_q3_includes(tmp_path: Path):
     path = _mini_proj_wb(tmp_path / "d.xlsx", q=3)
     svc = QuarterlyDeliverablesService()
     proj = QuarterlyProjectionReport(
@@ -308,19 +306,13 @@ def test_word_q1_excludes_projection_q3_includes(tmp_path: Path):
         review=QuarterlyReviewReport(analysis_id="d", ticker="AAPL"),
     )
     assert out.excel_filename == "2026 Q3 AAPL FA.xlsx"
-    assert out.word_filename == "2026 Q3 AAPL Quarterly Update.docx"
+    assert out.email_filename == "2026 Q3 AAPL Email.txt" and out.eml_path.endswith("2026 Q3 AAPL Email.eml")
     assert (tmp_path / "out" / out.excel_filename).exists()
-    assert (tmp_path / "out" / out.word_filename).exists()
-    from docx import Document
-
-    doc = Document(tmp_path / "out" / out.word_filename)
-    texts = [p.text for p in doc.paragraphs]
-    assert any("2027 Projection" in t for t in texts)
-    assert any("Financial Highlights" in t for t in texts)
-    # Projection heading appears before Financial Highlights
-    i_proj = next(i for i, t in enumerate(texts) if "2027 Projection" in t)
-    i_fh = next(i for i, t in enumerate(texts) if "Financial Highlights" in t)
-    assert i_proj < i_fh
+    text = Path(out.email_path).read_text(encoding="utf-8")
+    assert "2026 Projection" in text and "2026 Q3 Financial Highlights" in text
+    assert "Projected ROIC - WACC at 5.00% (10.00% in FY2025)" in text and "Projected ROCE at 15.00%" in text
+    # the projection comes after the highlights, as in the analyst's template
+    assert text.index("2026 Q3 Financial Highlights") < text.index("2026 Projection")
 
     # Q1 excludes projection
     out1 = svc.produce(
@@ -335,7 +327,5 @@ def test_word_q1_excludes_projection_q3_includes(tmp_path: Path):
         ),
         review=None,
     )
-    doc1 = Document(tmp_path / "out1" / out1.word_filename)
-    texts1 = [p.text for p in doc1.paragraphs]
-    assert not any("Projection" in t and "2027" in t for t in texts1)
-    assert any("Financial Highlights" in t for t in texts1)
+    text1 = Path(out1.email_path).read_text(encoding="utf-8")
+    assert "Projection" not in text1 and "Q1 Financial Highlights" in text1

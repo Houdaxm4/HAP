@@ -938,6 +938,23 @@ class NewCompanyBuybackService:
                         )
                         year.shares_cell = f"{sheet_name}!{ws.cell(s_row, col).coordinate}"
                         year.write_action = action
+                    elif (
+                        s_row
+                        and year.shares is None
+                        and year.dollars is not None
+                        and year.absence_class == BuybackAbsenceClass.NOT_DISCLOSED
+                        and ws.cell(s_row, col).value in (None, "")
+                    ):
+                        # dollars known, share count in no filing: the blank cell is flagged red (and listed in HAP Adjustments), never filled
+                        from services.workbook_flag_service import flag_missing_data
+
+                        year.shares_cell = f"{sheet_name}!{ws.cell(s_row, col).coordinate}"
+                        flag_missing_data(
+                            ws, ws.cell(s_row, col).coordinate,
+                            concept=f"Shares repurchased in {year.fiscal_year}",
+                            reason="the company states the dollars spent but no share count anywhere in its filings",
+                        )
+                        year.write_action = "shares_not_disclosed_flagged"
             if notes_sheet:
                 self._write_buyback_notes(wb[notes_sheet], years, write_policy)
             wb.save(path)

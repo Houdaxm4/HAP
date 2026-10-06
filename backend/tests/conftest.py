@@ -259,7 +259,7 @@ def mock_filings_manifest() -> dict:
 
 
 @pytest.fixture(autouse=True)
-def _legacy_word_report(monkeypatch, request):
-    """The Word report is retired in production. Existing tests that still exercise it turn it on; email tests run with it off."""
-    if "email_draft" not in request.module.__name__:
-        monkeypatch.setenv("HAP_WORD_REPORT", "1")
+def _no_excel_recalc_for_deliverables(monkeypatch):
+    """Unit tests never start Excel to calculate a deliverable (the pipeline's own recalculation tests mock the COM boundary)."""
+    monkeypatch.setenv("HAP_EMAIL_RECALC", "0")
+    monkeypatch.setenv("HAP_SEC_TEXT_FETCH", "0")           # no outside calls for the company description or business document

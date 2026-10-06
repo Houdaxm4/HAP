@@ -25,6 +25,8 @@ from services.quarterly_model_continuity_service import QuarterlyModelContinuity
 from services.quarterly_projection_service import QuarterlyProjectionService
 from services.quarterly_research_service import QuarterlyResearchService
 from services.quarterly_review_service import QuarterlyReviewService
+from services.new_company_cumulative_service import NewCompanyCumulativeService
+from research.yahoo_fundamentals import YahooFallback, yahoo_fallback_enabled
 from services.quarterly_valuation_service import QuarterlyValuationService
 from services.restatement_check_service import RestatementCheckService
 from services.annual_update_runner import AnnualUpdateRunner, sha256_file
@@ -76,6 +78,8 @@ class PipelineOrchestrator:
         self.model_continuity = QuarterlyModelContinuityService()
         self.restatement_check = RestatementCheckService()
         self.quarterly_review = QuarterlyReviewService()
+        self.cumulative = NewCompanyCumulativeService()
+        self.yahoo = YahooFallback() if yahoo_fallback_enabled() else None
         self.quarterly_projection = QuarterlyProjectionService()
         self.quarterly_valuation = QuarterlyValuationService()
         self.quarterly_research = QuarterlyResearchService()
@@ -859,6 +863,28 @@ class PipelineOrchestrator:
             discrepancy_report=discrepancy_path,
         )
 
+        # Year-to-date sections of the Last Quarter IS and CF tabs (the Bloomberg template leaves them empty), filled from the filings,
+        # so the quarter-versus-year-ago comparisons (3M, 6M or 9M) and cash from operations have both sides.
+        from services.quarterly_review_service import _detect_fiscal_quarter
+
+        def _fill_year_to_date():
+            from openpyxl import load_workbook
+
+            wb_q = load_workbook(completed_workbook_path, read_only=True, data_only=True)
+            try:
+                quarter = _detect_fiscal_quarter(wb_q["Last Quarter IS Standardized"]) if "Last Quarter IS Standardized" in wb_q.sheetnames else None
+            finally:
+                wb_q.close()
+            return self.cumulative.apply(
+                workbook_path=completed_workbook_path,
+                company_facts=company_facts,
+                latest_quarter=quarter,
+                ticker=analysis.ticker,
+                yahoo=self.yahoo,
+            )
+
+        _time("cumulative_statements", _fill_year_to_date)
+
         q_review = _time(
             "quarterly_analyst_review",
             lambda: self.quarterly_review.review(
@@ -1041,7 +1067,7 @@ class PipelineOrchestrator:
                 research=research,
                 valuation=val_report,
                 judgment=judge,
-                authorize_word=authorize_word,
+                authorized=authorize_word,
             ),
         )
         deliv_path = self.output_service.write_json(

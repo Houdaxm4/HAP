@@ -14,7 +14,6 @@ from services.email_draft_service import (
     render_new_company,
     render_quarter,
     usd,
-    word_report_enabled,
 )
 
 
@@ -53,16 +52,15 @@ def test_number_formats_follow_the_templates():
     assert change(3686.8, 3444.2) > 0.0704 and change(1.0, 0) is None
 
 
-def test_pe10_status_buy_when_price_is_at_or_below_the_max_entry_price():
-    assert pe10_status(_facts(price=93.34, max_entry=94.67)) == "Buy"
-    assert pe10_status(_facts(price=55.84, max_entry=55.75)) == "Out"
-    assert pe10_status(_facts(price=None)) == "[Google Sheet]"
+def test_status_with_pe10_is_never_guessed_from_the_price():
+    assert pe10_status(_facts(price=93.34, max_entry=94.67)) == "[Google Sheet]"
+    assert pe10_status(_facts(price=55.84, max_entry=55.75)) == "[Google Sheet]"
 
 
 def test_quarter_email_matches_the_template():
     subject, body = render_quarter(_facts(projection={"next_fy": "2026", "fy": "FY2025", "roic_wacc": 0.0622, "prior_spread": 0.0188,
                                                       "roce": 0.18, "prior_roce": 0.1925}),
-                                   sheet=SheetFields(classified_as="Q"))
+                                   sheet=SheetFields(classified_as="Q", pe10_status="Buy"))
     assert subject == "LNN quarter update Q3 2026"
     assert body.startswith("Dear All,\n\nPlease find attached the quarter update of LNN.\nMarket Cap: ~$8.92B\nCurrent TBV/P: 3.58%\nClassified as: Q\nStatus with PE10: Buy")
     assert "2026 Q3 Financial Highlights" in body
@@ -97,7 +95,7 @@ def test_new_company_email_uses_net_income_available_to_common_when_preferred_di
     f = _facts(ticker="BRKR", company="Bruker Corporation", quarter_label="2026 Q1", quarter_number=1, quarter_year=2026, ytd_label="3M")
     f.q_yoy["net_income"] = {"q": (7.0, 17.4), "ytd": (7.0, 17.4)}
     f.q_yoy["net_common"] = {"q": (3.5, 17.4), "ytd": (3.5, 17.4)}
-    subject, body = render_new_company(f, sheet=SheetFields(classified_as="U"), description="headquartered in Billerica")
+    subject, body = render_new_company(f, sheet=SheetFields(classified_as="U"), description="Bruker Corporation, headquartered in Billerica, Massachusetts, develops scientific instruments.")
     assert "Please find attached the analysis of BRKR: Bruker Corporation, headquartered in Billerica" in body
     assert "Classified as: U" in body
     assert "Q1 2026 vs. Q1 2025" in body and "(3M to 3M)" not in body          # no YTD note in Q1
@@ -112,10 +110,9 @@ def test_unfilled_fields_are_marked_not_invented():
     assert "n/a" in body and "[Google Sheet]" in body and "[one-line description" in body
 
 
-def test_eml_is_an_unsent_draft_addressed_to_the_analyst_and_the_word_report_is_off(tmp_path: Path, monkeypatch):
+def test_eml_is_an_unsent_draft_addressed_to_the_analyst(tmp_path: Path, monkeypatch):
     from openpyxl import Workbook
 
-    assert word_report_enabled() is False
     wb = Workbook()
     wb.active.title = "Inputs"
     wb["Inputs"]["B63"] = 50.0
@@ -148,3 +145,41 @@ def test_a_quarter_block_with_no_data_is_left_out_not_filled_with_na():
     f.q_yoy["cfo"] = {"ytd": (None, None)}
     _s, body = render_new_company(f)
     assert "Q3 2026 vs. Q3 2025" not in body and "n/a ($" not in body and "Revenue n/a" not in body
+
+
+def _with_series(f: Facts) -> Facts:
+    f.fy_series = {"roic_wacc": [(f"FY{2016 + i}", v) for i, v in enumerate([-0.0477, -0.01, 0.0238, 0.01, -0.02, -0.03, 0.0, -0.01, -0.0367, -0.0477])]}
+    return f
+
+
+def test_annual_highlights_are_written_from_the_numbers_without_claiming_causes():
+    f = _facts()
+    _s, body = render_annual(f, description="Ethan Allen is a manufacturer")
+    text = body.split("EPS: $1.56")[1].split("FY2025 Metrics")[0]
+    assert "[What drove the year" not in body
+    assert "Revenue declined 5.7% to $579.5M." in text and "Net income fell 22.7%" in text
+    assert "Gross margin improved to 61.2% from 60.5%." in text
+    assert "ROIC-WACC is negative at -1.57% (3.77% on a 10-year average)" in text and "ROCE at 7.29%, below its 10-year average of 10.97%" in text
+    assert "because" not in text.lower() and "demand" not in text.lower()
+
+
+def test_quarter_highlights_use_the_year_to_date_comparison():
+    _s, body = render_quarter(_facts())
+    text = body.split("2026 Q3 Financial Highlights")[1].split("Comparison")[0]
+    assert "[What drove the quarter" not in body
+    assert "Revenue for the 9M grew 7.0% to $3,686.8M (from $3,444.2M)." in text and "Cash from operations rose 36.5%" in text
+
+
+def test_new_company_highlights_and_conclusion_state_the_decade_range_and_the_price_position():
+    f = _with_series(_facts(ticker="BRKR", company="Bruker Corporation", price=55.84, max_entry=55.75, pe10_percentile=0.2154, ev_mos=-2.197,
+                            expected_return=-0.0362, graham_entry=6.42))
+    _s, body = render_new_company(f, sheet=SheetFields(pe10_status="Out"), description="Bruker Corporation, headquartered in Billerica, Massachusetts, develops scientific instruments.")
+    assert "ROIC-WACC has ranged between -4.77% and 2.38% over the last 10 years and was -4.77% in FY2025." in body
+    assert "At $55.84 the stock trades above its maximum entry price of $55.75, with the PE10 percentile at 21.54%." in body
+    assert "The enterprise-value margin of safety is -219.7%" in body and "The expected annual return is -3.62% (adjusted)." in body
+    assert "Status with PE10: Out" in body.split("Highlights")[0] and "[Overall view" not in body.split("Conclusion")[1]
+
+
+def test_too_few_figures_keep_the_bracketed_line_for_the_analyst():
+    _s, body = render_new_company(Facts(ticker="XYZ"))
+    assert "[Competitive position" in body and "[Overall view" in body and "[one-line description of the company]" in body

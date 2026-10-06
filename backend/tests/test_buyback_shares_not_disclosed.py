@@ -43,6 +43,9 @@ def test_searched_filings_without_a_share_count_give_not_disclosed_and_a_warning
     assert not any("COVERAGE_INCOMPLETE" in w for w in report.warnings) and report.complete is True
     ws = load_workbook(tmp_path / "w.xlsx")["Income - GAAP"]
     assert ws["C10"].value == 50.0 and ws["C11"].value is None        # dollars written, the share count is never invented
+    assert ws["C11"].fill.fgColor.rgb.endswith("FF6B6B")               # the blank is flagged red in the income tab
+    assert "Missing figure" in [c.value for row in load_workbook(tmp_path / "w.xlsx")["HAP Adjustments"].iter_rows() for c in row]
+    assert report.years[0].write_action == "shares_not_disclosed_flagged"
 
 
 def test_without_any_filing_text_the_gap_is_still_unresolved(tmp_path: Path):

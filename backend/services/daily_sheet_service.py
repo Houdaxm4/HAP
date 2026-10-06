@@ -6,11 +6,15 @@ The analyst downloads the sheet each morning into the HAP work folder. For a tic
   Current TBV/P      -> "TBV/Price" column
   Market Cap         -> not in the sheet: left empty so the email uses the workbook value
 The S&P tab is searched first, then the other tabs that carry the same header row (for example FTSE).
+
+Two ways to get the sheet: the .xlsx the analyst downloads each morning into the work folder, or the live "published to the web" link of the
+Google Sheet (File > Share > Publish to web > Entire document > Microsoft Excel (.xlsx)), which HAP downloads at the start of a batch.
 """
 
 from __future__ import annotations
 
 import re
+import urllib.request
 from pathlib import Path
 from typing import Any
 
@@ -24,7 +28,10 @@ TAB_ORDER = ("S&P", "FTSE")
 
 def find_latest_sheet(folder: Path) -> Path | None:
     """The newest .xlsx in the folder that looks like the summary sheet (has an S&P tab)."""
-    candidates = sorted((p for p in Path(folder).glob("*.xlsx") if not p.name.startswith("~$")), key=lambda p: p.stat().st_mtime, reverse=True)
+    candidates = sorted(
+        (p for p in Path(folder).glob("*.xlsx") if not p.name.startswith("~$") and p.name != "_live_sheet.xlsx"),    # the live copy is used directly
+        key=lambda p: p.stat().st_mtime, reverse=True,
+    )
     named = [p for p in candidates if SHEET_HINT in p.name.lower()]
     for path in named + [p for p in candidates if p not in named]:
         try:
@@ -111,3 +118,44 @@ class DailySheet:
         row = self.row(ticker)
         name = str(row["company"]).strip() if row and row.get("company") else ""
         return re.sub(r"\s*Common Stock\s*$", "", name, flags=re.I).strip()      # the sheet writes 'Woodward, Inc.Common Stock'
+
+
+LIVE_FILE = "_live_sheet.xlsx"
+
+
+def download_live_sheet(url: str, folder: Path, *, timeout: int = 60) -> Path | None:
+    """Download the published Google Sheet (as .xlsx) into the folder. Returns the file, or None when it can not be reached or read."""
+    if not url:
+        return None
+    try:
+        request = urllib.request.Request(url, headers={"User-Agent": "HAP-daily-batch"})
+        with urllib.request.urlopen(request, timeout=timeout) as response:     # noqa: S310 - the analyst's own published link
+            data = response.read()
+    except Exception:  # noqa: BLE001 - offline, link unpublished, or Google unavailable: the caller falls back to the local file
+        return None
+    if data[:2] != b"PK":                      # an .xlsx is a zip; an HTML error or sign-in page is not
+        return None
+    target = Path(folder) / LIVE_FILE
+    target.write_bytes(data)
+    try:
+        wb = load_workbook(target, read_only=True, data_only=True)
+        ok = "S&P" in wb.sheetnames
+        wb.close()
+    except Exception:  # noqa: BLE001
+        ok = False
+    if not ok:
+        target.unlink(missing_ok=True)
+        return None
+    return target
+
+
+def open_daily_sheet(folder: Path, url: str | None = None) -> tuple["DailySheet | None", str]:
+    """The live sheet when a link is given and reachable, otherwise the newest download in the folder. Returns (sheet, where it came from)."""
+    live = download_live_sheet(url, folder) if url else None
+    if live is not None:
+        return DailySheet(live), "the live Google Sheet (published link)"
+    path = find_latest_sheet(folder)
+    if path is None:
+        return None, "not found"
+    note = " (the live link could not be reached)" if url else ""
+    return DailySheet(path), f"{path.name}{note}"

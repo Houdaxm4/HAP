@@ -382,51 +382,6 @@ def test_expected_return_bv_first_then_judgment(tmp_path: Path):
     assert judge2.expected_return and judge2.expected_return.rationale
 
 
-def test_word_report_flags_missing_call_and_includes_required_sections(tmp_path: Path, monkeypatch):
-    prev, tmpl = _mini_pair(tmp_path)
-    monkeypatch.setattr(AnnualResearchService, "_fetch", lambda self, url: None)
-    monkeypatch.setattr(AnnualResearchService, "_json", staticmethod(lambda url: {"news": []}))
-    research = AnnualResearchService().gather(
-        analysis_id="a1",
-        ticker="ZZZZ",
-        fiscal_year=2025,
-        sec_manifest={"selected_filings": [{"form": "10-K", "filing_date": "2025-11-01", "document_url": "https://sec.gov/x"}]},
-    )
-    assert research.earnings_call_status == "EARNINGS_CALL_SOURCE_UNAVAILABLE"
-    assert any(s.source_kind == "sec_10k" for s in research.sources)
-    assert research.management_explanations == []
-
-    deliv = AnnualDeliverablesService()
-    perf = deliv.build_performance(
-        analysis_id="a1", ticker="AAPL", fiscal_year=2025, workbook_path=tmpl, research=research
-    )
-    report = deliv.produce(
-        analysis_id="a1",
-        ticker="AAPL",
-        fiscal_year=2025,
-        completed_workbook_path=tmpl,
-        output_dir=tmp_path,
-        performance=perf,
-        research=research,
-    )
-    assert report.excel_filename == "2025 FY AAPL FA.xlsx"
-    assert report.word_filename == "2025 AAPL Annual Update.docx"
-    assert (tmp_path / report.excel_filename).exists()
-    from docx import Document
-
-    doc = Document(tmp_path / report.word_filename)
-    text = "\n".join(p.text for p in doc.paragraphs)
-    assert "Executive Investment Conclusion" in text
-    assert "Fiscal-Year Highlights" in text
-    assert "EARNINGS_CALL_SOURCE_UNAVAILABLE" in text or "unavailable" in text.lower()
-    assert "ROIC−WACC" in text or "ROIC" in text
-    assert "Current Price" in text
-    assert "Current Data and Valuation" in text
-    # Filing dates may appear in Sources, but not as fiscal-year business highlights.
-    highlight_block = text.split("Fiscal-Year Highlights")[1].split("3.")[0] if "Fiscal-Year Highlights" in text else ""
-    assert "SEC 10-K filed" not in highlight_block
-
-
 def test_source_immutability_hash(tmp_path: Path):
     prev, tmpl = _mini_pair(tmp_path)
     h1 = sha256_file(prev)

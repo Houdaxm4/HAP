@@ -6,8 +6,6 @@ import shutil
 from pathlib import Path
 from typing import Any
 
-from docx import Document
-from docx.shared import Pt, RGBColor
 from openpyxl import load_workbook
 
 from models.annual_update import (
@@ -25,17 +23,8 @@ from services.annual_period_service import detect_year_columns
 from services.annual_valuation_extract_service import AnnualValuationExtractService
 from services.deliverable_naming import email_deliverable_name, excel_deliverable_name
 from services.deliverable_text import dedupe, headline_lines
-from services.email_draft_service import EmailDraftService, file_name, word_report_enabled
-from services.report_flags import collect_flags, write_flags_section
-from services.report_opinion import write_assessment_sections
-
-
-def excel_word_names(year: int, ticker: str) -> tuple[str, str]:
-    t = ticker.upper()
-    excel = excel_deliverable_name(
-        fiscal_year=year, ticker=t, analysis_type="Annual Update"
-    )
-    return excel, f"{year} {t} Annual Update.docx"
+from services.email_draft_service import EmailDraftService, file_name
+from services.workbook_values import ensure_calculated
 
 
 def _is_dated(label: Any) -> bool:
@@ -84,23 +73,11 @@ class AnnualDeliverablesService:
         expected_return: AnnualExpectedReturnReport | None = None,
         gate: AnnualOutputGateReport | None = None,
     ) -> AnnualDeliverablesReport:
-        excel_name, word_name = excel_word_names(fiscal_year, ticker)
+        excel_name = excel_deliverable_name(fiscal_year=fiscal_year, ticker=ticker, analysis_type="Annual Update")
         output_dir.mkdir(parents=True, exist_ok=True)
         excel_path = output_dir / excel_name
-        word_path = output_dir / word_name
         shutil.copy2(completed_workbook_path, excel_path)
-        word_on = word_report_enabled()
-        if word_on:
-            self._write_word(
-                word_path,
-                ticker,
-                fiscal_year,
-                performance,
-                research,
-                judgment,
-                expected_return,
-                gate,
-            )
+        ensure_calculated(excel_path, analysis_id=analysis_id, ticker=ticker, fiscal_year=fiscal_year)
         email = EmailDraftService().produce_safe(
             analysis_type="annual_update",
             ticker=ticker,
@@ -114,8 +91,6 @@ class AnnualDeliverablesService:
             fiscal_year=fiscal_year,
             excel_filename=excel_name,
             excel_path=str(excel_path),
-            word_filename=word_name if word_on else None,
-            word_path=str(word_path) if word_on else None,
             email_filename=file_name(email["text_path"]),
             email_path=email["text_path"],
             eml_path=email["eml_path"],
@@ -327,320 +302,3 @@ class AnnualDeliverablesService:
                 f"Quality: {quality} Attractiveness: {attractiveness}"
             )
         return f"{attractiveness} Company quality: {quality}"
-
-    def _write_word(
-        self,
-        path: Path,
-        ticker: str,
-        year: int,
-        perf: AnnualPerformanceReport,
-        research: AnnualResearchReport | None,
-        judgment: AnnualAnalystJudgmentReport | None = None,
-        expected_return: AnnualExpectedReturnReport | None = None,
-        gate: AnnualOutputGateReport | None = None,
-    ) -> None:
-        doc = Document()
-        style = doc.styles["Normal"]
-        style.font.name = "Calibri"
-        style.font.size = Pt(11)
-        title = doc.add_heading(f"{year} {ticker} Annual Update", level=0)
-        title.runs[0].font.color.rgb = RGBColor(0x1F, 0x3A, 0x5F)
-
-        # Flags come first: what was filled, corrected, decided by the agent, or is missing.
-        write_flags_section(doc, collect_flags(path.parent, authorized=not (gate and gate.blockers)))
-
-        doc.add_heading("1. Executive Investment Conclusion", level=1)
-        if gate and gate.blockers:
-            doc.add_paragraph(
-                "Final investment recommendation: NOT AUTHORIZED. "
-                "Workbook recalculation and/or output gates failed; this document is diagnostic only."
-            )
-        for line in headline_lines(path.parent):
-            doc.add_paragraph(line)
-        # investment_conclusion already states quality and attractiveness; do not repeat them as separate lines.
-        doc.add_paragraph(perf.investment_conclusion or "Conclusion unavailable.")
-        if gate and gate.blockers:
-            doc.add_paragraph(
-                "Status: NEEDS REVIEW. Blocking issues: " + "; ".join(gate.blockers[:5])
-            )
-        else:
-            doc.add_paragraph(f"Confidence: {_fmt(perf.confidence)}")
-
-        doc.add_heading("2. Fiscal-Year Highlights", level=1)
-        for h in perf.year_highlights:
-            if h.lower().startswith("sec ") and "filed" in h.lower():
-                continue  # never list filing dates as business highlights
-            doc.add_paragraph(h, style="List Bullet")
-
-        doc.add_heading(f"3. FY{year} versus FY{year - 1}", level=1)
-        if perf.yoy:
-            table = doc.add_table(rows=1, cols=4)
-            hdr = table.rows[0].cells
-            hdr[0].text, hdr[1].text, hdr[2].text, hdr[3].text = "Metric", "Current", "Prior", "% chg"
-            for row in perf.yoy:
-                cells = table.add_row().cells
-                cells[0].text = row.metric
-                cells[1].text = _fmt(row.current)
-                cells[2].text = _fmt(row.prior)
-                cells[3].text = _fmt(row.pct_change, pct=True)
-        else:
-            doc.add_paragraph(
-                "YoY operating metrics were not available from the Income statement columns."
-            )
-
-        if research and research.management_explanations:
-            doc.add_heading("Management Explanation", level=2)
-            for m in research.management_explanations:
-                doc.add_paragraph(m)
-
-        doc.add_heading("4. Economic Returns", level=1)
-        v = perf.valuation
-        if v:
-            doc.add_paragraph(
-                f"NOPAT: {_fmt(v.nopat)}; Invested capital: {_fmt(v.invested_capital)}; "
-                f"ROIC: {_fmt(v.roic, pct=True)}."
-            )
-        doc.add_paragraph(
-            f"ROIC−WACC: current {_fmt(perf.roic_wacc_current, pct=True)}; "
-            f"prior {_fmt(perf.roic_wacc_prior, pct=True)}; "
-            f"10-year average {_fmt(perf.roic_wacc_10y, pct=True)}."
-        )
-        doc.add_paragraph(
-            f"ROCE: current {_fmt(perf.roce_current, pct=True)}; "
-            f"prior {_fmt(perf.roce_prior, pct=True)}; "
-            f"10-year average {_fmt(perf.roce_10y, pct=True)}."
-        )
-        doc.add_paragraph(
-            "Economic-return formulas remain workbook-driven; values above appear only when "
-            "Excel-recalculated cached results are available."
-        )
-
-        doc.add_heading("5. Business Quality and Risks", level=1)
-        doc.add_paragraph(perf.company_quality or "Quality assessment unavailable.")
-        for r in perf.material_risks[:5]:
-            doc.add_paragraph(r, style="List Bullet")
-        if research and research.earnings_call_status == "EARNINGS_CALL_SOURCE_UNAVAILABLE":
-            doc.add_paragraph("Earnings-call transcript: unavailable.")
-
-        doc.add_heading("6. Current Data and Valuation", level=1)
-        doc.add_paragraph(f"Current Price: {_fmt(perf.current_price)}")
-        v = perf.valuation
-        if v and v.pe10_fiscal_year is not None:
-            doc.add_paragraph(
-                f"FY closing PE10 ({v.pe10_fiscal_year_label or 'fiscal'}): "
-                f"{_fmt(v.pe10_fiscal_year)}x"
-                + (f" as of {v.pe10_fiscal_as_of}" if _is_dated(v.pe10_fiscal_as_of) else "")
-            )
-        doc.add_paragraph(
-            f"Current PE10: {_fmt(perf.current_pe10)}"
-            + (
-                f" as of {v.current_pe10_as_of}"
-                if v and _is_dated(v.current_pe10_as_of)
-                else ""
-            )
-        )
-        doc.add_paragraph(f"Maximum Buy Price: {_fmt(perf.current_max_buy)}")
-        doc.add_paragraph(
-            f"Expected Annual Return (Expected Returns!E14): "
-            f"{_fmt(perf.current_expected_return, pct=True)}"
-        )
-        doc.add_paragraph(
-            f"Expected Return including dividends (Expected Returns!F14): "
-            f"{_fmt(perf.current_expected_return_with_div, pct=True)}"
-        )
-        if v and v.bloomberg_expected_return_at_current_price is not None:
-            doc.add_paragraph(
-                f"Bloomberg CRF Expected Return @ Current Price (Inputs!B69 — distinct metric): "
-                f"{_fmt(v.bloomberg_expected_return_at_current_price, pct=True)}"
-            )
-        doc.add_paragraph(f"Enterprise value / company value per share: {_fmt(perf.company_value_per_share)}")
-        doc.add_paragraph(f"Enterprise margin of safety: {_fmt(perf.current_margin_of_safety, pct=True)}")
-        if v:
-            doc.add_paragraph(
-                f"Current Graham intrinsic value: {_fmt(v.current_graham_intrinsic_value)}"
-            )
-            doc.add_paragraph(
-                f"Graham margin-of-safety entry price (25% MOS purchase price): "
-                f"{_fmt(v.graham_margin_of_safety_entry_price)}"
-            )
-            doc.add_paragraph(
-                f"Graham target-return entry price "
-                f"({_fmt(v.graham_target_annualized_return, pct=True)} over "
-                f"{v.graham_projection_horizon_years or 7} years): "
-                f"{_fmt(v.graham_target_return_entry_price)}"
-            )
-            doc.add_paragraph(
-                f"Graham expected annualized return: "
-                f"{_fmt(v.graham_expected_annualized_return, pct=True)}"
-            )
-        else:
-            doc.add_paragraph(f"Graham intrinsic value: {_fmt(perf.graham_intrinsic)}")
-            doc.add_paragraph(f"Graham entry price: {_fmt(perf.current_graham_entry)}")
-
-        doc.add_heading("7. Method Comparison", level=1)
-        if v:
-            doc.add_paragraph(
-                f"Expected Returns!E14/F14: {_fmt(v.expected_annual_return, pct=True)} / "
-                f"{_fmt(v.expected_return_with_dividends, pct=True)}. "
-                f"Inputs!B69 Bloomberg CRF Expected Return @ Current Price is a separate "
-                f"proprietary metric ({_fmt(v.bloomberg_expected_return_at_current_price, pct=True)}) "
-                f"and is not a substitute for E14."
-            )
-            doc.add_paragraph(
-                f"Owner-earnings / Enterprise Value: company value/share {_fmt(v.company_value_per_share)}; "
-                f"OE growth {_fmt(v.owner_earnings_growth, pct=True)} "
-                f"(annualized {_fmt(v.owner_earnings_growth_annualized, pct=True)})."
-            )
-            doc.add_paragraph(
-                f"Graham: intrinsic {_fmt(v.current_graham_intrinsic_value)}; "
-                f"MOS entry {_fmt(v.graham_margin_of_safety_entry_price)}; "
-                f"target-return entry {_fmt(v.graham_target_return_entry_price)}; "
-                f"expected {_fmt(v.graham_expected_annualized_return, pct=True)}; "
-                f"target {_fmt(v.graham_target_annualized_return, pct=True)}."
-            )
-            if v.warnings:
-                doc.add_paragraph("Valuation warnings:")
-                for w in dedupe(list(v.warnings)):
-                    doc.add_paragraph(w, style="List Bullet")
-            else:
-                doc.add_paragraph(
-                    "Methods are compared using workbook-extracted figures; "
-                    "disagreement requires judgment rather than silent averaging."
-                )
-        else:
-            doc.add_paragraph("Valuation outputs were not extracted.")
-
-        doc.add_heading("8. Analyst Judgment", level=1)
-        doc.add_paragraph(
-            "HAP analysis is shown beside original workbook results. "
-            "HAP never silently replaces the original Expected Return, Enterprise Value, "
-            "Margin of Safety, or Graham Entry Price."
-        )
-        if expected_return:
-            growth = expected_return.selected_growth_rate
-            reasonableness = expected_return.reasonableness
-            if growth is None and reasonableness and "reasonable" in reasonableness.lower():
-                reasonableness = "reviewed — numerical assumption unavailable"
-            doc.add_paragraph("Expected Return — ORIGINAL WORKBOOK RESULT")
-            doc.add_paragraph(
-                f"Workbook Expected Return (E14): {_fmt(expected_return.original_expected_return, pct=True)}. "
-                f"Original growth assumption: {_fmt(expected_return.original_growth_rate, pct=True)}."
-            )
-            doc.add_paragraph("Expected Return — HAP-ADJUSTED ANALYSIS")
-            if expected_return.final_expected_return is None and (
-                expected_return.reasonableness
-                and (
-                    "reasonable" in expected_return.reasonableness.lower()
-                    or expected_return.reasonableness in {"KEEP_EXISTING", "INSUFFICIENT_EVIDENCE"}
-                    or "KEEP" in expected_return.reasonableness
-                )
-            ):
-                if expected_return.reasonableness == "INSUFFICIENT_EVIDENCE":
-                    doc.add_paragraph(
-                        f"HAP adjusted: not selected (insufficient evidence). {expected_return.rationale}"
-                    )
-                else:
-                    doc.add_paragraph(
-                        f"HAP adjusted: not required ({reasonableness}). {expected_return.rationale}"
-                    )
-            else:
-                doc.add_paragraph(
-                    f"HAP adjusted Expected Return: {_fmt(expected_return.hap_expected_return or expected_return.final_expected_return, pct=True)} "
-                    f"using {expected_return.selected_methodology} at {_fmt(growth, pct=True)}. "
-                    f"Semantic substitution: {expected_return.semantic_substitution or 'n/a'}. "
-                    f"Reason: {expected_return.rationale}"
-                )
-        if judgment and judgment.owner_earnings_growth:
-            o = judgment.owner_earnings_growth
-            doc.add_paragraph("Enterprise Value — ORIGINAL WORKBOOK RESULT")
-            doc.add_paragraph(
-                f"Workbook OE growth: {_fmt(o.original_value, pct=True)}. "
-                f"Workbook EV / MoS remain the original sheet outputs."
-            )
-            doc.add_paragraph("Enterprise Value — HAP-ADJUSTED ANALYSIS")
-            if o.decision == "INSUFFICIENT_EVIDENCE" or o.change_type == "INSUFFICIENT_EVIDENCE":
-                doc.add_paragraph(f"HAP adjusted: not selected (insufficient evidence). {o.rationale}")
-            elif not o.adjusted:
-                doc.add_paragraph(f"HAP adjusted: not required. {o.rationale}")
-            else:
-                doc.add_paragraph(
-                    f"HAP-adjusted OE growth: {_fmt(o.selected_value, pct=True)}. "
-                    f"MoS impact: see HAP_ANALYSIS block on the Enterprise Value tab. Reason: {o.rationale}"
-                )
-        disc = None
-        if judgment and judgment.oe_base_analysis is not None:
-            disc = judgment.oe_base_analysis.disclosure
-        if disc is not None and disc.decision == DISCLOSE_DISTORTED_BASE:
-            from services.annual_normalized_base_disclosure_service import format_millions
-
-            reported = format_millions(disc.reported_base)
-            doc.add_paragraph("Operating Earnings Base — ORIGINAL ANALYST VALUATION")
-            doc.add_paragraph(
-                f"The original valuation uses reported owner earnings of ${reported}m. "
-                "HAP has not replaced that owner-earnings base."
-            )
-            doc.add_paragraph("Operating Earnings Base — HAP ANALYTICAL OBSERVATION")
-            doc.add_paragraph(disc.word_text or disc.display_text)
-        if judgment and judgment.graham_eps_growth:
-            g = judgment.graham_eps_growth
-            doc.add_paragraph("Graham Entry Price — ORIGINAL WORKBOOK RESULT")
-            doc.add_paragraph(
-                f"Original relevant growth assumption: {_fmt(g.original_value, pct=True)}."
-            )
-            doc.add_paragraph("Graham Entry Price — HAP-ADJUSTED ANALYSIS")
-            if g.decision == "INSUFFICIENT_EVIDENCE" or g.change_type == "INSUFFICIENT_EVIDENCE":
-                doc.add_paragraph(f"HAP adjusted: not selected (insufficient evidence). {g.rationale}")
-            elif not g.adjusted:
-                doc.add_paragraph(
-                    f"HAP adjusted: not required. Historical EPS 10-year growth was not "
-                    f"automatically treated as the prospective Graham rate. {g.rationale}"
-                )
-            else:
-                doc.add_paragraph(
-                    f"HAP-adjusted growth: {_fmt(g.selected_value, pct=True)}. "
-                    f"Reason: {g.rationale}"
-                )
-        if judgment and judgment.hap_analysis_cells:
-            doc.add_paragraph(
-                "HAP_ANALYSIS cells (not original analyst data): "
-                + ", ".join(judgment.hap_analysis_cells[:20])
-            )
-
-        write_assessment_sections(doc, path.parent, perf.valuation)
-
-        doc.add_heading("9. Validation and Open Issues", level=1)
-        if perf.open_issues:
-            already_shown = set(v.warnings) if v else set()  # section 7 prints valuation warnings
-            for issue in [i for i in dedupe(list(perf.open_issues)) if i not in already_shown][:10]:
-                doc.add_paragraph(issue, style="List Bullet")
-        else:
-            doc.add_paragraph("No material blocking validation issues recorded.")
-
-        if research and research.research_questions:
-            doc.add_heading("Research Trail", level=2)
-            for q in research.research_questions[:6]:
-                if q.concept == "tax_effective_rate" and gate and "ANNUAL_TAX_SCHEDULE_NOT_POPULATED" in gate.blockers:
-                    status = "unresolved — ETR researched but tax schedule not written"
-                elif q.unsuccessful:
-                    status = "unresolved"
-                else:
-                    status = f"resolved via {q.source_selected}"
-                doc.add_paragraph(f"{q.concept}: {q.question} — {status}", style="List Bullet")
-
-        doc.add_heading("10. Sources and Provenance", level=1)
-        if research:
-            for s in research.sources[:8]:
-                line = f"{s.source_kind}: {s.title}"
-                if s.url and "sec.gov" not in (s.url or ""):
-                    line += f" — {s.url}"
-                doc.add_paragraph(line, style="List Bullet")
-            sec_filings = [s for s in research.sources if s.url and "sec.gov" in s.url]
-            if sec_filings:
-                doc.add_paragraph(
-                    f"SEC EDGAR filings referenced: {len(sec_filings)} (details in provenance artifacts)."
-                )
-        if perf.valuation and perf.valuation.sources:
-            doc.add_paragraph("Workbook extraction sources:")
-            for k, v in list(perf.valuation.sources.items())[:8]:
-                doc.add_paragraph(f"{k}: {v}", style="List Bullet")
-        doc.save(path)

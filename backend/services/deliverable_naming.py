@@ -28,3 +28,8 @@ def period_label(fiscal_year: int, fiscal_quarter: int | None = None) -> str:
 def email_deliverable_name(*, fiscal_year: int, ticker: str, fiscal_quarter: int | None = None) -> str:
     """Base name of the email draft files: '2026 Q2 IDCC Email'."""
     return f"{period_label(fiscal_year, fiscal_quarter)} {ticker.strip().upper()} Email"
+
+
+def business_deliverable_name(*, fiscal_year: int, ticker: str, fiscal_quarter: int | None = None) -> str:
+    """Base name of the 2-page business document of a new company: '2026 Q2 IDCC Business'."""
+    return f"{period_label(fiscal_year, fiscal_quarter)} {ticker.strip().upper()} Business"

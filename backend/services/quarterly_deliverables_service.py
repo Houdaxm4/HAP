@@ -17,23 +17,19 @@ from models.quarterly_update import (
     QuarterlyValuationReport,
 )
 from services.deliverable_naming import email_deliverable_name
-from services.email_draft_service import EmailDraftService, file_name, word_report_enabled
-from services.report_flags import collect_flags, write_flags_section
-from services.report_opinion import write_assessment_sections
+from services.email_draft_service import EmailDraftService, file_name
+from services.workbook_values import ensure_calculated
 
 
-def deliverable_stems(fiscal_year: int, fiscal_quarter: int, ticker: str) -> tuple[str, str]:
+def deliverable_excel_name(fiscal_year: int, fiscal_quarter: int, ticker: str) -> str:
     from services.deliverable_naming import excel_deliverable_name
 
-    t = ticker.upper()
-    excel = excel_deliverable_name(
+    return excel_deliverable_name(
         fiscal_year=fiscal_year,
-        ticker=t,
+        ticker=ticker.upper(),
         analysis_type="Quarterly Update",
         fiscal_quarter=fiscal_quarter,
     )
-    word = f"{fiscal_year} Q{fiscal_quarter} {t} Quarterly Update.docx"
-    return excel, word
 
 
 def _pct(a: float | None, b: float | None) -> str:
@@ -90,33 +86,18 @@ class QuarterlyDeliverablesService:
         research: QuarterlyResearchReport | None = None,
         valuation: QuarterlyValuationReport | None = None,
         judgment: Any = None,
-        authorize_word: bool = True,
+        authorized: bool = True,
     ) -> QuarterlyDeliverablesReport:
         fy = fiscal_year or (projection.fiscal_year if projection else None) or 0
         q = fiscal_quarter or (projection.fiscal_quarter if projection else None) or 0
         if not fy or not q:
             fy, q = self._infer_fy_q(completed_workbook_path)
-        excel_name, word_name = deliverable_stems(fy, q, ticker)
+        excel_name = deliverable_excel_name(fy, q, ticker)
         output_dir.mkdir(parents=True, exist_ok=True)
         excel_path = output_dir / excel_name
-        word_path = output_dir / word_name
 
         shutil.copy2(completed_workbook_path, excel_path)
-        word_on = word_report_enabled()
-        if word_on:
-            self._write_word(
-                word_path,
-                ticker=ticker,
-                fiscal_year=fy,
-                fiscal_quarter=q,
-                workbook_path=excel_path,
-                projection=projection,
-                review=review,
-                research=research,
-                valuation=valuation,
-                judgment=judgment,
-                authorized=authorize_word,
-            )
+        ensure_calculated(excel_path, analysis_id=analysis_id, ticker=ticker, fiscal_year=fy)
         email = EmailDraftService().produce_safe(
             analysis_type="quarterly_update",
             ticker=ticker,
@@ -124,6 +105,8 @@ class QuarterlyDeliverablesService:
             output_dir=output_dir,
             projection=self._email_projection(projection),
             base_name=email_deliverable_name(fiscal_year=fy, ticker=ticker, fiscal_quarter=q),
+            fiscal_year=fy,
+            fiscal_quarter=q,
         )
         return QuarterlyDeliverablesReport(
             analysis_id=analysis_id,
@@ -132,20 +115,18 @@ class QuarterlyDeliverablesService:
             fiscal_quarter=q,
             excel_filename=excel_name,
             excel_path=str(excel_path),
-            word_filename=word_name if word_on else None,
-            word_path=str(word_path) if word_on else None,
             email_filename=file_name(email["text_path"]),
             email_path=email["text_path"],
             eml_path=email["eml_path"],
             summary=f"Deliverables: {excel_name}; {file_name(email['text_path'])}"
-            + ("" if authorize_word else " (NOT AUTHORIZED: review the HAP Adjustments tab and the gate report)"),
+            + ("" if authorized else " (NOT AUTHORIZED: review the HAP Adjustments tab and the gate report)"),
         )
 
     @staticmethod
     def _email_projection(projection: QuarterlyProjectionReport | None) -> dict[str, Any] | None:
         if projection is None or projection.status == "NOT_APPLICABLE" or projection.projected_roic_wacc is None:
             return None
-        year = projection.next_fiscal_year
+        year = projection.fiscal_year or ((projection.next_fiscal_year - 1) if projection.next_fiscal_year else None)   # the year being projected
         prior = None
         if projection.prior_fy_roic is not None and projection.prior_fy_wacc is not None:
             prior = projection.prior_fy_roic - projection.prior_fy_wacc
@@ -178,289 +159,6 @@ class QuarterlyDeliverablesService:
             return fy, q
         finally:
             wb.close()
-
-    def _write_word(
-        self,
-        path: Path,
-        *,
-        ticker: str,
-        fiscal_year: int,
-        fiscal_quarter: int,
-        workbook_path: Path,
-        projection: QuarterlyProjectionReport | None,
-        review: QuarterlyReviewReport | None,
-        research: QuarterlyResearchReport | None = None,
-        valuation: QuarterlyValuationReport | None = None,
-        judgment: Any = None,
-        authorized: bool = True,
-    ) -> None:
-        try:
-            from docx import Document
-            from docx.shared import Pt
-        except ImportError as exc:  # pragma: no cover
-            raise RuntimeError("python-docx is required for Word deliverables") from exc
-
-        metrics = self._extract_word_metrics(workbook_path)
-        doc = Document()
-        style = doc.styles["Normal"]
-        style.font.name = "Calibri"
-        style.font.size = Pt(11)
-
-        title = doc.add_heading(f"{ticker.upper()} — {fiscal_year} Q{fiscal_quarter} Quarterly Update", level=0)
-        _ = title
-
-        # Flags come first: what was filled, corrected, decided by the agent, or is missing.
-        write_flags_section(doc, collect_flags(path.parent, authorized=authorized))
-
-        # Q2/Q3 projection section BEFORE Financial Highlights
-        if fiscal_quarter in (2, 3) and projection and projection.status != "NOT_APPLICABLE":
-            next_fy = projection.next_fiscal_year or (fiscal_year + 1)
-            doc.add_heading(f"{next_fy} Projection", level=1)
-            roic_w = projection.projected_roic_wacc
-            prior_roic = projection.prior_fy_roic
-            prior_wacc = projection.prior_fy_wacc
-            prior_spread = None
-            if prior_roic is not None and prior_wacc is not None:
-                prior_spread = prior_roic - prior_wacc
-            p = doc.add_paragraph()
-            p.add_run(
-                f"Projected ROIC - WACC at {_fmt_num(roic_w, pct=True)}"
-                f" ({_fmt_num(prior_spread, pct=True)} in {fiscal_year}FY)"
-                if prior_spread is not None
-                else f"Projected ROIC - WACC at {_fmt_num(roic_w, pct=True)}"
-            )
-            p2 = doc.add_paragraph()
-            p2.add_run(
-                f"Projected ROCE at {_fmt_num(projection.projected_roce, pct=True)}"
-                + (
-                    f" ({_fmt_num(projection.prior_fy_roce, pct=True)} in {fiscal_year}FY)"
-                    if projection.prior_fy_roce is not None
-                    else ""
-                )
-            )
-            doc.add_paragraph(
-                "Projected values are derived from the HAP ROIC house methodology "
-                "(latest-quarter OA/OL, YTD annualization, prior-FY lease/R&D/OpTax bridge)."
-            )
-
-        doc.add_heading("Financial Highlights", level=1)
-        if research and research.earnings_call_status == "EARNINGS_CALL_SOURCE_UNAVAILABLE":
-            doc.add_paragraph(
-                f"Note: {research.earnings_call_status} — no verified earnings-call transcript was retrieved."
-            )
-        if research and research.reported_facts:
-            doc.add_paragraph("Reported Fact", style="Heading 2")
-            for fact in research.reported_facts:
-                doc.add_paragraph(fact, style="List Bullet")
-        if research and research.management_explanations:
-            doc.add_paragraph("Management Explanation", style="Heading 2")
-            for note in research.management_explanations:
-                doc.add_paragraph(note, style="List Bullet")
-        if research and research.hap_interpretations:
-            doc.add_paragraph("HAP Analyst Interpretation", style="Heading 2")
-            for note in research.hap_interpretations:
-                doc.add_paragraph(note, style="List Bullet")
-        if not research or (
-            not research.reported_facts
-            and not research.management_explanations
-            and not research.hap_interpretations
-        ):
-            doc.add_paragraph(
-                f"This quarterly update for {ticker.upper()} covers fiscal {fiscal_year} Q{fiscal_quarter}. "
-                "Figures are drawn from the completed HAP workbook. External research was limited; "
-                "analyst should attach official earnings release and call transcript."
-            )
-        else:
-            doc.add_paragraph(
-                f"Quarterly narrative for {ticker.upper()} fiscal {fiscal_year} Q{fiscal_quarter} "
-                "combines workbook metrics with external sources listed below."
-            )
-
-        doc.add_heading(
-            f"Comparison Quarter to Quarter — {'3 Months' if fiscal_quarter == 1 else '3 Months + YTD'}",
-            level=1,
-        )
-        for metric in ("Revenue", "Net Income", "Operating Income", "Gross Margin", "Operating Margin", "Net Margin"):
-            ctype = "yoy_quarter"
-            comp = _find_comp(review, "income_statement", metric, ctype)
-            if comp and comp.compare_value is not None and _is_suspect_identical(comp) and "margin" not in metric.lower():
-                doc.add_paragraph(
-                    f"Data check: {metric} is identical in both periods ({_fmt_num(comp.compare_value, money=True)}). "
-                    "The prior-year quarter was probably not populated in the workbook; verify before relying on this comparison.",
-                    style="List Bullet",
-                )
-            elif comp and comp.compare_value is not None:
-                money = "margin" not in metric.lower()
-                line = (
-                    f"{metric} {_pct(comp.compare_value, comp.baseline_value)} "
-                    f"({_fmt_num(comp.compare_value, money=money, pct=not money)} vs. "
-                    f"{_fmt_num(comp.baseline_value, money=money, pct=not money)})"
-                )
-                doc.add_paragraph(line, style="List Bullet")
-        # YTD for Q2/Q3
-        if fiscal_quarter in (2, 3):
-            doc.add_paragraph(
-                f"YTD comparison uses prior-year equivalent "
-                f"({'6M' if fiscal_quarter == 2 else '9M'})."
-            )
-            for metric in ("Revenue", "Operating Income", "Net Income"):
-                comp = _find_comp(review, "income_statement", metric, "ytd")
-                if comp and comp.baseline_value is None:
-                    continue  # prior-year YTD not populated; reported once below
-                if comp and comp.compare_value is not None:
-                    doc.add_paragraph(
-                        f"YTD {metric} {_pct(comp.compare_value, comp.baseline_value)} "
-                        f"({_fmt_num(comp.compare_value, money=True)} vs. "
-                        f"{_fmt_num(comp.baseline_value, money=True)})",
-                        style="List Bullet",
-                    )
-
-        missing_ytd = [
-            m for m in ("Revenue", "Operating Income", "Net Income")
-            if (c := _find_comp(review, "income_statement", m, "ytd")) is not None and c.baseline_value is None
-        ] if fiscal_quarter in (2, 3) else []
-        if missing_ytd:
-            doc.add_paragraph(
-                "YTD comparison unavailable for " + ", ".join(missing_ytd) + ": the prior-year YTD figures are not in the workbook.",
-                style="List Bullet",
-            )
-
-        cfo = _find_comp(review, "cash_flow", "CFO", "ytd")
-        if cfo and cfo.compare_value is not None:
-            doc.add_paragraph(
-                f"Cash from Ops {_fmt_num(cfo.compare_value, money=True)} vs. "
-                + (f"{_fmt_num(cfo.baseline_value, money=True)} (YTD)" if cfo.baseline_value is not None else "prior-year YTD not available"),
-                style="List Bullet",
-            )
-
-        doc.add_heading("Comparison Last Quarter to Quarter Right Before", level=1)
-        for metric in ("Cash", "Total assets", "Equity", "Inventory", "Receivables", "Accounts payable"):
-            comp = _find_comp(review, "balance_sheet", metric, "qoq")
-            if comp and comp.compare_value is not None and not _is_blank_pair(comp):
-                doc.add_paragraph(
-                    f"{metric} {_pct(comp.compare_value, comp.baseline_value)} "
-                    f"({_fmt_num(comp.compare_value, money=True)} vs. "
-                    f"{_fmt_num(comp.baseline_value, money=True)})",
-                    style="List Bullet",
-                )
-
-        doc.add_heading("Price & MoS", level=1)
-        price = metrics.get("current_price")
-        max_buy = metrics.get("max_price_to_buy")
-        pe10_pct = metrics.get("pe10_percentile")
-        doc.add_paragraph(
-            f"At the current price of {_fmt_num(price, money=True)}, "
-            f"PE10 percentile at {_fmt_num(pe10_pct, pct=True)}, "
-            f"the max entry price is {_fmt_num(max_buy, money=True)}."
-        )
-        if metrics.get("ev_mos") is not None:
-            doc.add_paragraph(f"EV MoS: {_fmt_num(metrics.get('ev_mos'), pct=True)}")
-        else:
-            doc.add_paragraph("EV MoS: not available in this workbook run.")
-        if metrics.get("expected_return") is not None:
-            doc.add_paragraph(
-                f"Expected return at {_fmt_num(metrics.get('expected_return'), pct=True)}"
-            )
-        if metrics.get("graham_entry") is not None:
-            doc.add_paragraph(
-                f"Graham entry target price: {_fmt_num(metrics.get('graham_entry'), money=True)}"
-            )
-
-        doc.add_heading("HAP Valuation Analysis (Annual-parity services)", level=1)
-        doc.add_paragraph(
-            "Original analyst growth-rate cells and valuation formulas were not overwritten. "
-            "Any HAP alternative appears as HAP ANALYSIS only and is not the applied model output."
-        )
-        if valuation and valuation.period_context:
-            doc.add_paragraph(valuation.period_context)
-        if judgment is not None:
-            er = getattr(judgment, "expected_return", None) or getattr(judgment, "er_analysis", None)
-            oe = getattr(judgment, "oe_analysis", None)
-            gr = getattr(judgment, "graham_analysis", None)
-            for rec, title in ((er, "Expected Returns"), (oe, "Owner Earnings"), (gr, "Graham")):
-                if rec is None:
-                    continue
-                decision = getattr(rec, "decision", None)
-                rationale = getattr(rec, "rationale", None) or getattr(rec, "reason", None) or ""
-                existing = getattr(rec, "existing_assumption", None) or getattr(rec, "original_rate", None)
-                hap_rate = getattr(rec, "selected_prospective_rate", None) or getattr(rec, "hap_rate", None)
-                line = f"{title}: {decision or 'n/a'}"
-                if existing is not None:
-                    line += f" | original {existing}"
-                if hap_rate is not None and decision == "ADJUST":
-                    line += f" | HAP suggested {hap_rate} (not applied to original cell)"
-                doc.add_paragraph(line, style="List Bullet")
-                if rationale:
-                    doc.add_paragraph(str(rationale)[:500], style="List Bullet")
-            oe_base = getattr(judgment, "oe_base_analysis", None)
-            disclosure = getattr(oe_base, "disclosure", None) if oe_base is not None else None
-            if isinstance(oe_base, dict):
-                disclosure = (oe_base.get("disclosure") or {})
-                word_text = disclosure.get("word_text") if isinstance(disclosure, dict) else None
-            else:
-                word_text = getattr(disclosure, "word_text", None) if disclosure is not None else None
-            if word_text:
-                doc.add_paragraph("Normalized earnings-power disclosure (HAP ANALYSIS, not established fact):")
-                doc.add_paragraph(str(word_text)[:1200])
-        elif valuation:
-            doc.add_paragraph(valuation.summary)
-
-        assessment_inputs = SimpleNamespace(
-            current_price=metrics.get("current_price"),
-            enterprise_mos=metrics.get("ev_mos"),
-            company_value_per_share=None,
-            current_pe10=None,
-            expected_annual_return=metrics.get("expected_return"),
-            roic_wacc=getattr(projection, "projected_roic_wacc", None) if projection else None,
-            roce=getattr(projection, "projected_roce", None) if projection else None,
-        )
-        write_assessment_sections(doc, path.parent, assessment_inputs)
-
-        doc.add_heading("Sources", level=1)
-        doc.add_paragraph(
-            "Primary: completed HAP Excel model (SEC EDGAR authoritative for reported statements, "
-            "Yahoo supplementary with source attribution, CRF current data, Yahoo live price)."
-        )
-        if research and research.sources:
-            for src in research.sources[:10]:
-                line = f"[{src.source_kind}] {src.title}"
-                if src.url:
-                    line += f" — {src.url}"
-                doc.add_paragraph(line, style="List Bullet")
-        else:
-            doc.add_paragraph(
-                f"Supporting: company IR earnings release, SEC 10-Q/8-K, earnings-call materials "
-                f"for {fiscal_year} Q{fiscal_quarter}."
-            )
-        doc.save(path)
-
-    def _extract_word_metrics(self, workbook_path: Path) -> dict[str, Any]:
-        wb = load_workbook(workbook_path, data_only=False)
-        out: dict[str, Any] = {}
-        try:
-            if "Inputs" in wb.sheetnames:
-                inp = wb["Inputs"]
-                out["current_price"] = _num_cell(inp["B63"].value)
-                out["max_price_to_buy"] = _num_cell(inp["B67"].value)
-                out["pe10_percentile"] = _num_cell(inp["B72"].value)
-                out["expected_return"] = _num_cell(inp["B69"].value)
-            if "Final Metrics" in wb.sheetnames:
-                fm = wb["Final Metrics"]
-                # Best-effort: B51 often mirrors current price; leave MoS if present nearby
-                out.setdefault("current_price", _num_cell(fm["B51"].value if "B51" in fm else None))
-            if "Enterprise Value" in wb.sheetnames:
-                ev = wb["Enterprise Value"]
-                # MoS often on EV sheet — scan for MOS label
-                for r in range(1, 40):
-                    lab = str(ev.cell(r, 1).value or "").lower()
-                    if "mos" in lab or "margin of safety" in lab:
-                        out["ev_mos"] = _num_cell(ev.cell(r, 2).value)
-                        break
-            # Graham entry — valuation sheets vary; leave None if absent
-        finally:
-            wb.close()
-        return out
-
 
 def _num_cell(v: Any) -> float | None:
     if v is None or isinstance(v, bool):

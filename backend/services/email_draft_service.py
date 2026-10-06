@@ -150,6 +150,7 @@ class Facts:
     segments: list[tuple[str, float | None]] = field(default_factory=list)
     projection: dict[str, Any] = field(default_factory=dict)
     sources: list[str] = field(default_factory=list)
+    fy_series: dict[str, list[tuple[str, float | None]]] = field(default_factory=dict)
 
 
 def read_facts(workbook_path: Path, *, ticker: str, company: str = "") -> Facts:
@@ -216,6 +217,10 @@ def _read_fy(wb, f: Facts) -> None:
         for key, label in (("gross_margin", "Gross Margin"), ("op_margin", "Operating Margin")):
             r = _find_label_row(fm, label)
             m[key] = (_value(fm, r, lat), _value(fm, r, prior), _value(fm, r, avg_col))
+        years = _year_columns(fm)
+        for key, label in (("roce", "ROCE"), ("roic_wacc", "ROIC in - WACC")):
+            r = _find_label_row(fm, label)
+            f.fy_series[key] = [(fy, _value(fm, r, years[fy])) for fy in sorted(years)]
     if "All Ratios" in wb.sheetnames:
         ar = wb["All Ratios"]
         lat, prior, token = _fy_pair(ar)
@@ -249,9 +254,14 @@ def _read_quarter(wb, f: Facts) -> None:
         ws = wb[LQ_IS]
         for c in range(2, 10):
             for r in (1, 2, 3, 4, 5, 6, 7, 8, 9):
-                m = re.search(r"FQ(\d)\s*(\d{4})", str(ws.cell(r, c).value or ""))
-                if m and f.quarter_label is None:
-                    f.quarter_number, f.quarter_year, f.quarter_label = int(m.group(1)), int(m.group(2)), f"{m.group(2)} Q{m.group(1)}"
+                text = str(ws.cell(r, c).value or "")
+                m = re.search(r"FQ(\d)\s*(\d{4})", text)
+                year, quarter = (m.group(2), m.group(1)) if m else (None, None)
+                if not m:                                    # quarterly-update workbooks write the header as "2026 Q3"
+                    m2 = re.search(r"(\d{4})\s*Q(\d)", text)
+                    year, quarter = (m2.group(1), m2.group(2)) if m2 else (None, None)
+                if year and f.quarter_label is None:
+                    f.quarter_number, f.quarter_year, f.quarter_label = int(quarter), int(year), f"{year} Q{quarter}"
         f.ytd_label = {1: "3M", 2: "6M", 3: "9M", 4: "12M"}.get(f.quarter_number or 0, "YTD")
         y: dict[str, Any] = {}
         for key, code in (("revenue", "SALES_REV_TURN"), ("op_income", "IS_OPER_INC"), ("net_income", "NET_INCOME"),
@@ -293,10 +303,8 @@ class SheetFields:
 
 
 def pe10_status(f: Facts) -> str:
-    """Buy when the price is at or below the max entry price, otherwise Out (the Google Sheet value overrides this)."""
-    if f.price is None or f.max_entry is None:
-        return "[Google Sheet]"
-    return "Buy" if f.price <= f.max_entry else "Out"
+    """The status comes from the analyst's sheet; it is not derived from the price (the sheet applies more filters than price versus max)."""
+    return "[Google Sheet]"
 
 
 def _header_block(f: Facts, sheet: SheetFields | None) -> list[str]:
@@ -456,16 +464,21 @@ def render_quarter(f: Facts, *, sheet: SheetFields | None = None, highlights: st
     ytd = f.ytd_label if q >= 2 else ""
     ytd_note = f" ({ytd} to {ytd})" if ytd else ""
     intro = ["Dear All,", "", f"Please find attached the quarter update of {f.ticker}."] + _header_block(f, sheet)
+    from services.email_narrative import quarter_highlights
+
     hl = [f"{f.quarter_label or 'Latest quarter'} Financial Highlights",
-          highlights or "[What drove the quarter: segment growth and the reasons behind it. To be completed by the analyst.]"]
+          highlights or quarter_highlights(f) or "[What drove the quarter: segment growth and the reasons behind it. To be completed by the analyst.]"]
     proj: list[str] = []
     if f.projection:
         p = f.projection
+        # the projection report may lack last year's figures; the workbook's last full fiscal year has them
+        prior_spread = p.get("prior_spread") if p.get("prior_spread") is not None else f.fy_metrics.get("roic_wacc", (None,))[0]
+        prior_roce = p.get("prior_roce") if p.get("prior_roce") is not None else f.fy_metrics.get("roce", (None,))[0]
         proj = [f"{p.get('next_fy', 'Next year')} Projection",
-                f"Projected ROIC - WACC at {pct(p.get('roic_wacc'))} ({pct(p.get('prior_spread'))} in {p.get('fy', 'last year')})",
-                f"Projected ROCE at {pct(p.get('roce'))} ({pct(p.get('prior_roce'))} in {p.get('fy', 'last year')})"]
+                f"Projected ROIC - WACC at {pct(p.get('roic_wacc'))} ({pct(prior_spread)} in {p.get('fy', 'last year')})",
+                f"Projected ROCE at {pct(p.get('roce'))} ({pct(prior_roce)} in {p.get('fy', 'last year')})"]
     sections = [
-        intro, proj, hl,
+        intro, hl, proj,
         _quarter_vs_block(f, f"Comparison {cur} to {last_year}{ytd_note}", with_ytd=q >= 2),
         _qoq_block(f, f"Comparison {cur} to {prev}"),
         _price_block(f),
@@ -478,9 +491,11 @@ def render_annual(f: Facts, *, sheet: SheetFields | None = None, description: st
     fy, _prior = _fy_names(f)
     m = f.fy_metrics
     rev, ni, eps = m.get("revenue", (None,))[0], m.get("net_income", (None,))[0], m.get("eps", (None,))[0]
+    from services.email_narrative import annual_highlights
+
     intro = ["Dear All,", "", f"Please find the annual update for {f.ticker} below ({_description(f, description)})"] + _header_block(f, sheet)
     hl = [f"{fy} Highlights", f"Net Revenue: {money_m(rev)}", f"Net Income: {money_m(ni)}", f"EPS: {usd(eps)}", "",
-          highlights or "[What drove the year: demand, margins and the reasons behind them. To be completed by the analyst.]"]
+          highlights or annual_highlights(f) or "[What drove the year: demand, margins and the reasons behind them. To be completed by the analyst.]"]
     sections = [intro, hl, _fy_metrics_block(f, f"{fy} Metrics"), _fy_vs_block(f), _price_block(f), ["Very best,"]]
     return f"{f.ticker} annual update {fy}", _join(sections)
 
@@ -492,31 +507,24 @@ def render_new_company(f: Facts, *, sheet: SheetFields | None = None, descriptio
     cur, last_year, prev = _periods(f)
     ytd = f.ytd_label if q >= 2 else ""
     ytd_note = f" ({ytd} to {ytd})" if ytd else ""
+    from services.email_narrative import new_company_conclusion, new_company_highlights
+
     name = f"{f.ticker}: {f.company}" if f.company else f.ticker
-    intro = ["Dear All,", "", f"Please find attached the analysis of {name}, {_description(f, description)}"] + _header_block(f, sheet)
-    roic = f.fy_metrics.get("roic_wacc")
-    auto = []
-    if roic and roic[0] is not None:
-        auto.append(f"ROIC-WACC was {pct(roic[0])} in {fy}" + (f" and {pct(roic[1])} in the year before." if roic[1] is not None else "."))
-    hl = ["Highlights", highlights or "[Competitive position and the main story of the last years: to be completed by the analyst.]"] + auto
+    subject_line = f"{f.ticker}: {description}" if description else f"{name}, [one-line description of the company]"
+    intro = ["Dear All,", "", f"Please find attached the analysis of {subject_line}"] + _header_block(f, sheet)
+    hl = ["Highlights", highlights or new_company_highlights(f) or "[Competitive position and the main story of the last years: to be completed by the analyst.]"]
     sections = [
         intro, hl, _fy_metrics_block(f, fy), _fy_vs_block(f),
         _quarter_vs_block(f, f"{cur} vs. {last_year}{ytd_note}", with_ytd=q >= 2, margin_digits=1),
         _qoq_block(f, f"{cur} vs. {prev}"),
         _price_block(f),
-        ["Conclusion", conclusion or "[Overall view of the company: to be completed by the analyst.]"],
+        ["Conclusion", conclusion or new_company_conclusion(f) or "[Overall view of the company: to be completed by the analyst.]"],
         ["Let me know if you have any questions.", "", "Very best"],
     ]
     return f"{f.ticker} new company analysis", _join(sections)
 
 
 # ---------------------------------------------------------------- writing
-
-
-def word_report_enabled() -> bool:
-    """The old Word report is retired. Set HAP_WORD_REPORT=1 to produce it again (legacy certification scripts and tests)."""
-    return os.environ.get("HAP_WORD_REPORT", "0").strip().lower() in {"1", "true", "yes"}
-
 
 
 class EmailDraftService:
@@ -536,10 +544,19 @@ class EmailDraftService:
         conclusion: str | None = None,
         projection: dict[str, Any] | None = None,
         base_name: str | None = None,
+        fiscal_year: int | None = None,
+        fiscal_quarter: int | None = None,
     ) -> dict[str, str]:
         facts = read_facts(workbook_path, ticker=ticker, company=company)
+        if fiscal_year and fiscal_quarter in (1, 2, 3):
+            # the pipeline knows the period it analysed: that wins over what the statements' headers say
+            facts.quarter_number, facts.quarter_year = int(fiscal_quarter), int(fiscal_year)
+            facts.quarter_label = f"{fiscal_year} Q{fiscal_quarter}"
+            facts.ytd_label = {1: "3M", 2: "6M", 3: "9M"}[int(fiscal_quarter)]
         if projection:
             facts.projection = projection
+        if description is None and analysis_type in ("annual_update", "new_company"):
+            description = self._describe(analysis_type, ticker, company or facts.company, output_dir)
         if analysis_type == "quarterly_update":
             subject, body = render_quarter(facts, sheet=sheet, highlights=highlights)
         elif analysis_type == "annual_update":
@@ -558,6 +575,18 @@ class EmailDraftService:
         msg.set_content(body)
         eml.write_bytes(bytes(msg))
         return {"subject": subject, "text_path": str(txt), "eml_path": str(eml), "body": body}
+
+    @staticmethod
+    def _describe(analysis_type: str, ticker: str, company: str, output_dir: Path) -> str | None:
+        """The one-line description taken from the company's own 10-K (see company_description_service)."""
+        try:
+            from services.company_description_service import describe
+
+            found = describe(ticker, output_dir)
+            name = company or found.name or ticker
+            return found.annual(name) if analysis_type == "annual_update" else found.new_company(name)
+        except Exception:  # noqa: BLE001 - the description is optional; the bracketed line stays
+            return None
 
     def produce_safe(self, **kwargs: Any) -> dict[str, Any]:
         """Like produce(), but a problem with the email never stops an analysis: the paths are None and `error` says what went wrong."""

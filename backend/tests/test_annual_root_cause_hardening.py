@@ -777,64 +777,6 @@ def test_stale_cache_is_not_certified_output():
     assert genuine_excel_com_recalc(real) is True
 
 
-def test_word_distinguishes_original_from_hap(tmp_path: Path):
-    path = tmp_path / "wb.xlsx"
-    _valuation_book(path)
-    judgment = AnnualAnalystJudgmentReport(
-        analysis_id="a1",
-        ticker="ZZ",
-        owner_earnings_growth=JudgmentRecord(
-            metric="owner_earnings_growth",
-            original_value=0.08,
-            selected_value=0.08,
-            adjusted=False,
-            rationale="Existing OE growth appears reasonable prospectively.",
-        ),
-        graham_eps_growth=JudgmentRecord(
-            metric="graham_eps_growth",
-            original_value=0.07,
-            selected_value=0.07,
-            adjusted=False,
-            rationale="Historical EPS 10-year growth was not automatically used as the prospective Graham rate.",
-        ),
-        hap_analysis_cells=["Expected Returns & Buybacks!G2"],
-    )
-    from models.annual_update import AnnualExpectedReturnReport, AnnualResearchReport
-
-    er = AnnualExpectedReturnReport(
-        analysis_id="a1",
-        ticker="ZZ",
-        original_growth_rate=0.06,
-        original_expected_return=0.11,
-        selected_growth_rate=0.06,
-        final_expected_return=None,
-        reasonableness="reasonable",
-        rationale="Existing assumption appears reasonable; no adjustment is recommended.",
-        selected_methodology="BOOK_VALUE_GROWTH",
-    )
-    research = AnnualResearchReport(analysis_id="a1", ticker="ZZ", fiscal_year=2026)
-    perf = AnnualDeliverablesService().build_performance(
-        analysis_id="a1", ticker="ZZ", fiscal_year=2026, workbook_path=path, research=research
-    )
-    report = AnnualDeliverablesService().produce(
-        analysis_id="a1",
-        ticker="ZZ",
-        fiscal_year=2026,
-        completed_workbook_path=path,
-        output_dir=tmp_path,
-        performance=perf,
-        research=research,
-        judgment=judgment,
-        expected_return=er,
-    )
-    from docx import Document
-
-    text = "\n".join(p.text for p in Document(tmp_path / report.word_filename).paragraphs)
-    assert "ORIGINAL WORKBOOK RESULT" in text
-    assert "HAP-ADJUSTED ANALYSIS" in text
-    assert "not automatically" in text.lower() or "not required" in text.lower()
-
-
 def test_write_action_classes_exist():
     assert WriteActionClass.SOURCE_FILL.value == "SOURCE_FILL"
     assert WriteActionClass.HAP_ANALYSIS.value == "HAP_ANALYSIS"

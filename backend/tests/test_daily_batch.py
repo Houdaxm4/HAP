@@ -75,3 +75,34 @@ def test_missing_or_ambiguous_files_are_reported_not_guessed(tmp_path: Path):
     assert any("custom run filter" in p for p in m.problems) and any("exactly one" in p for p in m.problems)
     assert any("no workbook" in p for p in run_batch.match_files(tmp_path, "QQQ", "new_company").problems)
     assert run_batch.match_files(tmp_path, "TKR", "quarterly_update").workbook is not None      # two workbooks are enough for an update
+
+
+def test_live_sheet_is_downloaded_from_the_published_link_and_falls_back_to_the_file(tmp_path: Path):
+    import functools
+    import http.server
+    import threading
+
+    from services.daily_sheet_service import LIVE_FILE, open_daily_sheet
+
+    served = tmp_path / "served"
+    served.mkdir()
+    _sheet(served / "live.xlsx")
+    (served / "notasheet").write_text("<html>sign in</html>", encoding="utf-8")
+    handler = functools.partial(http.server.SimpleHTTPRequestHandler, directory=str(served))
+    server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), handler)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    base = f"http://127.0.0.1:{server.server_address[1]}"
+    try:
+        work = tmp_path / "work"
+        work.mkdir()
+        _sheet(work / "Summary&sector tables.xlsx")
+        sheet, source = open_daily_sheet(work, f"{base}/live.xlsx")
+        assert "live Google Sheet" in source and sheet.has("WWD") and (work / LIVE_FILE).exists()
+        # a sign-in page, a missing link or no link at all: the morning download is used
+        (work / LIVE_FILE).unlink()
+        for url in (f"{base}/notasheet", f"{base}/missing.xlsx", None):
+            sheet, source = open_daily_sheet(work, url)
+            assert "Summary&sector tables.xlsx" in source and sheet.has("WWD") and not (work / LIVE_FILE).exists()
+        assert ("could not be reached" in open_daily_sheet(work, f"{base}/missing.xlsx")[1])
+    finally:
+        server.shutdown()

@@ -1047,14 +1047,9 @@ def test_cross_company_runner_suite(tmp_path: Path, out_svc: OutputService, monk
                 else "CLOUD_IMPLEMENTATION_COMPLETE_PENDING_WINDOWS_CERTIFICATION"
             )
             assert "WORKBOOK_RECALCULATION_INCOMPLETE" in done["output_gate"].blockers
-            # The Word report must see the reports of the same run (they are saved before it is written):
-            # the agent's own lease-rate and R&D decisions appear in its Flags section.
-            from docx import Document
-
-            word = done["deliverables"].word_path if done["deliverables"] else None
-            assert word, "the Word report is always produced"
-            flag_text = "\n".join(p.text for p in Document(word).paragraphs)
-            assert "Decisions the agent made" in flag_text and "R&D useful life" in flag_text
+            # the email draft is always produced, even when the run is not authorized
+            email = done["deliverables"].email_path if done["deliverables"] else None
+            assert email and Path(email).exists(), "the email draft is always produced"
             assert done["periods"].latest_quarter == q
             assert len(done["tax"].years) == 10
             assert len(done["buybacks"].years) == 10
@@ -1419,44 +1414,6 @@ def test_pe10_current_does_not_replace_historical_fiscal_values(tmp_path: Path):
     wb.close()
 
 
-def test_word_report_is_flagged_not_withheld_until_authorized(tmp_path: Path):
-    from services.new_company_deliverables_service import NewCompanyDeliverablesService
-
-    wb = industrial_workbook(tmp_path / "wb.xlsx")
-    out = tmp_path / "out"
-    report = NewCompanyDeliverablesService().produce(
-        analysis_id="a",
-        ticker="MSFT",
-        company="Microsoft",
-        fiscal_year=2025,
-        completed_workbook_path=wb,
-        output_dir=out,
-        periods=None,
-        tax=None,
-        pe10=None,
-        rd_decision=None,
-        rd=None,
-        leases=None,
-        lease_review=None,
-        buybacks=None,
-        projection=None,
-        seasonality=None,
-        valuation=None,
-        gate=None,
-        authorized=False,
-    )
-    # The Word report is always produced; when the gates fail its first section says it is NOT AUTHORIZED.
-    assert report.authorized is False
-    assert report.word_path is not None and "NOT AUTHORIZED" in report.summary
-    docs = list(out.glob("*.docx"))
-    assert len(docs) == 1
-    from docx import Document
-
-    texts = [p.text for p in Document(str(docs[0])).paragraphs]
-    assert texts[texts.index("Flags") + 1].startswith("Status: NOT AUTHORIZED")
-    assert list(out.glob("*.xlsx"))
-
-
 def _tax_inputs() -> dict:
     return {
         fy: {
@@ -1790,67 +1747,6 @@ def test_gate_l_requires_judgment_after_genuine_com(tmp_path: Path):
     circ = ok_j.model_copy(update={"hap_introduced_circular_count": 1, "status": "BLOCKING_STRUCTURAL_ERROR"})
     circ_gate = NewCompanyOutputGateService().evaluate(recalc=genuine, valuation_judgment=circ, **common)
     assert "HAP_INTRODUCED_CIRCULAR_REFERENCE" in circ_gate.blockers
-
-
-def test_word_carries_hap_judgment_and_period_context(tmp_path: Path):
-    from docx import Document
-    from models.new_company import NewCompanyValuationReport
-    from services.new_company_deliverables_service import NewCompanyDeliverablesService
-
-    wb = industrial_workbook(tmp_path / "wb.xlsx", quarter=3)
-    periods = NewCompanyPeriodService().detect(analysis_id="a", ticker="MSFT", workbook_path=wb)
-    judgment = MagicMock()
-    judgment.expected_return = MagicMock(decision="KEEP_EXISTING", rationale="historical matches prospective", existing_assumption=0.04, selected_prospective_rate=None)
-    judgment.er_analysis = judgment.expected_return
-    judgment.oe_analysis = MagicMock(decision="INSUFFICIENT_EVIDENCE", rationale="capex distortion", existing_assumption=-0.28, selected_prospective_rate=None)
-    judgment.graham_analysis = MagicMock(decision="ADJUST", rationale="cluster median", existing_assumption=0.20, selected_prospective_rate=0.05)
-    judgment.oe_base_analysis = MagicMock(disclosure=MagicMock(word_text="Reported owner earnings are distorted by elevated capex. HAP does not substitute a normalized base."))
-    judgment.hap_analysis_cells = ["Expected Returns & Buybacks!H1"]
-    val_rep = NewCompanyValuationReport(
-        analysis_id="a",
-        ticker="MSFT",
-        period_context="Q3 initiation: distinguish reported nine-month YTD, standalone Q3, and projected full-year.",
-        original_assumptions_preserved=True,
-        hap_analysis_cells=["Expected Returns & Buybacks!H1"],
-        er_decision="KEEP_EXISTING",
-        oe_decision="INSUFFICIENT_EVIDENCE",
-        graham_decision="ADJUST",
-        summary="test",
-    )
-    out = tmp_path / "out"
-    report = NewCompanyDeliverablesService().produce(
-        analysis_id="a",
-        ticker="MSFT",
-        company="Microsoft",
-        fiscal_year=2025,
-        completed_workbook_path=wb,
-        output_dir=out,
-        periods=periods,
-        tax=None,
-        pe10=None,
-        rd_decision=None,
-        rd=None,
-        leases=None,
-        lease_review=None,
-        buybacks=None,
-        projection=None,
-        seasonality=None,
-        valuation=None,
-        gate=None,
-        authorized=True,
-        judgment=judgment,
-        valuation_report=val_rep,
-    )
-    assert report.authorized
-    assert report.word_path
-    doc = Document(report.word_path)
-    text = "\n".join(p.text for p in doc.paragraphs)
-    assert "HAP valuation judgment" in text
-    assert "KEEP_EXISTING" in text
-    assert "INSUFFICIENT_EVIDENCE" in text
-    assert "nine-month YTD" in text
-    assert "not applied to original cell" in text
-    assert "does not substitute a normalized base" in text.lower() or "distorted" in text.lower()
 
 
 _IDCC_CAPITAL_TABLE = """
@@ -2335,7 +2231,7 @@ def test_wacc_mapped_missing_and_independent_roic(tmp_path: Path):
     assert proj2.projected_roic_wacc == pytest.approx(proj2.seasonality_adjusted_roic - mapped)
 
 
-def test_gates_g_and_i_pass_fail_and_word_flagged(tmp_path: Path):
+def test_gates_g_and_i_pass_fail_and_deliverables_flagged(tmp_path: Path):
     from services.new_company_deliverables_service import NewCompanyDeliverablesService
 
     passing = NewCompanyOutputGateService().evaluate(**_gate_base(tmp_path))
@@ -2408,8 +2304,8 @@ def test_gates_g_and_i_pass_fail_and_word_flagged(tmp_path: Path):
         gate=share_gap,
         authorized=False,
     )
-    assert withheld.authorized is False and withheld.word_path is not None  # produced, flagged NOT AUTHORIZED
-    assert len(list(out.glob("*.docx"))) == 1
+    assert withheld.authorized is False and withheld.email_path is not None  # produced, flagged NOT AUTHORIZED
+    assert [x.name for x in out.glob("*.docx")] == ["2025 FY MSFT Business.docx"] and len(list(out.glob("*Email.txt"))) == 1 and "NOT AUTHORIZED" in withheld.summary
 
 
 def test_period_detects_current_lq_year_not_prior_column(tmp_path: Path):

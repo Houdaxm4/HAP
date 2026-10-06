@@ -246,7 +246,7 @@ def test_rd_carries_life_and_reads_income_expense(tmp_path: Path):
     assert report.lookback_complete is True
 
 
-def test_valuation_extract_and_word_not_na(tmp_path: Path):
+def test_valuation_extract_and_pe10_not_na(tmp_path: Path):
     prev, tmpl, _ = _rolling_books(tmp_path)
     val = AnnualValuationExtractService().extract(tmpl)
     assert val.expected_annual_return == pytest.approx(0.0549)
@@ -271,7 +271,7 @@ def test_valuation_extract_and_word_not_na(tmp_path: Path):
     assert "WORKBOOK_RECALCULATION_INCOMPLETE" in gate.blockers
     assert "ANNUAL_TAX_SCHEDULE_NOT_POPULATED" in gate.blockers
 
-    # After tax+inputs populate, Word should not say n/a for PE10/ER
+    # After tax+inputs populate, the report should not say n/a for PE10/ER
     out = tmp_path / "out.xlsx"
     out.write_bytes(tmpl.read_bytes())
     AnnualTaxService().apply(
@@ -349,28 +349,6 @@ def test_valuation_extract_and_word_not_na(tmp_path: Path):
     assert perf.current_expected_return is not None
     assert not any("filed" in h.lower() and h.lower().startswith("sec") for h in perf.year_highlights)
     assert any(m.metric == "Revenue" for m in perf.yoy)
-
-    AnnualDeliverablesService().produce(
-        analysis_id="t",
-        ticker="ZZ",
-        fiscal_year=2026,
-        completed_workbook_path=out,
-        output_dir=tmp_path,
-        performance=perf,
-        gate=gate2,
-    )
-    from docx import Document
-
-    doc = Document(tmp_path / "2026 ZZ Annual Update.docx")
-    text = "\n".join(p.text for p in doc.paragraphs)
-    assert "n/a" not in text.lower() or "Current PE10" in text
-    assert "Executive Investment Conclusion" in text
-    assert "NOT AUTHORIZED" in text
-    assert "FY2026 versus FY2025" in text or "FY2026 versus" in text
-    assert "margin-of-safety entry" in text.lower()
-    assert "target-return entry" in text.lower()
-    assert "Inputs!B69" in text
-    assert "not a substitute" in text.lower() or "distinct metric" in text.lower()
 
 def test_rd_lookback_lengths():
     for life in (1, 3, 5, 10):

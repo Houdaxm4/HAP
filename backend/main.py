@@ -11,7 +11,6 @@ from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel, Field
 
 from agent import AgentError, AnalystAgent
-from agent.report_opinion import OpinionError, ReportOpinionService
 from agent.run_workflow import AgentRunService, RunWorkflowError
 from agent.service import AnalystService
 from agent.schemas import CheckpointAnswer, ChatRequest, ChatResponse, FeedbackRequest, ToolCallSummary
@@ -96,9 +95,6 @@ pipeline_orchestrator = PipelineOrchestrator(
     analysis_service=analysis_service,
     file_service=file_service,
     output_service=output_service,
-)
-report_opinion_service = ReportOpinionService(
-    agent=analyst_agent, analysis_service=analysis_service, output_service=output_service
 )
 agent_run_service = AgentRunService(
     analysis_service=analysis_service,
@@ -261,31 +257,6 @@ def answer_agent_checkpoint(analysis_id: str, checkpoint_id: str, request: Check
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except RunWorkflowError as exc:
         raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
-
-
-@app.post("/analysis/{analysis_id}/report/opinion")
-def generate_report_opinion(analysis_id: str) -> dict:
-    """Write the analyst opinions (fundamentals, and valuation if strong) into the Word report. Uses the paid model."""
-    try:
-        return report_opinion_service.generate(analysis_id)
-    except AnalysisNotFoundError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
-    except OpinionError as exc:
-        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
-    except AgentError as exc:
-        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
-
-
-@app.get("/analysis/{analysis_id}/report/opinion")
-def get_report_opinion(analysis_id: str) -> dict:
-    try:
-        analysis_service.get(analysis_id)
-    except AnalysisNotFoundError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
-    saved = report_opinion_service.saved(analysis_id)
-    if saved is None:
-        raise HTTPException(status_code=404, detail="No opinion generated yet.")
-    return saved
 
 
 @app.post("/analysis/{analysis_id}/agent/continue")
