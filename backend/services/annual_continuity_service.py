@@ -548,6 +548,8 @@ class AnnualContinuityService:
                     continue  # year-series handled by FY match
                 if ok == "formula":
                     continue
+                if col in fy_col_set and ok == "value":
+                    continue  # a value already sits in a year column (carried from the previous workbook): the previous column's formula is not its owner
                 if self._formula_write_unsafe(
                     workbook, sheet, addr, text, dest_col=col, dest_row=row
                 ):
