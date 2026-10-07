@@ -105,6 +105,7 @@ class QuarterlyDeliverablesService:
             output_dir=output_dir,
             projection=self._email_projection(projection),
             base_name=email_deliverable_name(fiscal_year=fy, ticker=ticker, fiscal_quarter=q),
+            attachments=[excel_path],
             fiscal_year=fy,
             fiscal_quarter=q,
         )

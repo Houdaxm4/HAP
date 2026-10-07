@@ -1,4 +1,4 @@
-from email import message_from_bytes
+from email import message_from_bytes, policy
 from pathlib import Path
 
 from services.email_draft_service import (
@@ -204,3 +204,24 @@ def test_expected_return_is_the_price_plus_dividends_column_of_the_expected_retu
     er["F13"].value = None
     wb.save(path)
     assert read_facts(path, ticker="ETD").expected_return == 0.0182            # falls back to E14 when the template has no F column
+
+
+def test_eml_carries_the_excel_and_the_business_doc_as_attachments(tmp_path: Path, monkeypatch):
+    from openpyxl import Workbook
+
+    wb = Workbook()
+    wb.active.title = "Inputs"
+    wb["Inputs"]["B63"] = 50.0
+    xlsx = tmp_path / "2026 Q2 XYZ FA.xlsx"
+    wb.save(xlsx)
+    docx = tmp_path / "2026 Q2 XYZ Business.docx"
+    docx.write_bytes(b"PK-business")
+    monkeypatch.delenv("HAP_EMAIL_DRAFT_TO", raising=False)
+    out = EmailDraftService().produce(
+        analysis_type="new_company", ticker="XYZ", workbook_path=xlsx, output_dir=tmp_path, base_name="draft",
+        attachments=[xlsx, docx, tmp_path / "missing.pdf"],
+    )
+    msg = message_from_bytes(Path(out["eml_path"]).read_bytes(), policy=policy.default)
+    names = [part.get_filename() for part in msg.iter_attachments()]
+    assert names == ["2026 Q2 XYZ FA.xlsx", "2026 Q2 XYZ Business.docx"]       # a missing file is skipped, not an error
+    assert msg["X-Unsent"] == "1" and "Please find attached" in msg.get_body().get_content()

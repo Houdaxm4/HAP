@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass, field
+import mimetypes
 from email.message import EmailMessage
 from pathlib import Path
 from typing import Any
@@ -548,6 +549,7 @@ class EmailDraftService:
         base_name: str | None = None,
         fiscal_year: int | None = None,
         fiscal_quarter: int | None = None,
+        attachments: list[Path] | None = None,
     ) -> dict[str, str]:
         facts = read_facts(workbook_path, ticker=ticker, company=company)
         if fiscal_year and fiscal_quarter in (1, 2, 3):
@@ -575,6 +577,13 @@ class EmailDraftService:
         msg["Subject"] = subject
         msg["X-Unsent"] = "1"          # opens as an editable draft in Outlook and other mail apps
         msg.set_content(body)
+        for path in attachments or []:
+            path = Path(path)
+            if not path.is_file():
+                continue
+            kind = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
+            main, _, sub = kind.partition("/")
+            msg.add_attachment(path.read_bytes(), maintype=main, subtype=sub or "octet-stream", filename=path.name)
         eml.write_bytes(bytes(msg))
         return {"subject": subject, "text_path": str(txt), "eml_path": str(eml), "body": body}
 

@@ -160,9 +160,17 @@ def run_one(ticker: str, analysis_type: str, match: Match, sheet, results: Path)
             projection = None
     # email again with the daily sheet's fields (the pipeline's own draft has no access to the sheet)
     base = email_deliverable_name(fiscal_year=fy or 0, ticker=ticker, fiscal_quarter=fq)
+    biz = None
+    if analysis_type == "new_company":
+        biz = BusinessDocService().produce_safe(
+            ticker=ticker, company=company, workbook_path=excel, output_dir=out_dir,
+            base_name=business_deliverable_name(fiscal_year=fy or 0, ticker=ticker, fiscal_quarter=fq),
+            search_dir=out_dir, sheet_fields=sheet.fields(ticker) if sheet else None,
+        )
     email = EmailDraftService().produce_safe(
         analysis_type=analysis_type, ticker=ticker, company=company, workbook_path=excel, output_dir=out_dir,
         sheet=sheet.fields(ticker) if sheet else None, base_name=base, fiscal_year=fy, fiscal_quarter=fq, projection=projection,
+        attachments=[excel] + ([Path(biz["path"])] if biz and biz.get("path") else []),
     )
     results.mkdir(parents=True, exist_ok=True)
     final = {}
@@ -171,12 +179,7 @@ def run_one(ticker: str, analysis_type: str, match: Match, sheet, results: Path)
         notes.append(f"email draft not produced: {email['error']}")
     else:
         files += [("email_txt", Path(email["text_path"])), ("email_eml", Path(email["eml_path"]))]
-    if analysis_type == "new_company":
-        biz = BusinessDocService().produce_safe(
-            ticker=ticker, company=company, workbook_path=excel, output_dir=out_dir,
-            base_name=business_deliverable_name(fiscal_year=fy or 0, ticker=ticker, fiscal_quarter=fq),
-            search_dir=out_dir, sheet_fields=sheet.fields(ticker) if sheet else None,
-        )
+    if biz is not None:
         if biz.get("path"):
             files.append(("business_doc", Path(biz["path"])))
         else:

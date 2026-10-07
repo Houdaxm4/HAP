@@ -80,6 +80,14 @@ class NewCompanyDeliverablesService:
         excel_path = output_dir / excel_name
         shutil.copy2(completed_workbook_path, excel_path)
         ensure_calculated(excel_path, analysis_id=analysis_id, ticker=ticker, fiscal_year=fiscal_year)
+        business = BusinessDocService().produce_safe(
+            ticker=ticker,
+            company=company,
+            workbook_path=excel_path,
+            output_dir=output_dir,
+            base_name=business_deliverable_name(fiscal_year=fiscal_year, ticker=ticker, fiscal_quarter=fiscal_quarter),
+            search_dir=output_dir,
+        )
         email = EmailDraftService().produce_safe(
             analysis_type="new_company",
             ticker=ticker,
@@ -89,14 +97,7 @@ class NewCompanyDeliverablesService:
             base_name=email_deliverable_name(fiscal_year=fiscal_year, ticker=ticker, fiscal_quarter=fiscal_quarter),
             fiscal_year=fiscal_year,
             fiscal_quarter=fiscal_quarter,
-        )
-        business = BusinessDocService().produce_safe(
-            ticker=ticker,
-            company=company,
-            workbook_path=excel_path,
-            output_dir=output_dir,
-            base_name=business_deliverable_name(fiscal_year=fiscal_year, ticker=ticker, fiscal_quarter=fiscal_quarter),
-            search_dir=output_dir,
+            attachments=[excel_path] + ([Path(business["path"])] if business.get("path") else []),
         )
         return NewCompanyDeliverablesReport(
             analysis_id=analysis_id,

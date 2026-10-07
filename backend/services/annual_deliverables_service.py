@@ -84,6 +84,7 @@ class AnnualDeliverablesService:
             workbook_path=excel_path,
             output_dir=output_dir,
             base_name=email_deliverable_name(fiscal_year=fiscal_year, ticker=ticker),
+            attachments=[excel_path],
         )
         return AnnualDeliverablesReport(
             analysis_id=analysis_id,
