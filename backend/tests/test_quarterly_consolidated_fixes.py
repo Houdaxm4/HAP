@@ -541,7 +541,7 @@ def test_10_valuation_parity_keep_adjust_insufficient(tmp_path: Path):
     _adj_er, adj_j = _run(adj)
     _ins_er, ins_j = _run(insuff)
     assert keep_j.er_analysis.decision in {"KEEP_EXISTING", "KEEP", "ADJUST"}
-    assert adj_j.er_analysis.decision == "ADJUST"
+    assert adj_j.er_analysis.decision == "KEEP_EXISTING"       # the expected return is corrected by the valuation corrections step
     assert ins_j.oe_analysis.decision == "INSUFFICIENT_EVIDENCE"
     assert ins_j.er_analysis.decision != ins_j.oe_analysis.decision or ins_j.graham_analysis.decision != ins_j.oe_analysis.decision
     wb = load_workbook(adj)

@@ -3,10 +3,10 @@
 Used by annual updates, quarter updates and new company analyses, before the valuation judgment step.
 
 Expected Return (tab "Expected Returns & Buybacks")
-  Book value per share growth (A11 = retention x A14) and the average return on equity (A14) are checked. When the average ROE is
-  excessively high, negative, below a realistic floor, or distorted by extraordinary years, A14 is REPLACED with a normalized ROE
-  (the average of the normal years; the median when too few years remain). A11 follows, because it is a formula on A14. When the
-  resulting growth is still above 15% a year or negative, A11 itself is replaced by the limit.
+  The template projects ten years of earnings from book value growth (retention x ROE). When the return it gives (price plus dividends, F14) is
+  unrealistic, too high (above 12%) or negative, HAP switches to the analyst's second model: ten years of EPS projected from the company's own EPS
+  growth rate. The same cells carry it: A11 (growth) becomes the EPS growth rate and A14 becomes current EPS divided by current book value per
+  share, so every projection, dividend and return formula below keeps working. The email then marks the return "(adjusted)".
 Enterprise Value (tab "Enterprise Value")
   The annualized owner's earnings growth (C6) is checked. When it is too high, negative or too low, a corrected rate is computed from the
   average of the first three and last three years. If the original is clearly off (25% or more, negative, or very high because the start year
@@ -25,24 +25,29 @@ from openpyxl import load_workbook
 
 from services.adjustment_ledger_service import AdjustmentLedger
 from services.valuation_inputs_review_service import (
-    BV_GROWTH_HIGH,
     EV_SHEET,
     ER_SHEET,
     OE_HIGH,
     OE_LOW,
-    ROE_HIGH,
-    ROE_LOW,
     AppliedCorrection,
+    ReviewFinding,
     ValuationInputsReview,
     ValuationInputsReviewService,
     _pct,
 )
 
-ROE_MATERIAL = 0.015          # a normalized ROE this far (1.5 points) from the average is worth replacing
+ER_HIGH = 0.12                # a ten-year return above this is too high to rely on
+ER_LOW = 0.0                  # a negative return is too low to rely on
+EPS_GROWTH_LIMIT = 0.25       # an EPS growth rate beyond this (either way) is not projected for ten years
 OE_CLEARLY_OFF = 0.25         # annualized owner's earnings growth at or above this is clearly off
 OE_MATERIAL = 0.005           # a corrected growth rate must differ by at least half a point to matter
-ER_SOURCE = "the Final Metrics history of the company"
+ER_SOURCE = "the company's EPS history (Final Metrics tab)"
 EV_SOURCE = "the Final Metrics history (owner's earnings) of the company"
+
+
+def _cell(ws, addr: str) -> float | None:
+    v = ws[addr].value
+    return float(v) if isinstance(v, (int, float)) and not isinstance(v, bool) else None
 
 
 class ValuationCorrectionService:
@@ -50,77 +55,85 @@ class ValuationCorrectionService:
         path = Path(workbook_path)
         review = review or ValuationInputsReviewService().review(path, company_facts)
         wb = load_workbook(path, data_only=False)
+        values = load_workbook(path, data_only=True)
         changed = False
         try:
             ledger = AdjustmentLedger(wb)
-            if ER_SHEET in wb.sheetnames:
-                changed |= self._expected_return(wb[ER_SHEET], ledger, review)
+            if ER_SHEET in wb.sheetnames and ER_SHEET in values.sheetnames:
+                changed |= self._expected_return(wb[ER_SHEET], values[ER_SHEET], ledger, review)
             if EV_SHEET in wb.sheetnames:
                 changed |= self._owner_earnings(wb[EV_SHEET], ledger, review)
             if changed:
                 wb.save(path)
         finally:
             wb.close()
+            values.close()
         return review
 
     # ------------------------------------------------------------------ expected return
-    def _expected_return(self, ws, ledger, review) -> bool:
-        by = {f.metric: f for f in review.findings if f.topic == "expected_return"}
-        roe_f, bv_f = by.get("average_roe"), by.get("book_value_growth")
-        if roe_f is None or bv_f is None or (roe_f.verdict != "flag" and bv_f.verdict != "flag"):
+    @staticmethod
+    def _model_return(price, pe, bv0, growth, roe, payout) -> float | None:
+        """The template's price-plus-dividends return for given growth (A11) and ROE (A14): the same arithmetic as cells B11 to F14."""
+        if not price or price <= 0 or None in (pe, bv0, growth, roe):
+            return None
+        eps = [bv0 * (1 + growth) ** t * roe for t in range(1, 11)]
+        total = eps[-1] * pe + (payout or 0.0) * sum(eps)
+        return (total / price) ** 0.1 - 1 if total > 0 else None
+
+    def _expected_return(self, ws, ws_values, ledger, review) -> bool:
+        review.findings = [f for f in review.findings if f.topic != "expected_return"]         # the earlier ROE reading is replaced by this check
+        review.alternatives.pop("expected_return", None)
+        model = _cell(ws_values, "F14") if _cell(ws_values, "F14") is not None else _cell(ws_values, "E14")
+        if model is None:
+            review.skipped.append("Expected return: the model's return is not calculated in this workbook.")
             return False
-        roes: dict[str, float] = roe_f.values.get("roe_by_year") or {}
-        avg, median = roe_f.values.get("average_roe"), roe_f.values.get("median_roe")
-        retention = bv_f.values.get("retention")
-        if not roes or avg is None or median is None:
+        if ER_LOW <= model <= ER_HIGH:
+            review.findings.append(ReviewFinding(
+                "expected_return", "model_return", "reasonable",
+                f"The expected return of {_pct(model)} is within a realistic range of {_pct(ER_LOW)} to {_pct(ER_HIGH)}.", {"model": model},
+            ))
             return False
-        one_time = {fy for fy, _share in roe_f.values.get("one_time_years") or []}
-        distorted = {fy for fy, v in roes.items() if v < 0 or v > 2 * median or v < 0.3 * median} | one_time
-        normal = [v for fy, v in roes.items() if fy not in distorted]
-        normalized = statistics.mean(normal) if len(normal) >= 5 else median
-        normalized = min(max(normalized, ROE_LOW), ROE_HIGH)
-        changed = False
-        roe_used = avg
-        out_of_range = avg > ROE_HIGH or avg < ROE_LOW or avg < 0
-        if out_of_range or abs(avg - normalized) >= ROE_MATERIAL:
-            years = ", ".join(sorted(distorted)) or "a few unusual years"
-            what = f"The average return on equity used in the expected return was replaced with {_pct(normalized)} (it was {_pct(avg)})"
-            if out_of_range and not distorted:
-                why = f"{_pct(avg)} is outside a realistic range of {_pct(ROE_LOW)} to {_pct(ROE_HIGH)}"
-            else:
-                why = f"extraordinary or unusual years ({years}) pushed it away from the normal years"
-            original = ws["A14"].value
-            ws["A14"].value = round(normalized, 4)
-            ws["A14"].number_format = "0.0%"
-            ledger.record(sheet=ER_SHEET, cell="A14", fiscal_year=None, category="Expected return input", what="Average return on equity",
-                          original=original, new=round(normalized, 4), amount=None, reason=f"{what}, because {why}.", source=ER_SOURCE,
-                          method="normalized_input", confidence="medium")
-            review.applied.append(AppliedCorrection("expected_return", f"{ER_SHEET}!A14", original, normalized, "replaced", what, why, ER_SOURCE))
-            roe_used, changed = normalized, True
-        if retention is not None:
-            growth = retention * roe_used
-            limit = None
-            if growth > BV_GROWTH_HIGH:
-                limit, why = BV_GROWTH_HIGH, f"{_pct(growth)} a year for ten years is aggressive; it is capped at {_pct(BV_GROWTH_HIGH)}"
-            elif growth < 0:
-                limit, why = 0.0, "a negative growth rate cannot be projected for ten years; it is set to zero"
-            if limit is not None:
-                original = ws["A11"].value
-                what = f"Book value per share growth in the expected return was replaced with {_pct(limit)} a year (it was {_pct(growth)})"
-                ws["A11"].value = limit
-                ws["A11"].number_format = "0.0%"
-                ledger.record(sheet=ER_SHEET, cell="A11", fiscal_year=None, category="Expected return input", what="Book value per share growth",
-                              original=original, new=limit, amount=None, reason=f"{what}, because {why}.", source=ER_SOURCE,
-                              method="normalized_input", confidence="medium")
-                review.applied.append(AppliedCorrection("expected_return", f"{ER_SHEET}!A11", original, limit, "replaced", what, why, ER_SOURCE))
-                changed = True
-        if not changed:
-            move = review.alternatives.get("expected_return")
-            review.left_as_is["expected_return"] = (
-                "The flagged inputs were left as they are because correcting them would change the expected return very little"
-                if move else "The flagged inputs were left as they are because the difference is too small to matter"
-            )
-        return changed
+        side = "too high" if model > ER_HIGH else "negative"
+        price, pe, bv0 = _cell(ws_values, "A2"), _cell(ws_values, "E2"), _cell(ws_values, "B8")
+        growth, eps0 = _cell(ws_values, "B5"), _cell(ws_values, "C30")
+        d17, e17 = _cell(ws_values, "D17"), _cell(ws_values, "E17")
+        payout = (e17 / d17) if d17 and e17 is not None else 0.0
+
+        def keep(reason: str) -> bool:
+            review.findings.append(ReviewFinding("expected_return", "model_return", "flag", f"The expected return of {_pct(model)} is {side}, but {reason}.", {"model": model}))
+            review.left_as_is["expected_return"] = f"the EPS-growth model could not be used because {reason}"
+            return False
+
+        if None in (price, pe, bv0, growth, eps0) or not bv0 or bv0 <= 0:
+            return keep("the EPS history and book value needed for it are not in the workbook")
+        if eps0 <= 0:
+            return keep("current EPS is not positive")
+        if abs(growth) > EPS_GROWTH_LIMIT:
+            return keep(f"the EPS growth rate of {_pct(growth)} a year is too extreme to project for ten years")
+        new_roe = round(eps0 / bv0, 4)
+        new_growth = round(growth, 4)
+        new_return = self._model_return(price, pe, bv0, new_growth, new_roe, payout)
+        if new_return is None:
+            return keep("it gives no meaningful result")
+        what = (
+            f"The expected return model was switched to ten years of EPS projected from EPS growth of {_pct(growth)} a year, "
+            f"starting from ${eps0:,.2f}; the return is now {_pct(new_return)} (it was {_pct(model)})"
+        )
+        why = (
+            f"the original model, which grows book value by retention times return on equity, gave {_pct(model)}, which is {side} to rely on "
+            f"(a realistic range is {_pct(ER_LOW)} to {_pct(ER_HIGH)})"
+        )
+        for cell, label, new_value, orig in (
+            ("A14", "Average return on equity (now current EPS / book value per share)", new_roe, ws["A14"].value),
+            ("A11", "Book value per share growth (now the EPS growth rate)", new_growth, ws["A11"].value),
+        ):
+            ws[cell].value = new_value
+            ws[cell].number_format = "0.0%"
+            ledger.record(sheet=ER_SHEET, cell=cell, fiscal_year=None, category="Expected return input", what=label, original=orig, new=new_value,
+                          amount=None, reason=f"{what}, because {why}.", source=ER_SOURCE, method="eps_growth_model", confidence="medium")
+            review.applied.append(AppliedCorrection("expected_return", f"{ER_SHEET}!{cell}", orig, new_value, "replaced", what, why, ER_SOURCE))
+        review.findings.append(ReviewFinding("expected_return", "model_return", "flag", why[0].upper() + why[1:] + ".", {"model": model, "adjusted": new_return}))
+        return True
 
     # ------------------------------------------------------------------ owner's earnings
     def _owner_earnings(self, ws, ledger, review) -> bool:

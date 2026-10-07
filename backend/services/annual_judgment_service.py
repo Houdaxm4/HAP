@@ -202,53 +202,6 @@ class AnnualJudgmentService:
             ctx=ctx,
         )
 
-    def refresh_parallel_expected_return(
-        self,
-        *,
-        workbook_path: Path,
-        er_report: AnnualExpectedReturnReport,
-        judgment: AnnualAnalystJudgmentReport,
-        recalc_ok: bool,
-    ) -> None:
-        """Read COM-cached HAP Expected Return. ADJUST requires a real parallel E14."""
-        cell = er_report.hap_expected_return_cell
-        rec = judgment.expected_return
-        er_a = judgment.er_analysis
-        if rec is None or rec.decision != "ADJUST":
-            return
-        value = None
-        if cell and "!" in cell and recalc_ok:
-            sheet, addr = cell.split("!", 1)
-            wb = load_workbook(workbook_path, data_only=True)
-            try:
-                if sheet in wb.sheetnames:
-                    value = _num(wb[sheet][addr].value)
-            finally:
-                wb.close()
-        if value is None:
-            rec.decision = "INSUFFICIENT_EVIDENCE"
-            rec.change_type = "INSUFFICIENT_EVIDENCE"
-            rec.adjusted = False
-            rec.parallel_model_status = "recalc_incomplete" if not recalc_ok else "incoherent"
-            rec.rationale = (
-                (rec.rationale or "")
-                + " HAP cannot certify ADJUST without a calculated parallel Expected Return. "
-                "INSUFFICIENT_EVIDENCE."
-            ).strip()
-            er_report.reasonableness = "INSUFFICIENT_EVIDENCE"
-            er_report.parallel_model_status = rec.parallel_model_status
-            er_report.final_expected_return = None
-            er_report.hap_expected_return = None
-            if er_a is not None:
-                er_a.decision = "INSUFFICIENT_EVIDENCE"
-                er_a.selected_prospective_rate = None
-            return
-        rec.hap_expected_return = value
-        rec.parallel_model_status = "calculated"
-        er_report.hap_expected_return = value
-        er_report.final_expected_return = value
-        er_report.parallel_model_status = "calculated"
-
     def _apply_from_analyses(
         self,
         *,
@@ -260,6 +213,11 @@ class AnnualJudgmentService:
         oe_a: ValuationAssumptionAnalysis,
         gr_a: ValuationAssumptionAnalysis,
     ) -> tuple[AnnualExpectedReturnReport, AnnualAnalystJudgmentReport]:
+        if er_a.decision == "ADJUST":
+            # The expected return is checked and, when unrealistic, switched to the EPS-growth model by the valuation corrections step.
+            # No parallel alternative is built beside the original any more.
+            er_a.decision = "KEEP_EXISTING"
+            er_a.selected_prospective_rate = None
         er_rec = _judgment_from_analysis(
             er_a,
             original_methodology=_BV_DEFAULT,
@@ -689,58 +647,19 @@ class AnnualJudgmentService:
                     ("Original ROE (A14)", orig_a14),
                     ("Original Expected Return (E14)", orig_e14 if orig_e14 is not None else "see E14"),
                 ]
-                clone_ok = False
-                if er_change not in {"ACCEPTED", "INSUFFICIENT_EVIDENCE"} and er_hap is not None:
-                    er_parallel = self._clone_er_parallel_model(ws, float(er_hap), analysis=er_analysis)
-                    clone_ok = bool(er_parallel.get("coherent"))
-                    if clone_ok:
-                        rows.extend(
-                            [
-                                ("HAP prospective growth (g slot, not ROE)", float(er_hap)),
-                                ("HAP semantic substitution", er_parallel.get("substitution") or ""),
-                                (
-                                    "HAP Expected Return",
-                                    f"={er_parallel['hap_er_cell'].split('!')[-1]}"
-                                    if er_parallel.get("hap_er_cell")
-                                    else "see HAP parallel model",
-                                ),
-                                ("HAP rationale", er_reason),
-                            ]
-                        )
-                        written.extend(er_parallel.get("written") or [])
-                    else:
-                        rows.extend(
-                            [
-                                ("HAP-adjusted EPS growth", "No coherent parallel Expected Return constructed"),
-                                ("HAP-adjusted Expected Return", "INSUFFICIENT_EVIDENCE"),
-                                (
-                                    "HAP rationale",
-                                    er_parallel.get("failure_reason")
-                                    or "Cannot construct a coherent HAP Expected Return without misusing ROE as growth.",
-                                ),
-                            ]
-                        )
-                else:
-                    hap_growth = (
-                        "No adjustment recommended"
-                        if er_change != "INSUFFICIENT_EVIDENCE"
-                        else "No alternative rate selected (insufficient evidence)"
-                    )
-                    rows.extend(
-                        [
-                            ("HAP-adjusted EPS growth", hap_growth),
-                            ("HAP-adjusted Expected Return", hap_growth),
-                            ("HAP rationale", er_reason),
-                        ]
-                    )
+                rows.extend(
+                    [
+                        ("HAP-adjusted EPS growth", "Handled by the expected return check (see the notes)"),
+                        ("HAP-adjusted Expected Return", "Handled by the expected return check (see the notes)"),
+                        ("HAP rationale", er_reason),
+                    ]
+                )
                 written.extend(layout.place_analysis_notes(ws, self._live_rows(rows)))
                 review = getattr(self, "input_review", None)
                 er_review_notes = review.notes("expected_return") if review else []
                 add_notes(
                     ws,
-                    ([] if er_review_notes and er_change in {"ACCEPTED", "INSUFFICIENT_EVIDENCE"}
-                     else self._valuation_note("book value growth used for the expected return", er_change, er_hap, kind="er"))
-                    + er_review_notes,
+                    er_review_notes or self._valuation_note("book value growth used for the expected return", "ACCEPTED", None, kind="er"),
                     replace_containing=("book value growth used for the expected return", "inputs behind this valuation", "return on equity and the book value growth", "No model value was changed",
                                         "expected return and flagged", "typical return on equity"),
                 )
@@ -895,305 +814,6 @@ class AnnualJudgmentService:
             style_hap_analysis_cell(cell)
             written.append(f"{ws.title}!{addr}")
         return written
-
-    @staticmethod
-    def _anchor_er_alternative(ws, hap_rate: float, methodology: str) -> dict[str, Any] | None:
-        """Write the HAP EPS path in F17:F26 and the price-plus-dividends return in H14.
-
-        Returns None when those cells are already used, so the caller can choose another free block.
-        F14 remains the base model's price-plus-dividends return.
-        """
-        from services.hap_analysis_layout_service import cell_is_occupied_or_formula
-        from services.workbook_flag_service import style_hap_analysis_cell
-
-        needed = ["E15", "F15", "F16", "G16", "H13", "H14"]
-        needed.extend(f"F{row}" for row in range(17, 27))
-        needed.extend(f"G{row}" for row in range(17, 27))
-        if any(cell_is_occupied_or_formula(ws, addr) for addr in needed):
-            return None
-        written: list[str] = []
-
-        def put(addr: str, value: Any) -> str:
-            cell = ws[addr]
-            cell.value = value
-            style_hap_analysis_cell(cell)
-            written.append(f"{ws.title}!{addr}")
-            return f"{ws.title}!{addr}"
-
-        put("E15", "HAP prospective growth")
-        rate_cell = ws["F15"]
-        rate_cell.value = float(hap_rate)
-        rate_cell.number_format = "0.0%"
-        style_hap_analysis_cell(rate_cell)
-        written.append(f"{ws.title}!F15")
-        put("F16", "HAP Alternative EPS")
-        put("G16", "HAP Alternative Dividend")
-        put("H13", "HAP Alternative Expected Return Price + Dividends")
-        for row in range(17, 27):
-            if methodology == "bv_x_roe":
-                eps = (
-                    f'=IF(OR($B$8="",$A$14="",1+$F$15<0),"invalid growth",'
-                    f"$B$8*(1+$F$15)^B{row}*$A$14)"
-                )
-            else:
-                eps = (
-                    f'=IF(OR(\'Final Metrics\'!$L$29="",1+$F$15<0),"invalid growth",'
-                    f"'Final Metrics'!$L$29*(1+$F$15)^B{row})"
-                )
-            put(f"F{row}", eps)
-            put(
-                f"G{row}",
-                (
-                    f'=IF(OR(NOT(ISNUMBER(F{row})),NOT(ISNUMBER(\'Final Metrics\'!$L$26))),'
-                    f'"payout unavailable",F{row}*\'Final Metrics\'!$L$26)'
-                ),
-            )
-        hap_er = put(
-            "H14",
-            (
-                '=IF(OR($A$2="",$A$2=0),"base model limitation: current price is zero",'
-                'IF(COUNT(G17:G26)<10,"dividend path unavailable",'
-                "(((F26*$E$2)+SUM(G17:G26))/$A$2)^(1/10)-1))"
-            ),
-        )
-        ws["H14"].number_format = "0.00%"
-        substitution = (
-            "HAP preserves B5, A11, D17:D26, E14, and F14. "
-            "F17:F26 is the alternative EPS path using the same book-value × ROE identity "
-            "when that is the workbook methodology. G17:G26 is the matching dividend path. "
-            "H14 is the alternative price-plus-dividends expected return and does not replace F14."
-        )
-        put("H15", substitution)
-        return {
-            "coherent": True,
-            "status": "formulas_written",
-            "failure_reason": None,
-            "written": written,
-            "hap_er_cell": hap_er,
-            "substitution": substitution,
-            "hap_mechanics": {
-                "methodology": methodology,
-                "hap_g_cell": f"{ws.title}!F15",
-                "hap_eps_path": f"{ws.title}!F17:F26",
-                "hap_dividend_path": f"{ws.title}!G17:G26",
-                "hap_expected_return_formula": hap_er,
-            },
-            "hap_g_cell": f"{ws.title}!F15",
-            "hap_roe_cell": f"{ws.title}!A14" if methodology == "bv_x_roe" else None,
-        }
-
-    @staticmethod
-    def _clone_er_parallel_model(
-        ws,
-        hap_rate: float,
-        *,
-        analysis: ValuationAssumptionAnalysis | None = None,
-    ) -> dict[str, Any]:
-        """Build a HAP Expected Return using the workbook's economic roles.
-
-        Growth is never written into an ROE-semantic cell. Originals untouched.
-        """
-        from openpyxl.cell.cell import MergedCell
-        from openpyxl.utils import get_column_letter
-
-        from services.formula_utils import is_formula
-        from services.hap_analysis_layout_service import cell_is_occupied_or_formula
-        from services.workbook_flag_service import style_hap_analysis_cell
-
-        def fail(reason: str) -> dict[str, Any]:
-            return {
-                "coherent": False,
-                "status": "incoherent",
-                "failure_reason": reason,
-                "written": [],
-                "hap_er_cell": None,
-                "substitution": None,
-                "hap_mechanics": {},
-            }
-
-        d17 = str(ws["D17"].value or "")
-        c17 = str(ws["C17"].value or "")
-        d17u = d17.upper().replace("$", "").replace(" ", "")
-        c17u = c17.upper().replace("$", "").replace(" ", "")
-        methodology = None
-        if d17.startswith("=") and "C17" in d17u and "A14" in d17u:
-            methodology = "bv_x_roe"
-        elif d17.startswith("=") and "B5" in d17u and "POWER" in d17u:
-            methodology = "eps_growth_power"
-        elif c17.startswith("=") and "A11" in c17u:
-            methodology = "bv_x_roe"
-        if methodology is None:
-            return fail("Cannot identify Expected Return path methodology from C17/D17.")
-
-        def _present(addr: str) -> bool:
-            v = ws[addr].value
-            return v not in (None, "") or is_formula(v)
-
-        if not _present("A2") or not _present("B8") or not _present("E2"):
-            return fail("Missing A2 price, B8 book value, or E2 Max PE10 required to reproduce E14.")
-        if methodology == "bv_x_roe":
-            a14 = ws["A14"].value
-            if a14 in (None, ""):
-                return fail("ROE (A14) is missing; cannot preserve EPS = BV × ROE.")
-            if isinstance(a14, (int, float)) and not isinstance(a14, bool) and a14 <= 0:
-                return fail("ROE (A14) is non-positive; EPS = BV × ROE is not a coherent parallel model.")
-
-        anchored = AnnualJudgmentService._anchor_er_alternative(ws, hap_rate, methodology)
-        if anchored is not None:
-            return anchored
-
-        def _col_free(c: int) -> bool:
-            for row in range(1, 31):
-                cell = ws.cell(row, c)
-                if isinstance(cell, MergedCell) or cell.value not in (None, ""):
-                    return False
-            return True
-
-        col = None
-        for probe in range(12, 21):
-            if _col_free(probe) and _col_free(probe + 1) and _col_free(probe + 2):
-                col = probe
-                break
-        if col is None:
-            return fail("No unused adjacent columns for a HAP Expected Return parallel model.")
-
-        label_letter = get_column_letter(col)
-        val_letter = get_column_letter(col + 1)
-        eps_letter = val_letter
-        written: list[str] = []
-
-        def put(row: int, c: int, value: Any) -> str:
-            cell = ws.cell(row, c)
-            if cell_is_occupied_or_formula(ws, cell.coordinate):
-                return ""
-            cell.value = value
-            style_hap_analysis_cell(cell)
-            written.append(f"{ws.title}!{cell.coordinate}")
-            return f"{ws.title}!{cell.coordinate}"
-
-        hap_g_addr = f"${val_letter}$5"
-        hap_roe_addr = f"${val_letter}$4"
-        defect = None
-        if analysis is not None:
-            defect = (analysis.historical_observations or {}).get("retention_defect_class")
-        a11_num = _num(ws["A11"].value)
-        mechanism_broken = defect in {"D", "E"} or (a11_num is not None and abs(a11_num) > 1.0)
-        put(3, col, "HAP implied retention (b = g / ROE)")
-        put(4, col, "HAP ROE (semantic ROE; not a growth rate)")
-        put(
-            5,
-            col,
-            "HAP prospective growth (semantic g; replaces unusable A11)"
-            if mechanism_broken
-            else "HAP prospective growth (semantic g; A11 role)",
-        )
-        put(6, col, "HAP BV in 10 years")
-        put(7, col, "HAP EPS in 10 years")
-        put(8, col, "HAP price in 10 years")
-        put(9, col, "HAP Expected Return")
-        put(10, col, "HAP semantic substitution")
-
-        if methodology == "bv_x_roe":
-            if mechanism_broken:
-                substitution = (
-                    "The original sustainable-growth mechanism (A11 = retention × ROE) is economically "
-                    "unusable. HAP replaces A11 with a prospective growth rate in the growth slot only "
-                    "for HAP_ANALYSIS. ROE remains A14. Implied HAP retention = g / ROE. "
-                    "BV path uses g; EPS path remains BV × ROE; E14 remains (P10/P0)^(1/10)-1. "
-                    "A growth rate is not written into an ROE-semantic field. Original formulas are unchanged."
-                )
-            else:
-                substitution = (
-                    "HAP substitutes a prospective growth rate for A11 in the growth slot because the "
-                    "existing rate is economically unsupported by independent evidence. ROE remains A14. "
-                    "Implied HAP retention = g / ROE. BV path uses g; EPS path remains BV × ROE; "
-                    "E14 remains (P10/P0)^(1/10)-1. Original formulas are unchanged."
-                )
-            put(4, col + 1, "=$A$14")
-            put(5, col + 1, float(hap_rate))
-            put(3, col + 1, f"=IF({hap_roe_addr}=0,\"n/a\",{hap_g_addr}/{hap_roe_addr})")
-            put(6, col + 1, f"=$B$8*((1+{hap_g_addr})^10)")
-            put(7, col + 1, f"={val_letter}6*{hap_roe_addr}")
-            put(8, col + 1, f"={val_letter}7*$E$2")
-            hap_er_cell = put(9, col + 1, f"=({val_letter}8/$A$2)^(1/10)-1")
-            put(10, col + 1, substitution)
-            put(16, col, "HAP BV path")
-            put(16, col + 1, "HAP EPS path (BV × ROE)")
-            put(16, col + 2, "HAP dividend path")
-            for row in range(17, 27):
-                orig_c = ws.cell(row, 3).value
-                orig_d = ws.cell(row, 4).value
-                orig_e = ws.cell(row, 5).value
-                if isinstance(orig_c, str) and orig_c.startswith("="):
-                    put(row, col, _rewrite_er_formula(orig_c, g_cell=hap_g_addr, roe_cell=hap_roe_addr, bv_col=col, eps_col=col + 1))
-                else:
-                    put(row, col, f"=$B$8*((1+{hap_g_addr})^B{row})")
-                if isinstance(orig_d, str) and orig_d.startswith("="):
-                    put(row, col + 1, _rewrite_er_formula(orig_d, g_cell=hap_g_addr, roe_cell=hap_roe_addr, bv_col=col, eps_col=col + 1))
-                else:
-                    put(row, col + 1, f"={label_letter}{row}*{hap_roe_addr}")
-                if isinstance(orig_e, str) and orig_e.startswith("="):
-                    put(row, col + 2, _rewrite_er_formula(orig_e, g_cell=hap_g_addr, roe_cell=hap_roe_addr, bv_col=col, eps_col=col + 1))
-            hap_mechanics = {
-                "methodology": methodology,
-                "hap_g_cell": f"{ws.title}!{val_letter}5",
-                "hap_roe_cell": f"{ws.title}!{val_letter}4",
-                "hap_retention_cell": f"{ws.title}!{val_letter}3",
-                "hap_bv_path": f"{ws.title}!{label_letter}17:{label_letter}26",
-                "hap_eps_path": f"{ws.title}!{eps_letter}17:{eps_letter}26",
-                "hap_expected_return_formula": f"{ws.title}!{val_letter}9",
-            }
-        else:
-            substitution = (
-                "Workbook EPS path grows current EPS at B5. HAP writes the prospective rate "
-                "into the EPS-growth slot (B5 role), not into ROE. Terminal price = EPS10 × MaxPE10; "
-                "Expected Return = (P10/P0)^(1/10)-1."
-            )
-            put(4, col + 1, "n/a — EPS-growth methodology does not use ROE as the projection driver")
-            put(5, col + 1, float(hap_rate))
-            put(3, col + 1, "n/a — retention × ROE is not the projection identity")
-            put(16, col + 1, "HAP EPS path (EPS × (1+g)^t)")
-            for row in range(17, 27):
-                orig_d = ws.cell(row, 4).value
-                if isinstance(orig_d, str) and orig_d.startswith("="):
-                    put(
-                        row,
-                        col + 1,
-                        _rewrite_er_formula(
-                            orig_d,
-                            g_cell=hap_g_addr,
-                            roe_cell=hap_roe_addr,
-                            bv_col=col,
-                            eps_col=col + 1,
-                            map_b5_to_g=True,
-                        ),
-                    )
-                else:
-                    put(row, col + 1, f"='Final Metrics'!$L$29*POWER(1+{hap_g_addr},B{row})")
-            put(7, col + 1, f"={eps_letter}26")
-            put(8, col + 1, f"={val_letter}7*$E$2")
-            hap_er_cell = put(9, col + 1, f"=({val_letter}8/$A$2)^(1/10)-1")
-            put(10, col + 1, substitution)
-            hap_mechanics = {
-                "methodology": methodology,
-                "hap_g_cell": f"{ws.title}!{val_letter}5",
-                "hap_eps_path": f"{ws.title}!{eps_letter}17:{eps_letter}26",
-                "hap_expected_return_formula": f"{ws.title}!{val_letter}9",
-            }
-
-        if not hap_er_cell:
-            return fail("HAP Expected Return cell could not be written (occupied).")
-        return {
-            "coherent": True,
-            "status": "formulas_written",
-            "failure_reason": None,
-            "written": written,
-            "hap_er_cell": hap_er_cell,
-            "substitution": substitution,
-            "hap_mechanics": hap_mechanics,
-            "hap_g_cell": f"{ws.title}!{val_letter}5",
-            "hap_roe_cell": f"{ws.title}!{val_letter}4" if methodology == "bv_x_roe" else None,
-        }
 
     @staticmethod
     def _clone_ev_projections(ws, hap_rate: float) -> list[str]:

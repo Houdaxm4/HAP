@@ -693,7 +693,7 @@ def test_unrealistic_assumptions_write_hap_analysis_beside_originals(tmp_path: P
         if c.value
     )
     assert "Notes" in hap_text
-    assert "was calculated beside the original, which was left unchanged" in hap_text
+    assert "left as it is" in hap_text and "HAP Alternative Expected Return" not in hap_text
     wb.close()
     assert judge.hap_analysis_cells
     assert er.selected_methodology == "EPS_GROWTH"

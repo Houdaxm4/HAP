@@ -183,3 +183,24 @@ def test_new_company_highlights_and_conclusion_state_the_decade_range_and_the_pr
 def test_too_few_figures_keep_the_bracketed_line_for_the_analyst():
     _s, body = render_new_company(Facts(ticker="XYZ"))
     assert "[Competitive position" in body and "[Overall view" in body and "[one-line description of the company]" in body
+
+
+def test_expected_return_is_the_price_plus_dividends_column_of_the_expected_returns_tab(tmp_path: Path):
+    from openpyxl import Workbook
+
+    from services.email_draft_service import read_facts
+
+    wb = Workbook()
+    wb.active.title = "Inputs"
+    er = wb.create_sheet("Expected Returns & Buybacks")
+    headers = ["Average ROE", "EPS in ten years", "Price in ten years", "Price + Dividends", "Expected Annual Return",
+               "Expected Return Price + Dividends", None, "HAP Alternative Expected Return Price + Dividends"]
+    values = [0.1255, 2.38, 25.2, 52.5, 0.0182, 0.0923, None, -0.1119]
+    for c, (h, v) in enumerate(zip(headers, values), start=1):
+        er.cell(13, c).value, er.cell(14, c).value = h, v
+    path = tmp_path / "w.xlsx"
+    wb.save(path)
+    assert read_facts(path, ticker="ETD").expected_return == 0.0923            # F14, not E14 (1.82%) and not the HAP alternative
+    er["F13"].value = None
+    wb.save(path)
+    assert read_facts(path, ticker="ETD").expected_return == 0.0182            # falls back to E14 when the template has no F column

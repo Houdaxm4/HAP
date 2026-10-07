@@ -439,12 +439,6 @@ class AnnualUpdateRunner:
         # Refresh Tax/R&D calculated outputs from cached values after recalc.
         if recalc.status == "ok":
             rd = self.rd.refresh_calculated_values(rd, working_path, new_fy or "")
-        self.judgment.refresh_parallel_expected_return(
-            workbook_path=working_path,
-            er_report=er_rep,
-            judgment=judge,
-            recalc_ok=(recalc.status == "ok"),
-        )
 
         er_val = None
         val_val = None

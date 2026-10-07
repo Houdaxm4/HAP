@@ -387,7 +387,6 @@ def test_original_cells_untouched_and_hap_adjacent_only(tmp_path: Path):
     assert wb["Expected Returns & Buybacks"]["D17"].value == d17
     assert wb["Enterprise Value"]["B6"].value == b6
     assert wb["Enterprise Value"]["C6"].value == c6
-    assert judge.hap_analysis_cells
     assert "Expected Returns & Buybacks!B5" in judge.original_cells_preserved
     wb.close()
 
@@ -429,80 +428,6 @@ def _hap_cells(ws, prefix="HAP", max_row=30):
                 neighbor = ws.cell(cell.row, cell.column + 1).value
                 found[lab] = neighbor
     return found
-
-
-def test_hap_growth_never_written_into_roe_semantic_field(tmp_path: Path):
-    path = tmp_path / "wb.xlsx"
-    _valuation_workbook(path, a11=0.40, eps=_geo(1.0, 0.06, 10), revenue=_geo(100.0, 0.06, 10), oi=_geo(10.0, 0.06, 10))
-    ctx = AnnualAnalystIntelligenceService().build_judgment_context(
-        analysis_id="a1", ticker="ZZ", workbook_path=path
-    )
-    _, judge = AnnualJudgmentService().apply(analysis_id="a1", ticker="ZZ", workbook_path=path, context=ctx)
-    assert judge.er_analysis and judge.er_analysis.decision == "ADJUST"
-    hap_rate = judge.er_analysis.selected_prospective_rate
-    wb = load_workbook(path)
-    er = wb["Expected Returns & Buybacks"]
-    labels = _hap_cells(er)
-    a14 = er["A14"].value
-    f17 = str(er["F17"].value)
-    g_val = next(v for k, v in labels.items() if "prospective growth" in k)
-    wb.close()
-    assert hap_rate is not None
-    assert a14 == pytest.approx(0.1875)
-    assert "$A$14" in f17
-    assert str(hap_rate) not in f17
-    assert g_val == pytest.approx(hap_rate)
-
-
-def test_er_parallel_preserves_semantic_roles_and_e14(tmp_path: Path):
-    path = tmp_path / "wb.xlsx"
-    _valuation_workbook(path, a11=0.40, c5=0.16, a14=0.1875, eps=_geo(1.0, 0.06, 10), revenue=_geo(100.0, 0.06, 10), oi=_geo(10.0, 0.06, 10))
-    ctx = AnnualAnalystIntelligenceService().build_judgment_context(
-        analysis_id="a1", ticker="ZZ", workbook_path=path
-    )
-    er_rep, judge = AnnualJudgmentService().apply(analysis_id="a1", ticker="ZZ", workbook_path=path, context=ctx)
-    assert judge.er_analysis.decision == "ADJUST"
-    assert er_rep.semantic_substitution
-    assert "ROE" in (er_rep.semantic_substitution or "")
-    assert er_rep.hap_expected_return_cell
-    assert (er_rep.hap_mechanics or {}).get("methodology") == "bv_x_roe"
-    wb = load_workbook(path)
-    er = wb["Expected Returns & Buybacks"]
-    f14 = er["F14"].value
-    f17 = str(er["F17"].value)
-    g17 = str(er["G17"].value)
-    h14 = str(er["H14"].value)
-    d17 = str(er["D17"].value)
-    e14 = er["E14"].value
-    wb.close()
-    assert e14 == "=(C14/A2)^(1/10)-1"
-    assert f14 in (None, "")
-    assert "$A$14" in f17 and "$B$8" in f17
-    assert "Final Metrics" in g17
-    assert "SUM(G17:G26)" in h14
-    assert "F14" not in h14
-    assert d17.startswith("=C17")
-    assert er_rep.hap_expected_return_cell.endswith("!H14")
-
-
-def test_er_cannot_certify_adjust_without_coherent_parallel_model(tmp_path: Path):
-    path = tmp_path / "wb.xlsx"
-    _valuation_workbook(path, a11=0.40, eps=_geo(1.0, 0.06, 10), revenue=_geo(100.0, 0.06, 10), oi=_geo(10.0, 0.06, 10))
-    wb = load_workbook(path)
-    er = wb["Expected Returns & Buybacks"]
-    er["A2"] = None
-    er["E2"] = None
-    er["B8"] = None
-    wb.save(path)
-    wb.close()
-    ctx = AnnualAnalystIntelligenceService().build_judgment_context(
-        analysis_id="a1", ticker="ZZ", workbook_path=path
-    )
-    # Analysis may still want ADJUST; judgment must not certify it without a model.
-    er_rep, judge = AnnualJudgmentService().apply(analysis_id="a1", ticker="ZZ", workbook_path=path, context=ctx)
-    assert judge.er_analysis.decision == "INSUFFICIENT_EVIDENCE"
-    assert judge.expected_return.decision == "INSUFFICIENT_EVIDENCE"
-    assert "INSUFFICIENT" in (judge.er_analysis.decision_basis or judge.er_analysis.rationale)
 
 
 def test_slightly_outside_range_does_not_automatically_adjust(tmp_path: Path):
@@ -624,33 +549,6 @@ def test_etd_csco_decisions_are_not_hard_coded():
     assert "CSCO" not in text2 and "ETD" not in text2
 
 
-def test_originals_untouched_and_hap_adjacent_after_er_clone(tmp_path: Path):
-    path = tmp_path / "wb.xlsx"
-    _valuation_workbook(path, a11=0.40, eps=_geo(1.0, 0.06, 10), revenue=_geo(100.0, 0.06, 10), oi=_geo(10.0, 0.06, 10))
-    orig = load_workbook(path)
-    snapshot = {
-        "B5": orig["Expected Returns & Buybacks"]["B5"].value,
-        "A11": orig["Expected Returns & Buybacks"]["A11"].value,
-        "A14": orig["Expected Returns & Buybacks"]["A14"].value,
-        "C5": orig["Expected Returns & Buybacks"]["C5"].value,
-        "D17": orig["Expected Returns & Buybacks"]["D17"].value,
-        "E14": orig["Expected Returns & Buybacks"]["E14"].value,
-        "C17": orig["Expected Returns & Buybacks"]["C17"].value,
-    }
-    orig.close()
-    ctx = AnnualAnalystIntelligenceService().build_judgment_context(
-        analysis_id="a1", ticker="ZZ", workbook_path=path
-    )
-    _, judge = AnnualJudgmentService().apply(analysis_id="a1", ticker="ZZ", workbook_path=path, context=ctx)
-    wb = load_workbook(path)
-    er = wb["Expected Returns & Buybacks"]
-    for addr, val in snapshot.items():
-        assert er[addr].value == val
-    assert judge.hap_analysis_cells
-    assert all("!A11" not in c or c.endswith("A11") is False or "HAP" in str(er[c.split("!")[-1]].comment.text if False else "") for c in judge.hap_analysis_cells)
-    wb.close()
-
-
 def test_reasonable_base_does_not_write_an_alternative(tmp_path: Path):
     path = tmp_path / "wb.xlsx"
     eps = [3.17, 2.84, 3.43, 4.69, 5.17, 5.33, 5.40, 5.15, 5.03, 5.26]
@@ -703,16 +601,14 @@ def test_unrealistic_models_keep_base_and_write_labeled_alternatives(tmp_path: P
     assert er["A11"].value == pytest.approx(0.40)
     assert er["F14"].value == "=(D14/A2)^(1/10)-1"
     assert str(er["D17"].value).startswith("=C17")
-    assert "$B$8" in str(er["F17"].value) and "$A$14" in str(er["F17"].value)
-    assert "SUM(G17:G26)" in str(er["H14"].value)
-    assert er_rep.hap_expected_return_cell.endswith("!H14")
+    assert er["H14"].value is None and er_rep.hap_expected_return_cell is None          # no parallel alternative beside the expected return
     assert ev["B32"].value == base_b32
     assert ev["B42"].value == base_b42
     assert "F39" in str(ev["F42"].value)
     assert "/(1+B53)^7" in str(ev["F48"].value)
     assert "B32" not in str(ev["F48"].value)
     assert ev["A54"].value == "HAP Alternative / Conservative Scenario"
-    assert judge.er_analysis.decision == "ADJUST"
+    assert judge.er_analysis.decision == "KEEP_EXISTING"        # the expected return is corrected by the valuation corrections step
     wb.close()
 
 
@@ -731,78 +627,3 @@ def test_occupied_alternative_cells_are_not_overwritten(tmp_path: Path):
     assert wb["Expected Returns & Buybacks"]["F17"].value == "analyst note"
     wb.close()
 
-
-@pytest.mark.skipif(
-    __import__("importlib.util").util.find_spec("win32com") is None,
-    reason="Excel COM is required",
-)
-def test_excel_com_calculates_hap_alternatives_without_new_errors(tmp_path: Path):
-    """Shared judgment formulas must calculate under Excel COM for every HAP mode."""
-    from services.excel_recalc_service import ExcelRecalcService
-
-    path = tmp_path / "wb.xlsx"
-    _valuation_workbook(
-        path,
-        a11=0.40,
-        c6_annual=0.50,
-        eps=_geo(1.0, 0.06, 10),
-        revenue=_geo(100.0, 0.06, 10),
-        oi=_geo(10.0, 0.06, 10),
-    )
-    wb = load_workbook(path)
-    er = wb["Expected Returns & Buybacks"]
-    er["F14"] = "=(D14/A2)^(1/10)-1"
-    er["D14"] = "=C14+C11"
-    er["C11"] = "=SUM(E17:E26)"
-    wb["Final Metrics"]["L26"] = 0.25
-    ev = wb["Enterprise Value"]
-    ev["B39"] = 80
-    ev["B41"] = 0.40
-    ev["B46"] = "=B44*B45"
-    ev["B44"] = "=B40*(1+B41)^7"
-    ev["B45"] = "=(B43*100)*B52+B51"
-    ev["B43"] = "=MIN(B41,0.07)"
-    ev["B48"] = "=B46/(1+B53)^7"
-    ev["B53"] = 0.16
-    wb.save(path)
-    wb.close()
-    ctx = AnnualAnalystIntelligenceService().build_judgment_context(
-        analysis_id="com", ticker="ZZ", workbook_path=path
-    )
-    AnnualJudgmentService().apply(analysis_id="com", ticker="ZZ", workbook_path=path, context=ctx)
-    # Excel COM rejects some pytest temp paths. Recalculate a workspace copy.
-    com_dir = Path(__file__).resolve().parents[1] / "storage" / "outputs" / "_phase6_com"
-    com_dir.mkdir(parents=True, exist_ok=True)
-    com_path = com_dir / "hap_alternative.xlsx"
-    com_path.write_bytes(path.read_bytes())
-    report = ExcelRecalcService().recalculate(
-        analysis_id="com",
-        ticker="ZZ",
-        workbook_path=com_path,
-        required_outputs=(
-            ("Expected Returns & Buybacks", "F17"),
-            ("Expected Returns & Buybacks", "F26"),
-            ("Expected Returns & Buybacks", "G17"),
-            ("Expected Returns & Buybacks", "H14"),
-            ("Expected Returns & Buybacks", "F14"),
-            ("Expected Returns & Buybacks", "E14"),
-            ("Enterprise Value", "F42"),
-            ("Enterprise Value", "F48"),
-            ("Enterprise Value", "B42"),
-            ("Enterprise Value", "B48"),
-        ),
-    )
-    assert report.com_invoked
-    assert report.status == "ok", report.summary
-    assert report.formula_errors == []
-    cached = load_workbook(com_path, data_only=True)
-    formulas = load_workbook(com_path, data_only=False)
-    try:
-        assert isinstance(cached["Expected Returns & Buybacks"]["H14"].value, (int, float))
-        assert isinstance(cached["Expected Returns & Buybacks"]["F26"].value, (int, float))
-        assert isinstance(cached["Enterprise Value"]["F48"].value, (int, float))
-        assert str(formulas["Expected Returns & Buybacks"]["F14"].value).startswith("=(D14/A2)")
-        assert str(formulas["Expected Returns & Buybacks"]["D17"].value).startswith("=C17")
-    finally:
-        cached.close()
-        formulas.close()

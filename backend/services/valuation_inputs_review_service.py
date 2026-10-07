@@ -90,10 +90,11 @@ class ValuationInputsReview:
         from services.tab_notes import note
 
         items = [f for f in self.findings if f.topic == topic]
-        if not items:
+        applied_early = [a for a in self.applied if a.topic == topic]
+        if not items and not applied_early:
             return []
         if topic == "expected_return":
-            checked = "the average return on equity and the book value growth used in the expected return"
+            checked = "the expected return model (book value growth and return on equity)"
             risk = "one-time items or a few unusual years can distort both"
             source = "the Final Metrics and Balance Sheet history"
         else:
@@ -102,10 +103,13 @@ class ValuationInputsReview:
             source = "the Final Metrics tab history"
         applied = [a for a in self.applied if a.topic == topic]
         if applied:
-            out = [note(a.what, a.why, a.source) for a in applied]
+            out = [note(w, y, s) for w, y, s in dict.fromkeys((a.what, a.why, a.source) for a in applied)]       # one note per distinct correction
             out.append(note("The original formulas and values are kept in the HAP Adjustments tab", "so any correction can be undone by hand", because=False))
             return out
         flagged = [f for f in items if f.verdict == "flag"]
+        if not flagged and topic == "expected_return" and items[0].values.get("model") is not None:
+            return [note(f"Reviewed {checked}: its return of {_pct(items[0].values['model'])} is within a realistic range of 0.0% to 12.0%",
+                         "The model was left as it is", source, because=False)]
         if not flagged:
             return [note(f"Reviewed {checked}, and they look realistic", "They are close to what the company actually delivered", source, because=False)]
         count = len(flagged)

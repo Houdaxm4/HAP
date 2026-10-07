@@ -155,12 +155,6 @@ class QuarterlyValuationService:
             workbook_path=path,
             fiscal_year=fy_label,
         )
-        self.judgment.refresh_parallel_expected_return(
-            workbook_path=path,
-            er_report=er_rep,
-            judgment=judge,
-            recalc_ok=(recalc.status == "ok"),
-        )
         _ = recalc_pre
 
         er_d = getattr(getattr(judge, "er_analysis", None), "decision", None) or getattr(

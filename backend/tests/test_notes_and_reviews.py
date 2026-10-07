@@ -154,7 +154,7 @@ def test_expected_return_flags_distorted_roe_and_unrealistic_book_value_growth(t
     assert by["book_value_growth"].verdict == "flag" and "aggressive" in by["book_value_growth"].text
     assert "typical return on equity" in review.alternatives["expected_return"]
     notes = review.notes("expected_return")
-    assert notes[0].startswith("Reviewed the average return on equity and the book value growth") and "Source:" in notes[0]
+    assert notes[0].startswith("Reviewed the expected return model (book value growth and return on equity)") and "Source:" in notes[0]
     calm = ValuationInputsReviewService().review(_valuation_workbook(tmp_path / "b.xlsx", oe=[100] * 10, roe=[0.13] * 10, g=0.11))
     assert [f.verdict for f in calm.findings if f.topic == "expected_return"][0] == "reasonable"
     assert "look realistic" in calm.notes("expected_return")[0]
@@ -186,31 +186,6 @@ def _apply(path: Path):
     return ValuationCorrectionService().apply(path)
 
 
-def test_distorted_average_roe_is_replaced_and_documented(tmp_path: Path):
-    roe = [0.12, 0.13, 0.12, 0.14, 0.13, 0.70, 0.12, 0.13, 0.14, 0.13]
-    path = _valuation_workbook(tmp_path / "a.xlsx", oe=[100] * 10, roe=roe, g=0.11)
-    review = _apply(path)
-    wb = load_workbook(path)
-    er = wb["Expected Returns & Buybacks"]
-    normal = [v for v in roe if v != 0.70]
-    assert er["A14"].value == pytest.approx(sum(normal) / len(normal), abs=1e-4)          # the normal years' average replaces 18.6%
-    assert er["A14"].number_format == "0.0%"
-    applied = [a for a in review.applied if a.topic == "expected_return"]
-    assert applied and applied[0].cell.endswith("A14") and applied[0].kind == "replaced"
-    ledger = [str(c.value) for row in wb["HAP Adjustments"].iter_rows(min_row=5) for c in row if c.value]
-    assert "Expected return input" in ledger
-    text = " ".join(review.notes("expected_return"))
-    assert "was replaced with 12.9% (it was 18.6%)" in text and "FY2021" in text and "kept in the HAP Adjustments tab" in text
-
-
-def test_book_value_growth_above_the_limit_is_capped(tmp_path: Path):
-    path = _valuation_workbook(tmp_path / "b.xlsx", oe=[100] * 10, roe=[0.40] * 10, g=0.34)
-    review = _apply(path)
-    er = load_workbook(path)["Expected Returns & Buybacks"]
-    assert er["A11"].value == pytest.approx(0.15)                                          # 0.84 retention x 40% ROE = 34% is capped
-    assert any(a.cell.endswith("A11") for a in review.applied)
-
-
 def test_a_clearly_wrong_owner_earnings_growth_replaces_the_model_value(tmp_path: Path):
     path = _valuation_workbook(tmp_path / "c.xlsx", oe=[74, 200, 260, 280, 290, 300, 310, 330, 380, 424], roe=[0.13] * 10)
     review = _apply(path)
@@ -235,3 +210,59 @@ def test_realistic_inputs_are_not_touched(tmp_path: Path):
     before = path.read_bytes()
     review = _apply(path)
     assert not review.applied and path.read_bytes() == before
+
+
+def _er_workbook(path: Path, *, model_return: float, growth: float = 0.0491, eps0: float = 3.17, bv0: float = 14.5621, price: float = 93.34,
+                 pe: float = 25.117) -> Path:
+    """An Expected Returns tab as the template computes it (values in place of the cached results), with formulas in the two input cells."""
+    wb = Workbook()
+    er = wb.active
+    er.title = "Expected Returns & Buybacks"
+    er["A2"], er["E2"], er["B5"], er["B8"], er["C30"] = price, pe, growth, bv0, eps0
+    er["A11"], er["A14"] = "=C5*A14", "='Final Metrics'!B4"
+    er["D17"], er["E17"] = 4.78, 2.17                                           # first projected EPS and dividend: payout 45.4%
+    er["E14"], er["F14"] = model_return - 0.01, model_return
+    wb.create_sheet("Final Metrics")
+    wb.save(path)
+    return path
+
+
+def test_an_unrealistic_expected_return_switches_to_the_eps_growth_model(tmp_path: Path):
+    path = _er_workbook(tmp_path / "a.xlsx", model_return=0.14)
+    review = _apply(path)
+    wb = load_workbook(path)
+    er = wb["Expected Returns & Buybacks"]
+    assert er["A14"].value == pytest.approx(3.17 / 14.5621, abs=1e-4)             # current EPS / book value per share
+    assert er["A11"].value == pytest.approx(0.0491)                                # the EPS growth rate
+    assert er["A11"].number_format == "0.0%"
+    applied = [a for a in review.applied if a.topic == "expected_return"]
+    assert {a.cell.split("!")[-1] for a in applied} == {"A11", "A14"} and applied[0].original == "='Final Metrics'!B4"
+    ledger = [str(c.value) for row in wb["HAP Adjustments"].iter_rows(min_row=5) for c in row if c.value]
+    assert "Expected return input" in ledger and "='Final Metrics'!B4" in ledger and "=C5*A14" in ledger        # the original formulas are kept
+    notes = review.notes("expected_return")
+    assert len(notes) == 2 and "EPS growth of 4.9% a year" in notes[0] and "it was 14.0%" in notes[0] and "too high" in notes[0]
+    # the same arithmetic as the template: EPS grows 4.91% a year from 3.17, valued at 25.1x, plus dividends at the model's payout
+    eps = [3.17 * 1.0491 ** t for t in range(1, 11)]
+    expected = ((eps[-1] * 25.117 + (2.17 / 4.78) * sum(eps)) / 93.34) ** 0.1 - 1
+    assert f"the return is now {expected * 100:.1f}%" in notes[0]
+
+
+def test_a_negative_expected_return_also_switches_models(tmp_path: Path):
+    review = _apply(_er_workbook(tmp_path / "b.xlsx", model_return=-0.03))
+    assert review.applied and "negative" in review.applied[0].why
+
+
+def test_a_realistic_expected_return_is_left_alone(tmp_path: Path):
+    path = _er_workbook(tmp_path / "c.xlsx", model_return=0.08)
+    before = path.read_bytes()
+    review = _apply(path)
+    assert not review.applied and path.read_bytes() == before
+    assert "within a realistic range of 0.0% to 12.0%" in review.notes("expected_return")[0]
+
+
+def test_the_eps_model_is_not_used_when_eps_growth_is_extreme_or_eps_is_not_positive(tmp_path: Path):
+    for name, kwargs in (("d", {"growth": 0.40}), ("e", {"eps0": -1.0}), ("f", {"bv0": 0.0})):
+        path = _er_workbook(tmp_path / f"{name}.xlsx", model_return=0.20, **kwargs)
+        before = path.read_bytes()
+        review = _apply(path)
+        assert not review.applied and path.read_bytes() == before and review.left_as_is["expected_return"].startswith("the EPS-growth model could not be used")

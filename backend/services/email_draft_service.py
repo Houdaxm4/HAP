@@ -183,9 +183,11 @@ def _read_valuation(wb, f: Facts) -> None:
     if "Expected Returns & Buybacks" in wb.sheetnames:
         er = wb["Expected Returns & Buybacks"]
         # headers sit in row 13, values in row 14 (Average ROE ... Expected Annual Return)
-        for c in range(1, 8):
-            if str(er.cell(13, c).value or "").strip().lower() == "expected annual return":
-                f.expected_return = _num(er.cell(14, c).value)
+        # the analyst's Expected Return is the "Expected Return Price + Dividends" column (F14); the plain price-only column (E14) is the fallback
+        for wanted in ("expected return price + dividends", "expected annual return"):
+            for c in range(1, 8):
+                if str(er.cell(13, c).value or "").strip().lower() == wanted and f.expected_return is None:
+                    f.expected_return = _num(er.cell(14, c).value)
     if "Final Metrics" in wb.sheetnames and f.price:
         fm = wb["Final Metrics"]
         lat, _prior, _tok = _fy_pair(fm)
