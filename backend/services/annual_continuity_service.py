@@ -1,4 +1,10 @@
-"""Historical continuity for Annual Update — previous completed workbook is the historical authority."""
+"""Historical continuity for Annual Update — previous completed workbook is the historical authority.
+
+Analyst additions to the Inputs formulas (for example the extra balance sheet lines the analyst adds to operating assets or operating
+liabilities for ROIC) are carried forward: when the previous formula is the new template's formula plus extra terms, the extra terms are the
+analyst's adjustment and are kept for every historical year and added to the new fiscal year. A template formula with a different structure
+is a deliberate template update and still wins.
+"""
 
 from __future__ import annotations
 
@@ -96,8 +102,35 @@ def _copy_style(src, dst) -> bool:
     return True
 
 
+def analyst_extra_terms(previous_shifted: str, template_formula: str) -> str | None:
+    """The terms the analyst added: the previous formula (columns aligned) minus the template formula it starts with, or None.
+
+    Spaces are ignored when matching but kept in the result (sheet names such as 'Balance Sheet - Standardized' contain them)."""
+    prev = str(previous_shifted or "")
+    base = "".join(str(template_formula or "").split())
+    if not base.startswith("="):
+        return None
+    matched = 0
+    index = 0
+    while index < len(prev) and matched < len(base):
+        if prev[index].isspace():
+            index += 1
+            continue
+        if prev[index] != base[matched]:
+            return None
+        matched += 1
+        index += 1
+    if matched < len(base):
+        return None
+    extra = prev[index:].strip()
+    return extra if extra and extra[0] in "+-" else None
+
+
 class AnnualContinuityService:
     """Reconcile persistent historical regions from the previous completed workbook."""
+
+    def __init__(self) -> None:
+        self._extras: dict[tuple[str, int], tuple[int, str, int]] = {}      # (sheet, row) -> (fiscal year, extra terms, column they sit in)
 
     def apply(
         self,
@@ -117,6 +150,7 @@ class AnnualContinuityService:
         prev = load_workbook(previous_workbook_path, data_only=False)
         out = load_workbook(workbook_path, data_only=False)
         entries: list[ContinuityEntry] = []
+        self._extras = {}
         try:
             template_fy_cols = self._workbook_fy_columns(out)
             previous_fy_cols = self._workbook_fy_columns(prev)
@@ -187,6 +221,8 @@ class AnnualContinuityService:
                         )
                         if entry is not None:
                             entries.append(entry)
+
+                    entries.extend(self._extend_analyst_terms_to_new_year(sheet, row, ows, fy_cols, detected_new))
 
                     helper_entries = self._copy_same_address_helpers(
                         sheet=sheet,
@@ -390,8 +426,18 @@ class AnnualContinuityService:
                         action = ContinuityAction.MATCH_ALREADY
                         reason = "Historical year-series formula already aligned."
                     else:
-                        action = ContinuityAction.KEEP_NEW_FORMULA
-                        reason = "New-template formula retained (deliberate template update)."
+                        extra = analyst_extra_terms(shifted, out_f or "") if sheet == "Inputs" else None
+                        if extra:
+                            out_cell.value = shifted
+                            action = ContinuityAction.RESTORE_FORMULA
+                            reason = f"Analyst's added terms ({extra}) carried from the previous workbook (ROIC adjustment)."
+                            changed = True
+                            number = int("".join(ch for ch in str(fy) if ch.isdigit()) or 0)
+                            if (sheet, row or 0) not in self._extras or number >= self._extras[(sheet, row or 0)][0]:
+                                self._extras[(sheet, row or 0)] = (number, extra, out_col or prev_col or 0)
+                        else:
+                            action = ContinuityAction.KEEP_NEW_FORMULA
+                            reason = "New-template formula retained (deliberate template update)."
         elif pk == "value" and ok == "formula":
             if pws is not None and fy_cols and row is not None and self._row_is_mixed_override(
                 pws, row, fy_cols
@@ -432,6 +478,38 @@ class AnnualContinuityService:
             reason=reason,
             formatting_copied=fmt,
         )
+
+    def _extend_analyst_terms_to_new_year(self, sheet: str, row: int, ows, fy_cols: dict[str, int], detected_new: str | None) -> list[ContinuityEntry]:
+        """Add the analyst's extra terms (taken from the latest historical year) to the new fiscal year's formula."""
+        key = (sheet, row)
+        if sheet != "Inputs" or key not in self._extras or not detected_new or detected_new not in fy_cols:
+            return []
+        _number, extra, from_col = self._extras[key]
+        col = fy_cols[detected_new]
+        cell = ows.cell(row, col)
+        base = formula_text(cell.value)
+        if not base:
+            return []
+        shifted_extra = shift_formula_columns("=" + extra.lstrip("+-"), from_col, col)[1:]
+        sign = "-" if extra.startswith("-") else "+"
+        if shifted_extra in "".join(base.split()):
+            return []
+        cell.value = base + sign + shifted_extra
+        return [
+            ContinuityEntry(
+                sheet=sheet,
+                cell=cell.coordinate,
+                fiscal_year=detected_new,
+                previous_value="(formula)",
+                previous_type="formula",
+                template_value="(formula)",
+                template_type="formula",
+                final_value="(formula)",
+                final_type="formula",
+                action=ContinuityAction.RESTORE_FORMULA,
+                reason=f"Analyst's added terms ({sign}{shifted_extra}) from the previous workbook applied to the new fiscal year.",
+            )
+        ]
 
     def _copy_same_address_helpers(
         self,
