@@ -142,6 +142,7 @@ class Facts:
     ev_mos: float | None = None
     expected_return: float | None = None
     expected_return_adjusted: bool = False
+    expected_return_red_flag: bool = False        # the model's return is unrealistic and was kept, with red flags in the HAP Adjustments tab
     graham_entry: float | None = None
     fy_metrics: dict[str, Any] = field(default_factory=dict)
     fy_changes: dict[str, Any] = field(default_factory=dict)
@@ -167,6 +168,7 @@ def read_facts(workbook_path: Path, *, ticker: str, company: str = "") -> Facts:
         _read_fy(wb, f)
         _read_quarter(wb, f)
         f.expected_return_adjusted = _er_adjusted(wb)
+        f.expected_return_red_flag = _er_red_flag(wb)
     finally:
         wb.close()
     return f
@@ -196,6 +198,15 @@ def _read_valuation(wb, f: Facts) -> None:
         tbv = _value(fm, r, lat)
         if tbv is not None:
             f.tbv_p = tbv / f.price
+
+
+def _er_red_flag(wb) -> bool:
+    if "HAP Adjustments" not in wb.sheetnames:
+        return False
+    for row in wb["HAP Adjustments"].iter_rows(values_only=True):
+        if row and any(str(x or "") == "Expected return input" for x in row) and any(str(x or "") == "Red flag" for x in row):
+            return True
+    return False
 
 
 def _er_adjusted(wb) -> bool:
@@ -326,6 +337,8 @@ def _price_block(f: Facts) -> list[str]:
     er = pct(f.expected_return)
     if f.expected_return is not None and f.expected_return_adjusted:
         er += " (adjusted)"
+    elif f.expected_return is not None and f.expected_return_red_flag:
+        er += " (red flag: see the Expected Returns tab notes)"
     return [
         "Price & MoS",
         f"Current price: {usd(f.price)}. PE10 percentile is at {pct(f.pe10_percentile)}. Max entry price {usd(f.max_entry)}.",

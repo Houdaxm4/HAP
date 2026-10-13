@@ -168,7 +168,7 @@ def _facts_table(doc, f: Facts, sheet_fields: Any) -> None:
         ("PE10 percentile", pct(f.pe10_percentile, 1)),
         ("Max entry price", usd(f.max_entry)),
         ("EV margin of safety", pct(f.ev_mos, 1, sign=True)),
-        ("Expected return", pct(f.expected_return, 1) + (" (adj.)" if f.expected_return_adjusted else "")),
+        ("Expected return", pct(f.expected_return, 1) + (" (adj.)" if f.expected_return_adjusted else (" (red flag)" if f.expected_return_red_flag else ""))),
         ("Graham entry price", usd(f.graham_entry)),
         ("Classified as", getattr(sheet_fields, "classified_as", None) or "n/a"),
     ]

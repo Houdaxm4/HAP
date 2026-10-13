@@ -127,7 +127,7 @@ def new_company_conclusion(f: Facts) -> str:
     if f.ev_mos is not None:
         sentences.append(f"The enterprise-value margin of safety is {pct(f.ev_mos, 1, sign=True)} and the Graham entry price is {usd(f.graham_entry)}.")
     if f.expected_return is not None:
-        adjusted = " (adjusted)" if f.expected_return_adjusted else ""
+        adjusted = " (adjusted)" if f.expected_return_adjusted else (" (red flag: see the Expected Returns tab notes)" if f.expected_return_red_flag else "")
         sentences.append(f"The expected annual return is {pct(f.expected_return)}{adjusted}.")
     rw = f.fy_metrics.get("roic_wacc", (None, None, None))
     if rw[0] is not None:

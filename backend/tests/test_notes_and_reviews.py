@@ -228,7 +228,7 @@ def _er_workbook(path: Path, *, model_return: float, growth: float = 0.0491, eps
 
 
 def test_an_unrealistic_expected_return_switches_to_the_eps_growth_model(tmp_path: Path):
-    path = _er_workbook(tmp_path / "a.xlsx", model_return=0.14)
+    path = _er_workbook(tmp_path / "a.xlsx", model_return=0.24)
     review = _apply(path)
     wb = load_workbook(path)
     er = wb["Expected Returns & Buybacks"]
@@ -240,7 +240,7 @@ def test_an_unrealistic_expected_return_switches_to_the_eps_growth_model(tmp_pat
     ledger = [str(c.value) for row in wb["HAP Adjustments"].iter_rows(min_row=5) for c in row if c.value]
     assert "Expected return input" in ledger and "='Final Metrics'!B4" in ledger and "=C5*A14" in ledger        # the original formulas are kept
     notes = review.notes("expected_return")
-    assert len(notes) == 2 and "EPS growth of 4.9% a year" in notes[0] and "it was 14.0%" in notes[0] and "too high" in notes[0]
+    assert len(notes) == 2 and "EPS growth of 4.9% a year" in notes[0] and "it was 24.0%" in notes[0] and "too high" in notes[0]
     # the same arithmetic as the template: EPS grows 4.91% a year from 3.17, valued at 25.1x, plus dividends at the model's payout
     eps = [3.17 * 1.0491 ** t for t in range(1, 11)]
     expected = ((eps[-1] * 25.117 + (2.17 / 4.78) * sum(eps)) / 93.34) ** 0.1 - 1
@@ -257,12 +257,12 @@ def test_a_realistic_expected_return_is_left_alone(tmp_path: Path):
     before = path.read_bytes()
     review = _apply(path)
     assert not review.applied and path.read_bytes() == before
-    assert "within a realistic range of 0.0% to 12.0%" in review.notes("expected_return")[0]
+    assert "within a realistic range of 0.0% to 20.0%" in review.notes("expected_return")[0]
 
 
 def test_the_eps_model_is_not_used_when_eps_growth_is_extreme_or_eps_is_not_positive(tmp_path: Path):
     for name, kwargs in (("d", {"growth": 0.40}), ("e", {"eps0": -1.0}), ("f", {"bv0": 0.0})):
-        path = _er_workbook(tmp_path / f"{name}.xlsx", model_return=0.20, **kwargs)
+        path = _er_workbook(tmp_path / f"{name}.xlsx", model_return=0.30, **kwargs)
         before = path.read_bytes()
         review = _apply(path)
         assert not review.applied and path.read_bytes() == before and review.left_as_is["expected_return"].startswith("the EPS-growth model could not be used")

@@ -757,12 +757,18 @@ class AnnualJudgmentService:
                         ]
                     )
                 written.extend(layout.place_analysis_notes(ws, self._live_rows(graham_rows), live_start_col=10))
-                ev_notes += self._valuation_note("growth rate used in the Graham valuation", eps_change, eps_hap, kind="graham")
+                graham_review = getattr(self, "input_review", None)
+                if graham_review is not None and any(a.topic == "graham" for a in graham_review.applied):
+                    ev_notes += graham_review.notes("graham")            # the EPS growth was corrected: the generic "left as it is" note would contradict it
+                else:
+                    ev_notes += self._valuation_note("growth rate used in the Graham valuation", eps_change, eps_hap, kind="graham")
                 add_notes(
                     ws,
                     ev_notes,
                     replace_containing=("owner's earnings growth rate", "growth rate used in the Graham valuation", "inputs behind this valuation",
-                                        "No model value was changed", "owner's earnings growth rate used", "typical basis"),
+                                        "No model value was changed", "owner's earnings growth rate used", "typical basis",
+                                        "EPS growth rate used for the Graham entry price", "Two corrected owner's earnings growth rates were compared",
+                                        "is recommended because"),
                 )
 
             wb.save(path)

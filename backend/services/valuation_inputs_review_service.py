@@ -26,6 +26,8 @@ ER_SHEET = "Expected Returns & Buybacks"
 EV_SHEET = "Enterprise Value"
 FM_SHEET = "Final Metrics"
 
+ER_HIGH = 0.20                    # a ten-year expected return above this is too high to rely on
+ER_LOW = 0.0                      # a negative expected return is too low to rely on
 ROE_HIGH, ROE_LOW = 0.30, 0.05
 ROE_OUTLIER_SHARE = 0.25          # average ROE this far from the median year
 BV_GROWTH_HIGH = 0.15
@@ -66,6 +68,7 @@ class ValuationInputsReview:
     skipped: list[str] = field(default_factory=list)
     applied: list[AppliedCorrection] = field(default_factory=list)
     left_as_is: dict[str, str] = field(default_factory=dict)
+    extra_notes: dict[str, list[str]] = field(default_factory=dict)       # more notes per topic, such as the comparison of two growth models
 
     def payload(self) -> dict[str, Any]:
         """The review as plain data (saved next to the other reports)."""
@@ -78,6 +81,7 @@ class ValuationInputsReview:
                 for a in self.applied
             ],
             "left_as_is": self.left_as_is,
+            "extra_notes": self.extra_notes,
             "skipped": self.skipped,
         }
 
@@ -86,13 +90,24 @@ class ValuationInputsReview:
         return [f for f in self.findings if f.verdict == "flag"]
 
     def notes(self, topic: str) -> list[str]:
-        """Plain-language notes for the tab: what was checked, why, and the source."""
+        """Plain-language notes for the tab: what was checked, why, and the source (and any extra notes of the topic)."""
+        out = self._base_notes(topic)
+        extras = [t for t in self.extra_notes.get(topic, []) if t not in out]
+        if extras and out and out[-1].startswith("The original formulas and values are kept"):
+            return out[:-1] + extras + out[-1:]           # the line about the HAP Adjustments tab stays last
+        return out + extras
+
+    def _base_notes(self, topic: str) -> list[str]:
         from services.tab_notes import note
 
         items = [f for f in self.findings if f.topic == topic]
         applied_early = [a for a in self.applied if a.topic == topic]
         if not items and not applied_early:
             return []
+        if topic == "graham":
+            flagged_g = [f for f in items if f.verdict == "flag"]
+            if not applied_early and not flagged_g:
+                return []         # a reasonable rate needs no note of its own
         if topic == "expected_return":
             checked = "the expected return model (book value growth and return on equity)"
             risk = "one-time items or a few unusual years can distort both"
@@ -108,7 +123,7 @@ class ValuationInputsReview:
             return out
         flagged = [f for f in items if f.verdict == "flag"]
         if not flagged and topic == "expected_return" and items[0].values.get("model") is not None:
-            return [note(f"Reviewed {checked}: its return of {_pct(items[0].values['model'])} is within a realistic range of 0.0% to 12.0%",
+            return [note(f"Reviewed {checked}: its return of {_pct(items[0].values['model'])} is within a realistic range of {_pct(ER_LOW)} to {_pct(ER_HIGH)}",
                          "The model was left as it is", source, because=False)]
         if not flagged:
             return [note(f"Reviewed {checked}, and they look realistic", "They are close to what the company actually delivered", source, because=False)]

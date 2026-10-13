@@ -32,6 +32,7 @@ CATEGORY_FILL = {
     "One-time operating income": "EADCF4",
     "SEC override of Bloomberg": "FFF1C2",
     "Expected return input": "E4DFEC",
+    "Red flag": "FDE2E2",
     "Enterprise value input": "E4DFEC",
     "Filled from filing": "E6F4EA",
     "Differs from filing": "FDE2E2",
