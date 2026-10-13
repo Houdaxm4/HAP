@@ -3,9 +3,10 @@
     python scripts/run_batch.py TKR:new_company SXI:new_company WWD:new_company
 
 Files are matched by name in the work folder (default Downloads\\HAP work):
-  workbook      "<TICKER> <YEAR> <Q1-Q4 or FY> ... .xlsx"     (new company: the template; updates: newer period = new, older = previous)
-                a finished result "<YEAR> <Q1-Q4 or FY> <TICKER> FA.xlsx" also counts, so last period's result can be dropped in as is
-  custom filter "custom_run_filter_<date>_<TICKER>.xlsx"       (latest date wins)
+  workbook      a ticker and a period in any order or style: "RPM 2027 Q1 - Industrial Template v28.2.xlsx", "RPM_2027Q1.xlsx",
+                "RPM FY2026.xlsx", "Q1 2027 RPM.xlsx"     (new company: the template; updates: newer period = new, older = previous)
+                a finished result "2026 FY RPM FA.xlsx" also counts, so last period's result can be dropped in as is
+  custom filter "custom_run_filter_<date>_<TICKER>.xlsx"       (spaces or no date also work; latest date and time wins)
   sheet         the newest .xlsx with an S&P tab               (email fields: Classified as, Status with PE10, TBV/P)
 Results (flat folder, default Downloads\\HAP results): "<period> <TICKER> FA.xlsx" and "<period> <TICKER> Email.txt / .eml".
 The lease-rate review is approved automatically and the run is marked "lease rate auto-approved, please check".
@@ -29,10 +30,17 @@ if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
 DOWNLOADS = Path.home() / "Downloads"
-PERIOD_RE = re.compile(r"^(?P<t>[A-Za-z][A-Za-z.\-]*)[ _-]+(?P<y>\d{4})[ _-]+(?P<p>Q[1-4]|FY)\b", re.I)
-# a finished result ("2026 FY RPM FA.xlsx") is the previous workbook of the next update, so it is accepted as is
-RESULT_RE = re.compile(r"^(?P<y>\d{4})[ _-]+(?P<p>Q[1-4]|FY)[ _-]+(?P<t>[A-Za-z][A-Za-z.\-]*)\b", re.I)
-CRF_RE = re.compile(r"^custom_run_filter[_ -]+(?P<d>.+?)[_ -]+(?P<t>[A-Za-z][A-Za-z.\-]*)\.xlsx$", re.I)
+# A workbook name holds a period ("2027 Q1", "2027Q1", "Q1 2027", "FY2026", "2026_FY") and the ticker, in either order:
+# "RPM 2027 Q1 - Industrial Template v28.2", "RPM_2027_Q1", "RPM FY2026", "Q1 2027 RPM", and a finished result "2026 FY RPM FA".
+_PERIOD_YEAR_FIRST = re.compile(r"(?<!\d)(?P<y>20\d{2})[ _\-]*(?P<p>Q[1-4]|FY)(?![A-Za-z0-9])", re.I)
+_PERIOD_PERIOD_FIRST = re.compile(r"(?<![A-Za-z0-9])(?P<p>Q[1-4]|FY)[ _\-]*(?P<y>20\d{2})(?!\d)", re.I)
+_TOKEN = re.compile(r"[A-Za-z0-9][A-Za-z0-9.\-]*")
+# Custom run filter: "Custom_Run_Filter_2026-10-12-(16-47)-RPM", "custom run filter 2026-10-12 RPM", "Custom_Run_Filter_RPM", "... (1)" copies
+_CRF_PREFIX = re.compile(r"^custom[ _\-]*run[ _\-]*filter", re.I)
+_CRF_NAME = re.compile(
+    r"^custom[ _\-]*run[ _\-]*filter[ _\-]*"
+    r"(?:(?P<d>\d{4}[ _\-]\d{2}[ _\-]\d{2}(?:[ _\-]+\d{2}[ _\-]\d{2})?)[ _\-]+)?"
+    r"(?P<t>[A-Za-z0-9][A-Za-z0-9.\-]*)$", re.I)
 TYPES = {"new_company", "annual_update", "quarterly_update"}
 PERIOD_ORDER = {"Q1": 1, "Q2": 2, "Q3": 3, "Q4": 4, "FY": 5}
 
@@ -45,12 +53,25 @@ class Match:
     problems: list[str] = field(default_factory=list)
 
 
-def _parse_workbook_name(path: Path) -> tuple[str, tuple[int, int]] | None:
-    """(ticker, (year, period order)) for '<TICKER> <year> <period> ...' and for the finished-result style '<year> <period> <TICKER> FA'."""
-    m = PERIOD_RE.match(path.stem) or RESULT_RE.match(path.stem)
-    if not m:
+def _tokens(text: str) -> list[str]:
+    return [tok.strip(".-").upper() for tok in _TOKEN.findall(text) if tok.strip(".-")]
+
+
+def _parse_workbook_name(path: Path) -> tuple[set[str], tuple[int, int]] | None:
+    """(possible tickers, (year, period order)) of a workbook name, or None when it holds no period.
+
+    The ticker is a word before the period ("RPM 2027 Q1 ...", "Industrial Template RPM Q1 2027"); when nothing comes
+    before the period it is the first word after it (a finished result: "2026 FY RPM FA")."""
+    text = path.stem
+    hits = [m for m in (_PERIOD_YEAR_FIRST.search(text), _PERIOD_PERIOD_FIRST.search(text)) if m]
+    if not hits:
         return None
-    return m.group("t").upper(), (int(m.group("y")), PERIOD_ORDER[m.group("p").upper()])
+    m = min(hits, key=lambda x: x.start())
+    before, after = _tokens(text[: m.start()]), _tokens(text[m.end():])
+    tickers = set(before) if before else set(after[:1])
+    if not tickers:
+        return None
+    return tickers, (int(m.group("y")), PERIOD_ORDER[m.group("p").upper()])
 
 
 def _period_key(path: Path) -> tuple[int, int] | None:
@@ -58,26 +79,35 @@ def _period_key(path: Path) -> tuple[int, int] | None:
     return parsed[1] if parsed else None
 
 
+def _parse_crf_name(path: Path) -> tuple[str, tuple[int, ...]] | None:
+    """(ticker, date/time numbers) of a custom run filter, or None. A '(1)' copy suffix and the brackets of the time are ignored."""
+    stem = re.sub(r"\s*\(\d{1,2}\)$", "", path.stem)
+    m = _CRF_NAME.match(stem.replace("(", "").replace(")", "").strip())
+    if not m:
+        return None
+    return m.group("t").upper(), tuple(int(x) for x in re.findall(r"\d+", m.group("d") or ""))
+
+
 def match_files(folder: Path, ticker: str, analysis_type: str) -> Match:
     t = ticker.upper()
     out = Match()
     books: list[tuple[tuple[int, int], Path]] = []
-    crfs: list[Path] = []
+    crfs: list[tuple[tuple[int, ...], str, Path]] = []
     for p in sorted(folder.glob("*.xlsx")):
         if p.name.startswith("~$"):
             continue
-        cm = CRF_RE.match(p.name.replace("(", "").replace(")", "")) if p.name.lower().startswith("custom_run_filter") else None
-        if cm:
-            if cm.group("t").upper() == t:
-                crfs.append(p)
+        if _CRF_PREFIX.match(p.name):          # a custom run filter is never a workbook, whatever its name holds
+            crf = _parse_crf_name(p)
+            if crf and crf[0] == t:
+                crfs.append((crf[1], p.name, p))
             continue
         parsed = _parse_workbook_name(p)
-        if parsed and parsed[0] == t:
+        if parsed and t in parsed[0]:
             books.append((parsed[1], p))
     if not crfs:
         out.problems.append(f"no custom run filter for {t} (expected custom_run_filter_<date>_{t}.xlsx)")
     else:
-        out.crf = crfs[-1]            # names carry the date, so the last sorted is the latest
+        out.crf = max(crfs)[2]            # the latest date and time wins
     books.sort(key=lambda x: x[0])
     if not books:
         out.problems.append(f"no workbook for {t} (expected '{t} <year> <Q#|FY> ...xlsx')")

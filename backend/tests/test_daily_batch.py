@@ -81,6 +81,41 @@ def test_a_finished_result_is_accepted_as_the_previous_workbook(tmp_path: Path):
     assert run_batch.match_files(tmp_path, "TKR", "quarterly_update").problems       # one TKR workbook only: an update needs two
 
 
+def test_workbook_names_are_recognised_in_any_word_order_and_style():
+    parse = lambda n: run_batch._parse_workbook_name(Path(n))
+    for name, want in [
+        ("RPM 2027 Q1 - Industrial Template v28.2.xlsx", ("RPM", (2027, 1))), ("RPM_2027_Q1.xlsx", ("RPM", (2027, 1))),
+        ("RPM-2027-Q1.xlsx", ("RPM", (2027, 1))), ("rpm 2027 q1.xlsx", ("RPM", (2027, 1))), ("RPM 2027Q1.xlsx", ("RPM", (2027, 1))),
+        ("RPM Q1 2027.xlsx", ("RPM", (2027, 1))), ("Q1 2027 RPM.xlsx", ("RPM", (2027, 1))), ("RPM FY2026.xlsx", ("RPM", (2026, 5))),
+        ("FY2026 RPM.xlsx", ("RPM", (2026, 5))), ("2026 FY RPM FA.xlsx", ("RPM", (2026, 5))), ("2026_FY_RPM_FA.xlsx", ("RPM", (2026, 5))),
+        ("BRK.B 2026 FY.xlsx", ("BRK.B", (2026, 5))), ("3M 2026 Q2.xlsx", ("3M", (2026, 2))),
+    ]:
+        tickers, period = parse(name)
+        assert want[0] in tickers and period == want[1], name
+    # files that are not workbooks of a period never match
+    for name in ("Summary&sector tables.xlsx", "RPM template.xlsx", "RPM 2026 Annual.xlsx"):
+        assert parse(name) is None, name
+    # the other ticker named after the period is not the file's ticker
+    assert "TKR" not in parse("RPM 2027 Q1 vs TKR comparison.xlsx")[0]
+
+
+def test_custom_run_filter_names_in_any_style_and_the_latest_wins(tmp_path: Path):
+    crf = lambda n: run_batch._parse_crf_name(Path(n))
+    assert crf("Custom_Run_Filter_2026-10-12-(16-47)-RPM.xlsx") == ("RPM", (2026, 10, 12, 16, 47))
+    assert crf("custom_run_filter_2026-10-06_ETD.xlsx") == ("ETD", (2026, 10, 6))
+    assert crf("Custom_Run_Filter_2026-09-09-_14-38_-IDCC.xlsx") == ("IDCC", (2026, 9, 9, 14, 38))
+    assert crf("Custom Run Filter 2026-10-12 RPM.xlsx") == ("RPM", (2026, 10, 12))
+    assert crf("Custom_Run_Filter_RPM.xlsx") == ("RPM", ())
+    assert crf("Custom_Run_Filter_2026-10-12-(16-47)-RPM (1).xlsx") == ("RPM", (2026, 10, 12, 16, 47))     # a browser's duplicate copy
+    assert crf("Custom-Run-Filter 2026-10-12 BF-B.xlsx")[0] == "BF-B"
+    # the latest date AND time wins, not the last name in alphabetical order
+    _touch(tmp_path, "RPM Q1 2027.xlsx", "2026 FY RPM FA.xlsx",
+           "Custom_Run_Filter_2026-10-12-(09-05)-RPM.xlsx", "Custom_Run_Filter_2026-10-12-(16-47)-RPM.xlsx", "Custom Run Filter 2026-10-11 RPM.xlsx")
+    m = run_batch.match_files(tmp_path, "RPM", "quarterly_update")
+    assert not m.problems and m.crf.name == "Custom_Run_Filter_2026-10-12-(16-47)-RPM.xlsx"
+    assert m.workbook.name == "RPM Q1 2027.xlsx" and m.previous.name == "2026 FY RPM FA.xlsx"
+
+
 def test_two_newest_workbooks_of_the_same_period_are_reported_not_used(tmp_path: Path):
     # the result of an earlier run of this very period must not become its own previous workbook
     _touch(tmp_path, "RPM 2027 Q1 - Industrial Template v28.2.xlsx", "2027 Q1 RPM FA.xlsx", "custom_run_filter_2026-10-12_RPM.xlsx")
