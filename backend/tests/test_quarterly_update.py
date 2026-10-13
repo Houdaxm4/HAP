@@ -526,55 +526,24 @@ def test_b63_never_uses_crf_price(tmp_path: Path):
     out.close()
 
 
-def test_three_margins_calculated():
-    from services.quarterly_margin_service import compute_margin
-
-    assert compute_margin(54770, 109417) == pytest.approx(54770 / 109417)
-    assert compute_margin(35695, 109417) == pytest.approx(35695 / 109417)
-    assert compute_margin(29789, 109417) == pytest.approx(29789 / 109417)
-    assert compute_margin(10, 0) is None
-    assert compute_margin(None, 100) is None
-
-
-def test_quarterly_margins_written_as_formulas(tmp_path: Path):
-    from services.quarterly_margin_service import QuarterlyMarginService
+def test_review_computes_margins_in_memory_and_the_tab_gets_no_margin_rows(tmp_path: Path):
+    """The template carries the margins in columns K and L; HAP writes none, and the review still reports margin changes."""
+    from services.quarterly_review_service import QuarterlyReviewService
 
     path = tmp_path / "is.xlsx"
     wb = Workbook()
     ws = wb.active
     ws.title = "Last Quarter IS Standardized"
-    ws["A11"] = "Revenue"
-    ws["C11"] = 100
-    ws["D11"] = 80
-    ws["G11"] = 300
-    ws["H11"] = 240
-    ws["A21"] = "Gross Profit"
-    ws["C21"] = 40
-    ws["D21"] = 32
-    ws["G21"] = 120
-    ws["H21"] = 96
-    ws["A32"] = "Operating Income"
-    ws["C32"] = 20
-    ws["D32"] = 16
-    ws["G32"] = 60
-    ws["H32"] = 48
-    ws["A60"] = "Net Income"
-    ws["C60"] = 10
-    ws["D60"] = 8
-    ws["G60"] = 30
-    ws["H60"] = 24
+    for row, (label, c, d, g, h) in {11: ("Revenue", 100, 80, 300, 240), 21: ("Gross Profit", 40, 32, 120, 96),
+                                     32: ("Operating Income", 20, 16, 60, 48), 60: ("Net Income", 10, 8, 30, 24)}.items():
+        ws.cell(row, 1).value, ws.cell(row, 3).value, ws.cell(row, 4).value, ws.cell(row, 7).value, ws.cell(row, 8).value = label, c, d, g, h
     wb.save(path)
     wb.close()
-    report = QuarterlyMarginService().apply(
-        analysis_id="m1", ticker="AAPL", workbook_path=path
-    )
-    assert {e.metric for e in report.entries} >= {"gross_margin", "operating_margin", "net_margin"}
+    report = QuarterlyReviewService().review(analysis_id="m1", ticker="AAPL", workbook_path=path, fiscal_quarter=3)
+    gm = next(e for e in report.comparisons if e.metric == "Gross Margin" and e.comparison_type == "yoy_quarter")
+    assert gm.compare_value == pytest.approx(0.4) and gm.baseline_value == pytest.approx(0.4)
+    assert {e.metric for e in report.comparisons if e.comparison_type == "ytd"} >= {"Gross Margin", "Operating Margin", "Net Margin"}
     out = load_workbook(path)
-    assert out["Last Quarter IS Standardized"]["A77"].value == "Gross Margin"
-    assert str(out["Last Quarter IS Standardized"]["C77"].value).startswith("=")
-    assert "C21" in str(out["Last Quarter IS Standardized"]["C77"].value)
-    assert "C11" in str(out["Last Quarter IS Standardized"]["C77"].value)
-    gm = next(e for e in report.entries if e.metric == "gross_margin" and e.period_kind == "yoy_quarter" and e.cell and e.cell.endswith("C77"))
-    assert gm.margin == pytest.approx(0.4)
+    assert all(out["Last Quarter IS Standardized"].cell(r, 1).value is None for r in (77, 78, 79))      # nothing is written
     out.close()
 

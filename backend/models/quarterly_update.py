@@ -137,26 +137,6 @@ class CurrentDataRefreshReport(BaseModel):
     summary: str = ""
 
 
-class QuarterlyMarginEntry(BaseModel):
-    metric: str  # gross_margin | operating_margin | net_margin
-    period_kind: str  # yoy_quarter | ytd
-    revenue: float | None = None
-    numerator: float | None = None
-    margin: float | None = None
-    cell: str | None = None
-    formula: str | None = None
-
-
-class QuarterlyMarginReport(BaseModel):
-    """Artifact: quarterly_margin_report.json"""
-
-    analysis_id: str
-    ticker: str
-    schema_version: str = "1.0.0"
-    entries: list[QuarterlyMarginEntry] = Field(default_factory=list)
-    summary: str = ""
-
-
 class QuarterlyProjectionReport(BaseModel):
     """Artifact: quarterly_projection_report.json (Q2/Q3 only)."""
 

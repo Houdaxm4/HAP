@@ -17,7 +17,6 @@ from services.current_data_refresh_service import CurrentDataRefreshService
 from services.excel_fill_service import ExcelFillService
 from services.file_service import FileService
 from services.output_service import OutputService
-from services.quarterly_margin_service import QuarterlyMarginService
 from services.quarterly_presentation_service import QuarterlyPresentationService
 from services.sec_statement_extractor import extract_statement_cells_from_sec
 from workbook_mapping.engine import WriteIntentReport
@@ -44,7 +43,6 @@ class FillWorkbookStage:
         self.completion_service = completion_service or CompletionService()
         self.quarterly_presentation = QuarterlyPresentationService()
         self.current_data_refresh = CurrentDataRefreshService()
-        self.quarterly_margins = QuarterlyMarginService()
         self.file_service = FileService()
 
     def run(
@@ -127,15 +125,9 @@ class FillWorkbookStage:
                 "quarterly_presentation_report.json",
                 q_report,
             )
-            margin_report = self.quarterly_margins.apply(
-                analysis_id=analysis.analysis_id,
-                ticker=analysis.ticker,
-                workbook_path=completed_workbook_path,
-            )
             notes_book = load_workbook(completed_workbook_path)
             try:
-                # Margins occupy the first rows below the income-statement body.
-                # Notes are written after that block so they are not overwritten.
+                # The margins are fixed in columns K and L of the Last Quarter IS tab by the template; HAP adds none.
                 self.quarterly_presentation._write_statement_notes(
                     notes_book,
                     q_report.statements,
@@ -145,12 +137,7 @@ class FillWorkbookStage:
                 notes_book.save(completed_workbook_path)
             finally:
                 notes_book.close()
-            self.output_service.write_json(
-                analysis.analysis_id,
-                "quarterly_margin_report.json",
-                margin_report,
-            )
-            q_presentation_note = f"; {q_report.summary}; {refresh.summary}; {margin_report.summary}"
+            q_presentation_note = f"; {q_report.summary}; {refresh.summary}"
             completion_report.quarterly_health = {
                 **(completion_report.quarterly_health or {}),
                 "presentation_summary": q_report.summary,
@@ -158,7 +145,6 @@ class FillWorkbookStage:
                     s.statement.value: s.decision.value for s in q_report.statements
                 },
                 "current_data_refresh": refresh.summary,
-                "margins": margin_report.summary,
             }
             # Refresh completion artifact with presentation annotations.
             self.output_service.write_json(

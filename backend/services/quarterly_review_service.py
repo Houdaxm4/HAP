@@ -41,9 +41,12 @@ _IS_NEEDLES = [
     ("gross profit", "Gross Profit"),
     ("operating income", "Operating Income"),
     ("net income", "Net Income"),
-    ("gross margin", "Gross Margin"),
-    ("operating margin", "Operating Margin"),
-    ("net margin", "Net Margin"),
+]
+# margin = profit row / Revenue row, computed here for the review only; the tab itself carries them in columns K and L
+_IS_MARGINS = [
+    ("Gross Margin", "Gross Profit"),
+    ("Operating Margin", "Operating Income"),
+    ("Net Margin", "Net Income"),
 ]
 _CF_NEEDLES = [
     ("cash from operating", "CFO"),
@@ -153,9 +156,23 @@ class QuarterlyReviewService:
 
         if LQ_IS in wb.sheetnames:
             ws = wb[LQ_IS]
-            for row, name in _find_rows(ws, _IS_NEEDLES):
-                prior = _num(ws.cell(row, PRIOR_COL).value)
-                curr = _num(ws.cell(row, CURR_COL).value)
+            is_rows = _find_rows(ws, _IS_NEEDLES)
+            by_name = {name: row for row, name in is_rows}
+
+            def _cell(row: int | None, col: int) -> float | None:
+                return _num(ws.cell(row, col).value) if row else None
+
+            def _margin(name: str, col: int) -> float | None:
+                profit, revenue = _cell(by_name.get(name), col), _cell(by_name.get("Revenue"), col)
+                return profit / revenue if profit is not None and revenue not in (None, 0) else None
+
+            # (name, value reader): the statement rows as they are, then each margin computed from them
+            lines = [(name, (lambda col, r=row: _cell(r, col))) for row, name in is_rows]
+            lines += [(label, (lambda col, n=profit: _margin(n, col))) for label, profit in _IS_MARGINS
+                      if "Revenue" in by_name and profit in by_name]
+            for name, read in lines:
+                prior = read(PRIOR_COL)
+                curr = read(CURR_COL)
                 abs_c, pct = _chg(prior, curr)
                 comparisons.append(
                     QuarterlyComparisonEntry(
@@ -174,8 +191,8 @@ class QuarterlyReviewService:
                 if pct is not None and abs(pct) >= 0.10:
                     material.append(f"IS YoY {name}: {pct:.1%}")
 
-                ytd_prior = _num(ws.cell(row, YTD_PRIOR_COL).value)
-                ytd_curr = _num(ws.cell(row, YTD_CURR_COL).value)
+                ytd_prior = read(YTD_PRIOR_COL)
+                ytd_curr = read(YTD_CURR_COL)
                 if ytd_curr is not None or ytd_prior is not None:
                     abs_y, pct_y = _chg(ytd_prior, ytd_curr)
                     comparisons.append(
