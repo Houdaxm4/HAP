@@ -7,6 +7,7 @@ Do not invent worksheet names — production files are the source of truth.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -27,6 +28,33 @@ _SCALAR_START = 158
 _SCALAR_END = 261
 _PE10_HEADER_ROW = 264
 _PE10_DATA_START = 265
+
+# The row numbers above are the original export layout. Newer exports insert extra series and scalar rows
+# (for example the Log-Linear intrinsic value rows), which moves everything below them. The parser therefore
+# finds each anchor by its LABEL and keeps the original distances between anchors (see CustomRunService._resolve_layout).
+_SERIES_BAND_AFTER_FY = _SERIES_END - _FISCAL_YEAR_ROW        # series rows that follow the 'Fiscal Year' row
+_SCALAR_START_AFTER_FY = _SCALAR_START - _FISCAL_YEAR_ROW     # first scalar row, relative to the 'Fiscal Year' row
+_SCALAR_END_BEFORE_PE10 = _PE10_HEADER_ROW - _SCALAR_END      # last scalar row, relative to the PE10 column header
+_GROWTH_LABELS = {
+    "EPS_10Y_GROWTH": "3 years Av EPS Growth (10 Years) TTM",
+    "EPS_10Y_DIRECTION": "3 years Av EPS Growth (10 Years) TTM Direction",
+    "REVENUE_10Y_GROWTH": "3 years Av Revenue Growth (10 Years) TTM",
+}
+
+
+@dataclass(frozen=True)
+class _Layout:
+    date_row: int
+    fiscal_quarter_row: int
+    fiscal_year_row: int
+    series_end: int
+    scalar_start: int
+    scalar_end: int
+    pe10_header_row: int
+    e10_row: int | None
+    pe10_row: int | None
+    growth_rows: dict
+
 
 _MARKET_KEYS = {
     "Current Price (Live Price)",
@@ -110,21 +138,21 @@ class CustomRunService:
             ticker_rows = self._sheet_matrix(workbook[ticker_sheet_name])
             summary_rows = self._sheet_matrix(workbook["Summary"])
 
-            self._assert_observed_anchors(ticker_rows)
+            layout = self._resolve_layout(ticker_rows)
 
             metadata = self._parse_meta_block(ticker_rows)
-            periods = self._parse_periods(ticker_rows)
-            historical = self._parse_series_block(ticker_rows, periods)
-            annual_pe = self._augment_annual_pe10_e10(ticker_rows, periods, historical)
+            periods = self._parse_periods(ticker_rows, layout)
+            historical = self._parse_series_block(ticker_rows, periods, layout)
+            annual_pe = self._augment_annual_pe10_e10(ticker_rows, periods, historical, layout)
             if annual_pe:
                 metadata["inputs_annual_pe10"] = annual_pe.get("PE10") or {}
                 metadata["inputs_annual_e10"] = annual_pe.get("E10") or {}
-            annual_crf = self._augment_annual_growth_metrics(ticker_rows, periods, historical)
+            annual_crf = self._augment_annual_growth_metrics(ticker_rows, periods, historical, layout)
             if annual_crf:
                 metadata["inputs_annual_eps_10y_growth"] = annual_crf.get("EPS_10Y_GROWTH") or {}
                 metadata["inputs_annual_eps_10y_direction"] = annual_crf.get("EPS_10Y_DIRECTION") or {}
                 metadata["inputs_annual_revenue_10y_growth"] = annual_crf.get("REVENUE_10Y_GROWTH") or {}
-            scalars = self._parse_scalar_block(ticker_rows)
+            scalars = self._parse_scalar_block(ticker_rows, layout)
             summary = self._parse_summary(summary_rows)
 
             ticker = str(
@@ -219,11 +247,21 @@ class CustomRunService:
             return None
         return row[col_idx - 1]
 
-    def _assert_observed_anchors(self, rows: list[list[Any]]) -> None:
-        """Fail fast if production anchors are not present at observed rows."""
+    @classmethod
+    def _label_row(cls, rows: list[list[Any]], label: str, start: int, stop: int | None = None) -> int | None:
+        """First 1-based row in [start, stop] whose column-A label equals `label` (case-insensitive)."""
+        want = label.strip().lower()
+        stop = len(rows) if stop is None else min(stop, len(rows))
+        for row_idx in range(start, stop + 1):
+            cell = cls._cell(rows, row_idx, 1)
+            if isinstance(cell, str) and cell.strip().lower() == want:
+                return row_idx
+        return None
+
+    def _resolve_layout(self, rows: list[list[Any]]) -> _Layout:
+        """Locate the anchors by label; fail fast if the export is not a recognisable Custom Run Filter."""
         date_label = self._cell(rows, _DATE_ROW, 1)
         fq_label = self._cell(rows, _FISCAL_QUARTER_ROW, 1)
-        fy_label = self._cell(rows, _FISCAL_YEAR_ROW, 1)
         if str(date_label).strip().lower() != "date":
             raise CustomRunParseError(
                 f"Expected 'date' at ticker sheet row {_DATE_ROW}, found {date_label!r}."
@@ -233,11 +271,43 @@ class CustomRunService:
                 f"Expected 'Fiscal Quarter' at ticker sheet row {_FISCAL_QUARTER_ROW}, "
                 f"found {fq_label!r}."
             )
-        if str(fy_label).strip().lower() != "fiscal year":
+        fy_row = self._label_row(rows, "fiscal year", _SERIES_START, _FISCAL_YEAR_ROW + 120)
+        if fy_row is None:
+            found = self._cell(rows, _FISCAL_YEAR_ROW, 1)
             raise CustomRunParseError(
-                f"Expected 'Fiscal Year' at ticker sheet row {_FISCAL_YEAR_ROW}, "
-                f"found {fy_label!r}."
+                f"Expected a 'Fiscal Year' row in the series block (original export: row {_FISCAL_YEAR_ROW}), "
+                f"found {found!r} there."
             )
+        scalar_start = fy_row + _SCALAR_START_AFTER_FY
+        # the PE10 column: an empty column-A cell with 'PE10' in column B, followed by a row numbered 0
+        header = None
+        for row_idx in range(scalar_start, len(rows)):
+            if (
+                self._cell(rows, row_idx, 1) in (None, "")
+                and str(self._cell(rows, row_idx, 2)).strip() == "PE10"
+                and self._cell(rows, row_idx + 1, 1) == 0
+            ):
+                header = row_idx
+                break
+        if header is None:
+            # no PE10 history column (small or hand-made files): keep the original distance from the 'Fiscal Year' row
+            header = _PE10_HEADER_ROW + (fy_row - _FISCAL_YEAR_ROW)
+        series_stop = fy_row - 1
+        growth_rows = {
+            key: self._label_row(rows, label, _SERIES_START, series_stop) for key, label in _GROWTH_LABELS.items()
+        }
+        return _Layout(
+            date_row=_DATE_ROW,
+            fiscal_quarter_row=_FISCAL_QUARTER_ROW,
+            fiscal_year_row=fy_row,
+            series_end=fy_row + _SERIES_BAND_AFTER_FY,
+            scalar_start=scalar_start,
+            scalar_end=header - _SCALAR_END_BEFORE_PE10,
+            pe10_header_row=header,
+            e10_row=self._label_row(rows, "E10", _SERIES_START, series_stop),
+            pe10_row=self._label_row(rows, "PE10", _SERIES_START, series_stop),
+            growth_rows=growth_rows,
+        )
 
     def _parse_meta_block(self, rows: list[list[Any]]) -> dict[str, Any]:
         meta: dict[str, Any] = {}
@@ -249,10 +319,10 @@ class CustomRunService:
             meta[str(label).strip()] = _normalize_value(value)
         return meta
 
-    def _parse_periods(self, rows: list[list[Any]]) -> CustomRunPeriods:
-        dates = self._row_values(rows, _DATE_ROW)
-        quarters = self._row_values(rows, _FISCAL_QUARTER_ROW)
-        years = self._row_values(rows, _FISCAL_YEAR_ROW)
+    def _parse_periods(self, rows: list[list[Any]], layout: _Layout) -> CustomRunPeriods:
+        dates = self._row_values(rows, layout.date_row)
+        quarters = self._row_values(rows, layout.fiscal_quarter_row)
+        years = self._row_values(rows, layout.fiscal_year_row)
         return CustomRunPeriods(
             dates=[_stringify_period(v) for v in dates],
             fiscal_quarters=[_stringify_period(v) for v in quarters],
@@ -263,11 +333,12 @@ class CustomRunService:
         self,
         rows: list[list[Any]],
         periods: CustomRunPeriods,
+        layout: _Layout,
     ) -> dict[str, CustomRunSeries]:
         expected = len(periods.fiscal_quarters) or len(periods.dates)
         series: dict[str, CustomRunSeries] = {}
-        for row_idx in range(_SERIES_START, _SERIES_END + 1):
-            if row_idx == _FISCAL_YEAR_ROW:
+        for row_idx in range(_SERIES_START, layout.series_end + 1):
+            if row_idx == layout.fiscal_year_row:
                 continue
             label = self._cell(rows, row_idx, 1)
             if label is None or str(label).strip() == "":
@@ -292,14 +363,14 @@ class CustomRunService:
             )
         return series
 
-    def _parse_scalar_block(self, rows: list[list[Any]]) -> dict[str, Any]:
+    def _parse_scalar_block(self, rows: list[list[Any]], layout: _Layout) -> dict[str, Any]:
         scalars: dict[str, Any] = {}
-        for row_idx in range(_SCALAR_START, _SCALAR_END + 1):
+        for row_idx in range(layout.scalar_start, layout.scalar_end + 1):
             label = self._cell(rows, row_idx, 1)
             value = self._cell(rows, row_idx, 2)
             if label is None or str(label).strip() == "":
                 continue
-            if isinstance(label, (int, float)) and value is not None and row_idx >= _PE10_HEADER_ROW:
+            if isinstance(label, (int, float)) and value is not None and row_idx >= layout.pe10_header_row:
                 break
             label_text = str(label).strip()
             if label_text.replace(".", "", 1).isdigit():
@@ -340,14 +411,15 @@ class CustomRunService:
         rows: list[list[Any]],
         periods: CustomRunPeriods,
         historical: dict[str, CustomRunSeries],
+        layout: _Layout,
     ) -> dict[str, dict[str, float]]:
         """Collapse quarterly PE10/E10 to fiscal-year-end annual points (not lag trailer)."""
         years = periods.fiscal_years
         result: dict[str, dict[str, float]] = {}
         if not years:
             return result
-        for label, row_idx in (("E10", 132), ("PE10", 133)):
-            raw = self._row_values(rows, row_idx)
+        for label, row_idx in (("E10", layout.e10_row), ("PE10", layout.pe10_row)):
+            raw = self._row_values(rows, row_idx) if row_idx else []
             if not raw:
                 existing = historical.get(label)
                 raw = list(existing.values) if existing else []
@@ -377,6 +449,7 @@ class CustomRunService:
         rows: list[list[Any]],
         periods: CustomRunPeriods,
         historical: dict[str, CustomRunSeries],
+        layout: _Layout,
     ) -> dict[str, dict[str, Any]]:
         """Collapse CRF 10-year growth series to fiscal-year-end points (same rule as PE10/E10)."""
         years = periods.fiscal_years
@@ -384,12 +457,13 @@ class CustomRunService:
         if not years:
             return result
         specs = (
-            ("EPS_10Y_GROWTH", 120, "3 years Av EPS Growth (10 Years) TTM", False),
-            ("EPS_10Y_DIRECTION", 121, "3 years Av EPS Growth (10 Years) TTM Direction", True),
-            ("REVENUE_10Y_GROWTH", 122, "3 years Av Revenue Growth (10 Years) TTM", False),
+            ("EPS_10Y_GROWTH", _GROWTH_LABELS["EPS_10Y_GROWTH"], False),
+            ("EPS_10Y_DIRECTION", _GROWTH_LABELS["EPS_10Y_DIRECTION"], True),
+            ("REVENUE_10Y_GROWTH", _GROWTH_LABELS["REVENUE_10Y_GROWTH"], False),
         )
-        for key, row_idx, label, as_str in specs:
-            raw = self._row_values(rows, row_idx)
+        for key, label, as_str in specs:
+            row_idx = layout.growth_rows.get(key)
+            raw = self._row_values(rows, row_idx) if row_idx else []
             if not raw:
                 existing = historical.get(label)
                 raw = list(existing.values) if existing else []
