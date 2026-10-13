@@ -6,7 +6,7 @@ from openpyxl import Workbook
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 
 import run_batch  # noqa: E402
-from services.daily_sheet_service import DailySheet, find_latest_sheet  # noqa: E402
+from services.daily_sheet_service import DailySheet, custom_filter_status, find_latest_sheet  # noqa: E402
 
 
 def _sheet(path: Path) -> Path:
@@ -28,7 +28,7 @@ def _sheet(path: Path) -> Path:
 def test_sheet_fields_for_the_email(tmp_path: Path):
     sheet = DailySheet(_sheet(tmp_path / "Summary&sector tables.xlsx"))
     f = sheet.fields("wwd")
-    assert (f.classified_as, f.pe10_status, f.tbv_p_text, f.market_cap_text) == ("N", "Buy", "5.59%", None)
+    assert (f.classified_as, f.pe10_status, f.tbv_p_text, f.market_cap_text) == ("N", None, "5.59%", None)      # the status with PE10 is not in this sheet
     assert sheet.fields("SXI").classified_as == "U" and sheet.fields("SXI").tbv_p_text == "-0.74%"
     assert sheet.company_name("WWD") == "Woodward, Inc."
     v = sheet.fields("VCT")                       # second tab; N/A status is not a status
@@ -66,6 +66,26 @@ def test_update_uses_newer_period_as_new_and_older_as_previous(tmp_path: Path):
     _touch(tmp_path, "ATR 2025 Q4.xlsx", "ATR 2025 FY.xlsx", "custom_run_filter_2026-10-06_ATR.xlsx")
     n = run_batch.match_files(tmp_path, "ATR", "annual_update")
     assert n.workbook.name == "ATR 2025 FY.xlsx" and n.previous.name == "ATR 2025 Q4.xlsx"       # FY sorts after Q4
+
+
+def test_a_finished_result_is_accepted_as_the_previous_workbook(tmp_path: Path):
+    # the real RPM folder: the new template, last period's finished result, the filter and the sheet
+    _touch(tmp_path, "RPM 2027 Q1 - Industrial Template v28.2.xlsx", "2026 FY RPM FA.xlsx",
+           "Custom_Run_Filter_2026-10-12-(16-47)-RPM.xlsx")
+    m = run_batch.match_files(tmp_path, "RPM", "quarterly_update")
+    assert not m.problems
+    assert m.workbook.name.startswith("RPM 2027 Q1") and m.previous.name == "2026 FY RPM FA.xlsx"
+    # a result for another ticker or the other naming style never leaks in
+    _touch(tmp_path, "2026 Q2 TKR FA.xlsx")
+    assert run_batch.match_files(tmp_path, "RPM", "quarterly_update").previous.name == "2026 FY RPM FA.xlsx"
+    assert run_batch.match_files(tmp_path, "TKR", "quarterly_update").problems       # one TKR workbook only: an update needs two
+
+
+def test_two_newest_workbooks_of_the_same_period_are_reported_not_used(tmp_path: Path):
+    # the result of an earlier run of this very period must not become its own previous workbook
+    _touch(tmp_path, "RPM 2027 Q1 - Industrial Template v28.2.xlsx", "2027 Q1 RPM FA.xlsx", "custom_run_filter_2026-10-12_RPM.xlsx")
+    m = run_batch.match_files(tmp_path, "RPM", "quarterly_update")
+    assert m.workbook is None and any("same period" in p for p in m.problems)
 
 
 def test_missing_or_ambiguous_files_are_reported_not_guessed(tmp_path: Path):
@@ -106,3 +126,18 @@ def test_live_sheet_is_downloaded_from_the_published_link_and_falls_back_to_the_
         assert ("could not be reached" in open_daily_sheet(work, f"{base}/missing.xlsx")[1])
     finally:
         server.shutdown()
+
+
+def test_status_with_pe10_comes_from_the_custom_run_filter_summary(tmp_path: Path):
+    wb = Workbook()
+    wb.active.title = "WWD"
+    summary = wb.create_sheet("Summary")
+    summary.append([None, "Ticker", "Price", "Sector", "Industry", "Current Status without PE10 Percentile", "Current Status with PE10 Percentile"])
+    summary.append(["WOODWARD INC", "WWD", 346.34, "Industrial", "Controls", "Buy", "Out"])
+    summary.append(["OTHER INC", "OTH", 10.0, "Industrial", "Controls", "Buy", "Buy"])
+    path = tmp_path / "Custom_Run_Filter_2026-08-27-(20-58)-WWD.xlsx"
+    wb.save(path)
+    assert custom_filter_status(path, "wwd") == "Out"          # the "without" column says Buy; the email needs the "with" column
+    assert custom_filter_status(path, "OTH") == "Buy"
+    assert custom_filter_status(path, "ZZZ") is None and custom_filter_status(None, "WWD") is None
+    assert custom_filter_status(tmp_path / "missing.xlsx", "WWD") is None

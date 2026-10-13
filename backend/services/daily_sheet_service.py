@@ -2,7 +2,7 @@
 
 The analyst downloads the sheet each morning into the HAP work folder. For a ticker this returns the four email fields:
   Classified as      -> "Interest" column (Q, K, B, N or U)
-  Status with PE10   -> "Current Filter Status w/o PE10 Percentile" column (Buy / Out); it matches the status used in the analyst's emails
+  Status with PE10   -> not in this sheet (its status column is "w/o PE10 Percentile"): read from the ticker's custom run filter, see custom_filter_status
   Current TBV/P      -> "TBV/Price" column
   Market Cap         -> not in the sheet: left empty so the email uses the workbook value
 The S&P tab is searched first, then the other tabs that carry the same header row (for example FTSE).
@@ -106,11 +106,10 @@ class DailySheet:
         row = self.row(ticker)
         if row is None:
             return SheetFields()
-        status = str(row["status"]).strip() if row.get("status") not in (None, "", "N/A") else None
         tbv = row.get("tbv_price")
         return SheetFields(
             classified_as=str(row["interest"]).strip() if row.get("interest") not in (None, "") else None,
-            pe10_status=status,
+            pe10_status=None,
             tbv_p_text=pct(float(tbv)) if isinstance(tbv, (int, float)) and not isinstance(tbv, bool) else None,
         )
 
@@ -118,6 +117,33 @@ class DailySheet:
         row = self.row(ticker)
         name = str(row["company"]).strip() if row and row.get("company") else ""
         return re.sub(r"\s*Common Stock\s*$", "", name, flags=re.I).strip()      # the sheet writes 'Woodward, Inc.Common Stock'
+
+
+def custom_filter_status(path: Path | None, ticker: str) -> str | None:
+    """"Current Status with PE10 Percentile" (Buy / Out) from the Summary tab of the ticker's custom run filter, or None."""
+    if not path:
+        return None
+    try:
+        wb = load_workbook(path, read_only=True, data_only=True)
+    except Exception:  # noqa: BLE001 - unreadable file: the email marks the field
+        return None
+    try:
+        if "Summary" not in wb.sheetnames:
+            return None
+        rows = wb["Summary"].iter_rows(values_only=True)
+        header = next(rows, ())
+        norm = [" ".join(str(h).lower().split()) if h else "" for h in header]
+        c_tick = next((i for i, h in enumerate(norm) if h == "ticker"), None)
+        c_stat = next((i for i, h in enumerate(norm) if "status" in h and "with pe10" in h and "without" not in h and "w/o" not in h), None)
+        if c_tick is None or c_stat is None:
+            return None
+        for row in rows:
+            if row and len(row) > max(c_tick, c_stat) and str(row[c_tick] or "").strip().upper() == ticker.strip().upper():
+                value = row[c_stat]
+                return str(value).strip() if value not in (None, "", "N/A") else None
+        return None
+    finally:
+        wb.close()
 
 
 LIVE_FILE = "_live_sheet.xlsx"

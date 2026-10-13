@@ -4,6 +4,7 @@
 
 Files are matched by name in the work folder (default Downloads\\HAP work):
   workbook      "<TICKER> <YEAR> <Q1-Q4 or FY> ... .xlsx"     (new company: the template; updates: newer period = new, older = previous)
+                a finished result "<YEAR> <Q1-Q4 or FY> <TICKER> FA.xlsx" also counts, so last period's result can be dropped in as is
   custom filter "custom_run_filter_<date>_<TICKER>.xlsx"       (latest date wins)
   sheet         the newest .xlsx with an S&P tab               (email fields: Classified as, Status with PE10, TBV/P)
 Results (flat folder, default Downloads\\HAP results): "<period> <TICKER> FA.xlsx" and "<period> <TICKER> Email.txt / .eml".
@@ -29,6 +30,8 @@ if str(BACKEND_ROOT) not in sys.path:
 
 DOWNLOADS = Path.home() / "Downloads"
 PERIOD_RE = re.compile(r"^(?P<t>[A-Za-z][A-Za-z.\-]*)[ _-]+(?P<y>\d{4})[ _-]+(?P<p>Q[1-4]|FY)\b", re.I)
+# a finished result ("2026 FY RPM FA.xlsx") is the previous workbook of the next update, so it is accepted as is
+RESULT_RE = re.compile(r"^(?P<y>\d{4})[ _-]+(?P<p>Q[1-4]|FY)[ _-]+(?P<t>[A-Za-z][A-Za-z.\-]*)\b", re.I)
 CRF_RE = re.compile(r"^custom_run_filter[_ -]+(?P<d>.+?)[_ -]+(?P<t>[A-Za-z][A-Za-z.\-]*)\.xlsx$", re.I)
 TYPES = {"new_company", "annual_update", "quarterly_update"}
 PERIOD_ORDER = {"Q1": 1, "Q2": 2, "Q3": 3, "Q4": 4, "FY": 5}
@@ -42,9 +45,17 @@ class Match:
     problems: list[str] = field(default_factory=list)
 
 
+def _parse_workbook_name(path: Path) -> tuple[str, tuple[int, int]] | None:
+    """(ticker, (year, period order)) for '<TICKER> <year> <period> ...' and for the finished-result style '<year> <period> <TICKER> FA'."""
+    m = PERIOD_RE.match(path.stem) or RESULT_RE.match(path.stem)
+    if not m:
+        return None
+    return m.group("t").upper(), (int(m.group("y")), PERIOD_ORDER[m.group("p").upper()])
+
+
 def _period_key(path: Path) -> tuple[int, int] | None:
-    m = PERIOD_RE.match(path.stem)
-    return (int(m.group("y")), PERIOD_ORDER[m.group("p").upper()]) if m else None
+    parsed = _parse_workbook_name(path)
+    return parsed[1] if parsed else None
 
 
 def match_files(folder: Path, ticker: str, analysis_type: str) -> Match:
@@ -60,9 +71,9 @@ def match_files(folder: Path, ticker: str, analysis_type: str) -> Match:
             if cm.group("t").upper() == t:
                 crfs.append(p)
             continue
-        m = PERIOD_RE.match(p.stem)
-        if m and m.group("t").upper() == t:
-            books.append((_period_key(p), p))
+        parsed = _parse_workbook_name(p)
+        if parsed and parsed[0] == t:
+            books.append((parsed[1], p))
     if not crfs:
         out.problems.append(f"no custom run filter for {t} (expected custom_run_filter_<date>_{t}.xlsx)")
     else:
@@ -78,6 +89,8 @@ def match_files(folder: Path, ticker: str, analysis_type: str) -> Match:
     else:
         if len(books) < 2:
             out.problems.append(f"an update needs two workbooks for {t} (new and previous period); found {len(books)}")
+        elif books[-1][0] == books[-2][0]:
+            out.problems.append(f"the two newest workbooks for {t} are both for the same period: {books[-2][1].name}, {books[-1][1].name}")
         else:
             out.workbook, out.previous = books[-1][1], books[-2][1]
     return out
@@ -159,6 +172,21 @@ def run_one(ticker: str, analysis_type: str, match: Match, sheet, results: Path)
         except Exception:  # noqa: BLE001 - the projection lines are optional (Q2 and Q3 only)
             projection = None
     # email again with the daily sheet's fields (the pipeline's own draft has no access to the sheet)
+    if analysis_type == "new_company":
+        try:
+            from models.new_company import NewCompanyProjectionReport
+            from services.new_company_deliverables_service import NewCompanyDeliverablesService
+
+            projection = NewCompanyDeliverablesService.email_projection(
+                NewCompanyProjectionReport.model_validate(output_service.read_json(analysis_id, "new_company_projection_report.json")), fy, fq
+            )
+        except Exception:  # noqa: BLE001 - the projection lines are optional (Q2 and Q3 only)
+            projection = None
+    from services.daily_sheet_service import custom_filter_status
+    from services.email_draft_service import SheetFields
+
+    fields = sheet.fields(ticker) if sheet else SheetFields()
+    fields.pe10_status = custom_filter_status(match.crf, ticker)       # "Current Status with PE10 Percentile" of the custom run filter
     base = email_deliverable_name(fiscal_year=fy or 0, ticker=ticker, fiscal_quarter=fq)
     biz = None
     if analysis_type == "new_company":
@@ -169,7 +197,7 @@ def run_one(ticker: str, analysis_type: str, match: Match, sheet, results: Path)
         )
     email = EmailDraftService().produce_safe(
         analysis_type=analysis_type, ticker=ticker, company=company, workbook_path=excel, output_dir=out_dir,
-        sheet=sheet.fields(ticker) if sheet else None, base_name=base, fiscal_year=fy, fiscal_quarter=fq, projection=projection,
+        sheet=fields, base_name=base, fiscal_year=fy, fiscal_quarter=fq, projection=projection,
         attachments=[excel] + ([Path(biz["path"])] if biz and biz.get("path") else []),
     )
     results.mkdir(parents=True, exist_ok=True)

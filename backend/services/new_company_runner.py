@@ -754,18 +754,26 @@ class NewCompanyRunner:
                 v = ws[addr].value
                 return float(v) if isinstance(v, (int, float)) and not isinstance(v, bool) else None
             roic, roce, nopat, capital = num("M23"), num("N4"), num("M20"), num("M7")
+            sheet_wacc, sheet_spread = num("M24"), num("M25")
         finally:
             wb.close()
         if roic is None and roce is None:
             return projection
         update = {
+            "seasonality_adjusted_roic": roic,
+            "seasonality_adjusted_roce": roce,
             "ytd_unadjusted_annualized_roic": roic,
             "ytd_unadjusted_annualized_roce": roce,
             "projected_nopat": nopat,
             "projected_invested_capital": capital,
         }
-        wacc = projection.wacc
-        if roic is not None and wacc is not None:
+        wacc = sheet_wacc if sheet_wacc is not None else projection.wacc       # the WACC the IC tab itself uses for its projected spread
+        if sheet_wacc is not None:
+            update["wacc"] = sheet_wacc
+            update["wacc_source"] = "IC & NOPAT & ROIC tab, M24"
+        if sheet_spread is not None:
+            update["projected_roic_wacc"] = sheet_spread
+        elif roic is not None and wacc is not None:
             update["projected_roic_wacc"] = roic - wacc
         return projection.model_copy(update=update)
 

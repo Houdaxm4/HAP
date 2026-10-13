@@ -41,6 +41,22 @@ def _fmt(v: Any, *, pct: bool = False) -> str:
 
 
 class NewCompanyDeliverablesService:
+    @staticmethod
+    def email_projection(projection: NewCompanyProjectionReport | None, fiscal_year: int | None, fiscal_quarter: int | None) -> dict[str, Any] | None:
+        """The projected ROIC-WACC and ROCE of the year in progress (only a Q2 or Q3 stop has them) for the email."""
+        if projection is None or fiscal_quarter not in (2, 3) or projection.projected_roic_wacc is None or not fiscal_year:
+            return None
+        if projection.status in ("NOT_APPLICABLE",) or projection.status.endswith("FAILED"):
+            return None
+        return {
+            "next_fy": str(fiscal_year),
+            "fy": f"FY{fiscal_year - 1}",
+            "roic_wacc": projection.projected_roic_wacc,
+            "roce": projection.seasonality_adjusted_roce,
+            "prior_spread": None,          # the email takes last year's figures from the workbook's own metrics
+            "prior_roce": None,
+        }
+
     def produce(
         self,
         *,
@@ -97,6 +113,7 @@ class NewCompanyDeliverablesService:
             base_name=email_deliverable_name(fiscal_year=fiscal_year, ticker=ticker, fiscal_quarter=fiscal_quarter),
             fiscal_year=fiscal_year,
             fiscal_quarter=fiscal_quarter,
+            projection=self.email_projection(projection, fiscal_year, fiscal_quarter),
             attachments=[excel_path] + ([Path(business["path"])] if business.get("path") else []),
         )
         return NewCompanyDeliverablesReport(

@@ -461,6 +461,19 @@ def _description(f: Facts, description: str | None) -> str:
     return description or "[one-line description of the company]"
 
 
+def _projection_block(f: Facts) -> list[str]:
+    """Projected ROIC - WACC and ROCE of the year in progress, next to last year's (a Q2 or Q3 stop)."""
+    if not f.projection:
+        return []
+    p = f.projection
+    # the projection report may lack last year's figures; the workbook's last full fiscal year has them
+    prior_spread = p.get("prior_spread") if p.get("prior_spread") is not None else f.fy_metrics.get("roic_wacc", (None,))[0]
+    prior_roce = p.get("prior_roce") if p.get("prior_roce") is not None else f.fy_metrics.get("roce", (None,))[0]
+    return [f"{p.get('next_fy', 'Next year')} Projection",
+            f"Projected ROIC - WACC at {pct(p.get('roic_wacc'))} ({pct(prior_spread)} in {p.get('fy', 'last year')})",
+            f"Projected ROCE at {pct(p.get('roce'))} ({pct(prior_roce)} in {p.get('fy', 'last year')})"]
+
+
 def render_quarter(f: Facts, *, sheet: SheetFields | None = None, highlights: str | None = None) -> tuple[str, str]:
     q = f.quarter_number or 0
     cur, last_year, prev = _periods(f)
@@ -471,17 +484,8 @@ def render_quarter(f: Facts, *, sheet: SheetFields | None = None, highlights: st
 
     hl = [f"{f.quarter_label or 'Latest quarter'} Financial Highlights",
           highlights or quarter_highlights(f) or "[What drove the quarter: segment growth and the reasons behind it. To be completed by the analyst.]"]
-    proj: list[str] = []
-    if f.projection:
-        p = f.projection
-        # the projection report may lack last year's figures; the workbook's last full fiscal year has them
-        prior_spread = p.get("prior_spread") if p.get("prior_spread") is not None else f.fy_metrics.get("roic_wacc", (None,))[0]
-        prior_roce = p.get("prior_roce") if p.get("prior_roce") is not None else f.fy_metrics.get("roce", (None,))[0]
-        proj = [f"{p.get('next_fy', 'Next year')} Projection",
-                f"Projected ROIC - WACC at {pct(p.get('roic_wacc'))} ({pct(prior_spread)} in {p.get('fy', 'last year')})",
-                f"Projected ROCE at {pct(p.get('roce'))} ({pct(prior_roce)} in {p.get('fy', 'last year')})"]
     sections = [
-        intro, hl, proj,
+        intro, hl, _projection_block(f),
         _quarter_vs_block(f, f"Comparison {cur} to {last_year}{ytd_note}", with_ytd=q >= 2),
         _qoq_block(f, f"Comparison {cur} to {prev}"),
         _price_block(f),
@@ -517,7 +521,7 @@ def render_new_company(f: Facts, *, sheet: SheetFields | None = None, descriptio
     intro = ["Dear All,", "", f"Please find attached the analysis of {subject_line}"] + _header_block(f, sheet)
     hl = ["Highlights", highlights or new_company_highlights(f) or "[Competitive position and the main story of the last years: to be completed by the analyst.]"]
     sections = [
-        intro, hl, _fy_metrics_block(f, fy), _fy_vs_block(f),
+        intro, hl, _fy_metrics_block(f, fy), _fy_vs_block(f), _projection_block(f),
         _quarter_vs_block(f, f"{cur} vs. {last_year}{ytd_note}", with_ytd=q >= 2, margin_digits=1),
         _qoq_block(f, f"{cur} vs. {prev}"),
         _price_block(f),

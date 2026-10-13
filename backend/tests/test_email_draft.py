@@ -225,3 +225,21 @@ def test_eml_carries_the_excel_and_the_business_doc_as_attachments(tmp_path: Pat
     names = [part.get_filename() for part in msg.iter_attachments()]
     assert names == ["2026 Q2 XYZ FA.xlsx", "2026 Q2 XYZ Business.docx"]       # a missing file is skipped, not an error
     assert msg["X-Unsent"] == "1" and "Please find attached" in msg.get_body().get_content()
+
+
+def test_new_company_email_at_a_q2_or_q3_stop_carries_the_projection():
+    from models.new_company import NewCompanyProjectionReport
+    from services.email_draft_service import render_new_company
+    from services.new_company_deliverables_service import NewCompanyDeliverablesService
+
+    report = NewCompanyProjectionReport(analysis_id="a", ticker="LNN", latest_quarter=2, projected_roic_wacc=-0.0446,
+                                        seasonality_adjusted_roce=0.0429, status="ok")
+    proj = NewCompanyDeliverablesService.email_projection(report, 2026, 2)
+    assert proj and proj["next_fy"] == "2026" and proj["fy"] == "FY2025"
+    _subject, body = render_new_company(_facts(projection=proj))
+    assert "2026 Projection\nProjected ROIC - WACC at -4.46% (" in body and "\nProjected ROCE at 4.29% (" in body
+    assert "in FY2025)" in body
+    # a finished year (Q4 or FY) or a failed projection has no projection block
+    assert NewCompanyDeliverablesService.email_projection(report, 2026, 4) is None
+    assert NewCompanyDeliverablesService.email_projection(report.model_copy(update={"status": "PROJECTED_ROCE_FAILED"}), 2026, 2) is None
+    assert "Projection" not in render_new_company(_facts())[1]
