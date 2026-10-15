@@ -96,6 +96,52 @@ def _copy_style(src, dst) -> bool:
     return True
 
 
+def _label_column(ws, max_row: int = 150) -> list[tuple[int, str]]:
+    """(row, label) of every labelled row of a tab, from column A (statement tabs also carry a field code in column B)."""
+    out: list[tuple[int, str]] = []
+    for row in range(1, max_row + 1):
+        label = ws.cell(row, 1).value
+        if isinstance(label, str) and label.strip() and not label.startswith("="):
+            code = ws.cell(row, 2).value
+            out.append((row, label.strip() + ("|" + code if isinstance(code, str) and not code.startswith("=") else "")))
+    return out
+
+
+def layout_matches(prev_ws, tmpl_ws, max_row: int = 150) -> bool:
+    """True when the previous workbook's tab has the same rows as the new template's tab.
+
+    A previous workbook built on an older template version has statement rows that moved (for example an inserted
+    'Unbilled Revenues' row). Copying its cells by address into the new template then puts values and formulas on
+    the wrong rows, so such tabs must not be copied cell by cell."""
+    if tmpl_ws is None:
+        return True
+    return [lab for _r, lab in _label_column(prev_ws, max_row)] == [lab for _r, lab in _label_column(tmpl_ws, max_row)]
+
+
+def carry_constants_by_label(prev_ws, out_ws, max_row: int = 150, max_col: int = 20) -> int:
+    """Layout differs: carry only the previous workbook's numeric analyst constants, matched by row label (not by row number)."""
+    wanted: dict[str, list[int]] = {}
+    for row, lab in _label_column(out_ws, max_row):
+        wanted.setdefault(lab, []).append(row)
+    seen: dict[str, int] = {}
+    carried = 0
+    for row, lab in _label_column(prev_ws, max_row):
+        k = seen.get(lab, 0)
+        seen[lab] = k + 1
+        if lab not in wanted or k >= len(wanted[lab]):
+            continue
+        dest_row = wanted[lab][k]
+        for col in range(3, max_col + 1):
+            v = prev_ws.cell(row, col).value
+            if isinstance(v, bool) or not isinstance(v, (int, float)):
+                continue
+            dest = out_ws.cell(dest_row, col)
+            if _cell_type(dest.value) in ("blank", "value") and dest.value != v:
+                dest.value = v
+                carried += 1
+    return carried
+
+
 class QuarterlyModelContinuityService:
     """Carry formulas, values, and formatting for persistent tabs; verify ignored sheets."""
 
@@ -131,6 +177,82 @@ class QuarterlyModelContinuityService:
             template_wb.close()
             out_wb.close()
 
+    def align_prior_quarter_balance_sheet(
+        self,
+        *,
+        previous_workbook_path: Path,
+        workbook_path: Path,
+        sheet: str = "Last Quarter BS Standardized",
+        min_gap_days: int = 60,
+        max_gap_days: int = 125,
+    ) -> dict[str, Any]:
+        """Make column D of the Last Quarter balance sheet the quarter before column C.
+
+        A template pulled after the period ended can hold a later quarter in column D (for example FQ2 2026 beside FQ1 2025),
+        which turns every quarter-over-quarter comparison into nonsense. When the previous workbook's latest quarter is the
+        quarter right before this one (60-125 days earlier), its column C is copied into column D by Bloomberg field code.
+        Otherwise column D is left as it is and the report says why."""
+        prev_wb = load_workbook(previous_workbook_path, data_only=True)
+        out_wb = load_workbook(workbook_path, data_only=False)
+        try:
+            if sheet not in prev_wb.sheetnames or sheet not in out_wb.sheetnames:
+                return {"status": "skipped", "reason": f"no {sheet} tab"}
+            prev_ws, out_ws = prev_wb[sheet], out_wb[sheet]
+            cur_date, d_date, prev_date = out_ws["C4"].value, out_ws["D4"].value, prev_ws["C4"].value
+            if not all(hasattr(x, "toordinal") for x in (cur_date, d_date, prev_date)):
+                return {"status": "skipped", "reason": "quarter-end dates not readable"}
+            if d_date == prev_date:
+                return {"status": "ok", "reason": "column D already holds the previous quarter", "copied": 0}
+            gap = (cur_date - prev_date).days
+            if not (min_gap_days <= gap <= max_gap_days):
+                if not (min_gap_days <= (cur_date - d_date).days <= max_gap_days):
+                    # column D is not the prior quarter either: clear it so no comparison is made against the wrong quarter
+                    for r in range(10, (out_ws.max_row or 1) + 1):
+                        code, dest = out_ws.cell(r, 2).value, out_ws.cell(r, 4)
+                        if isinstance(code, str) and not code.startswith("=") and _cell_type(dest.value) == "value":
+                            dest.value = None
+                    out_wb.save(workbook_path)
+                    return {
+                        "status": "not_aligned",
+                        "reason": (f"previous workbook's latest quarter ended {prev_date:%Y-%m-%d}, {gap} days before this quarter, so it is not "
+                                   f"the prior quarter; column D held {d_date:%Y-%m-%d} and was cleared (no quarter-over-quarter balance sheet comparison)"),
+                        "copied": 0,
+                    }
+                return {
+                    "status": "not_aligned",
+                    "reason": (f"previous workbook's latest quarter ended {prev_date:%Y-%m-%d}, {gap} days before this quarter: "
+                               f"not the prior quarter; column D keeps {d_date:%Y-%m-%d}"),
+                    "copied": 0,
+                }
+            prev_rows = {}
+            for r in range(5, (prev_ws.max_row or 1) + 1):
+                code, v = prev_ws.cell(r, 2).value, prev_ws.cell(r, 3).value
+                if isinstance(code, str) and code and not code.startswith("=") and isinstance(v, (int, float)) and not isinstance(v, bool):
+                    prev_rows.setdefault(code, v)
+            copied = 0
+            seen: set[str] = set()
+            for r in range(10, (out_ws.max_row or 1) + 1):
+                code = out_ws.cell(r, 2).value
+                if not isinstance(code, str) or code.startswith("=") or code in seen:
+                    continue
+                seen.add(code)
+                dest = out_ws.cell(r, 4)
+                if _cell_type(dest.value) == "formula":
+                    continue
+                if code in prev_rows:
+                    dest.value = prev_rows[code]
+                    copied += 1
+                elif dest.value is not None:
+                    dest.value = None
+            out_ws["D4"].value = prev_date
+            if isinstance(prev_ws["C5"].value, str):
+                out_ws["D5"].value = prev_ws["C5"].value
+            out_wb.save(workbook_path)
+            return {"status": "ok", "reason": f"column D set to the previous quarter ({prev_date:%Y-%m-%d}) from the previous workbook", "copied": copied}
+        finally:
+            prev_wb.close()
+            out_wb.close()
+
     def apply_persistent_continuity(
         self,
         *,
@@ -153,6 +275,24 @@ class QuarterlyModelContinuityService:
                 prev_ws = prev_wb[sheet]
                 out_ws = out_wb[sheet]
                 tmpl_ws = template_wb[sheet] if sheet in template_wb.sheetnames else None
+                if not layout_matches(prev_ws, tmpl_ws):
+                    # previous workbook built on another template version: keep this tab as the new template has it
+                    carried = carry_constants_by_label(prev_ws, out_ws)
+                    entries.append(
+                        ModelContinuityEntry(
+                            sheet=sheet,
+                            cell="*",
+                            previous_type="n/a",
+                            current_template_type="n/a",
+                            final_type="n/a",
+                            final_action=CarryForwardDecision.KEEP_NEW_FORMULA,
+                            reason=(
+                                "Row layout differs from the previous workbook (older template version): tab kept as in the new "
+                                f"template; {carried} numeric analyst constants carried by row label."
+                            ),
+                        )
+                    )
+                    continue
                 max_row = min(prev_ws.max_row or 1, 150)
                 max_col = min(prev_ws.max_column or 1, 20)
                 for row in range(1, max_row + 1):

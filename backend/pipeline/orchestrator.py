@@ -758,6 +758,14 @@ class PipelineOrchestrator:
         apply_path = self.output_service.write_json(
             analysis_id, "quarterly_model_continuity_apply_report.json", apply_report
         )
+        prior_quarter = _time(
+            "align_prior_quarter",
+            lambda: self.model_continuity.align_prior_quarter_balance_sheet(
+                previous_workbook_path=previous_path, workbook_path=carried_path
+            ),
+        )
+        self.output_service.write_json(analysis_id, "quarterly_prior_quarter_alignment_report.json", prior_quarter)
+
         analysis.decision_log.append(
             DecisionLogEntry(
                 agent="Model Continuity",

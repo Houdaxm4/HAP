@@ -1,12 +1,16 @@
 """Daily batch: run several HAP analyses from the HAP work folder and put the finished files in HAP results.
 
     python scripts/run_batch.py TKR:new_company SXI:new_company WWD:new_company
+    python scripts/run_batch.py AMAT:quarterly_update:2025Q1      # optional third part: the period to update, when the folder holds several
 
 Files are matched by name in the work folder (default Downloads\\HAP work):
   workbook      a ticker and a period in any order or style: "RPM 2027 Q1 - Industrial Template v28.2.xlsx", "RPM_2027Q1.xlsx",
                 "RPM FY2026.xlsx", "Q1 2027 RPM.xlsx"     (new company: the template; updates: newer period = new, older = previous)
                 a finished result "2026 FY RPM FA.xlsx" also counts, so last period's result can be dropped in as is
   custom filter "custom_run_filter_<date>_<TICKER>.xlsx"       (spaces or no date also work; latest date and time wins)
+  no filter     when a company has no custom filter, a stand-in is built from the "Current Filter Summary Sheet" (an .xlsx with a Summary tab,
+                one row per company). It carries today's market data only, so price, entry prices, margin of safety and expected return are
+                today's, not the period's; the run is marked "stand-in custom filter".
   sheet         the newest .xlsx with an S&P tab               (email fields: Classified as, Status with PE10, TBV/P)
 Results (flat folder, default Downloads\\HAP results): "<period> <TICKER> FA.xlsx" and "<period> <TICKER> Email.txt / .eml".
 The lease-rate review is approved automatically and the run is marked "lease rate auto-approved, please check".
@@ -50,6 +54,8 @@ class Match:
     workbook: Path | None = None
     previous: Path | None = None
     crf: Path | None = None
+    standin: dict | None = None
+    notes: list[str] = field(default_factory=list)
     problems: list[str] = field(default_factory=list)
 
 
@@ -88,7 +94,38 @@ def _parse_crf_name(path: Path) -> tuple[str, tuple[int, ...]] | None:
     return m.group("t").upper(), tuple(int(x) for x in re.findall(r"\d+", m.group("d") or ""))
 
 
-def match_files(folder: Path, ticker: str, analysis_type: str) -> Match:
+def parse_period(text: str) -> tuple[int, int]:
+    """'2025Q1', '2025 Q1', 'Q1 2025', 'FY2024' -> (year, period order)."""
+    for rx in (_PERIOD_YEAR_FIRST, _PERIOD_PERIOD_FIRST):
+        m = rx.search(text)
+        if m:
+            return int(m.group("y")), PERIOD_ORDER[m.group("p").upper()]
+    raise ValueError(f"cannot read a period from '{text}' (use for example 2025Q1 or 2024FY)")
+
+
+def _workbook_ticker_and_version(path: Path) -> tuple[str | None, str | None]:
+    """Ticker on the statement tab and the template version of a workbook (None when not readable)."""
+    from openpyxl import load_workbook
+
+    try:
+        wb = load_workbook(path, read_only=True, data_only=True)
+    except Exception:  # noqa: BLE001 - not a readable workbook
+        return None, None
+    try:
+        ticker = version = None
+        if "Balance Sheet - Standardized" in wb.sheetnames:
+            row = next(wb["Balance Sheet - Standardized"].iter_rows(min_row=1, max_row=1, max_col=4, values_only=True), ())
+            ticker = str(row[2]).strip().upper() if len(row) > 2 and row[2] else None
+        if "Template Version" in wb.sheetnames:
+            for r in wb["Template Version"].iter_rows(min_row=1, max_row=4, max_col=3, values_only=True):
+                if r and str(r[0] or "").strip().lower() == "version" and r[1]:
+                    version = str(r[1]).strip()
+        return ticker, version
+    finally:
+        wb.close()
+
+
+def match_files(folder: Path, ticker: str, analysis_type: str, period: tuple[int, int] | None = None, standin_dir: Path | None = None) -> Match:
     t = ticker.upper()
     out = Match()
     books: list[tuple[tuple[int, int], Path]] = []
@@ -104,9 +141,7 @@ def match_files(folder: Path, ticker: str, analysis_type: str) -> Match:
         parsed = _parse_workbook_name(p)
         if parsed and t in parsed[0]:
             books.append((parsed[1], p))
-    if not crfs:
-        out.problems.append(f"no custom run filter for {t} (expected custom_run_filter_<date>_{t}.xlsx)")
-    else:
+    if crfs:
         out.crf = max(crfs)[2]            # the latest date and time wins
     books.sort(key=lambda x: x[0])
     if not books:
@@ -117,13 +152,70 @@ def match_files(folder: Path, ticker: str, analysis_type: str) -> Match:
         else:
             out.workbook = books[0][1]
     else:
+        if period is not None:
+            newer = [b for b in books if b[0] == period]
+            if not newer:
+                out.problems.append(f"no workbook for {t} for the requested period; found: " + ", ".join(p.name for _k, p in books))
+                books = []
+            else:
+                older = [b for b in books if b[0] < period]
+                books = older[-1:] + newer[-1:]
+        elif len(books) > 2:
+            out.notes.append(
+                f"{len(books)} workbooks for {t}: using the newest two ({books[-1][1].name} as new, {books[-2][1].name} as previous); "
+                f"to pick another period write {t}:{analysis_type}:{_period_label(books[0][0])}"
+            )
         if len(books) < 2:
-            out.problems.append(f"an update needs two workbooks for {t} (new and previous period); found {len(books)}")
+            if not out.problems:
+                near = sorted({p.name for p in folder.glob("*.xlsx") if (info := _parse_workbook_name(p)) and any(x != t and t.startswith(x) for x in info[0])})
+                out.problems.append(
+                    f"an update needs two workbooks for {t} (new and previous period); found {len(books)}"
+                    + (f". Files for a similar ticker are ignored: {', '.join(near)}" if near else "")
+                )
         elif books[-1][0] == books[-2][0]:
             out.problems.append(f"the two newest workbooks for {t} are both for the same period: {books[-2][1].name}, {books[-1][1].name}")
         else:
             out.workbook, out.previous = books[-1][1], books[-2][1]
+    # the files must really be this company, and on the same template version (or HAP maps the older one)
+    versions: dict[str, str | None] = {}
+    for label, path in (("workbook", out.workbook), ("previous", out.previous)):
+        if path is None:
+            continue
+        found, version = _workbook_ticker_and_version(path)
+        versions[label] = version
+        if found and found != t:
+            out.problems.append(f"{path.name} holds {found}, not {t}: wrong company or a mislabeled template")
+            out.workbook = out.previous = None
+            break
+    if out.workbook and out.previous and versions.get("workbook") and versions.get("previous") and versions["workbook"] != versions["previous"]:
+        out.notes.append(
+            f"previous workbook is on template {versions['previous']}, the new one on {versions['workbook']}: "
+            "statement rows differ, HAP keeps the new layout and carries analyst values by row label"
+        )
+    if out.crf is None and out.workbook is None:
+        out.problems.append(f"no custom run filter for {t} (expected custom_run_filter_<date>_{t}.xlsx)")
+    elif out.crf is None:
+        from services.custom_run_standin_service import StandInError, build_standin, find_filter_summary
+
+        summary = find_filter_summary(folder)
+        if summary is None:
+            out.problems.append(f"no custom run filter for {t} (expected custom_run_filter_<date>_{t}.xlsx) and no filter summary sheet to build one from")
+        else:
+            try:
+                target = (standin_dir or folder) / f"custom_run_filter_standin_{t}.xlsx"
+                out.standin = build_standin(t, summary, target)
+                out.crf = target
+                out.notes.append(
+                    f"stand-in custom filter built from {summary.name}: price, entry prices, margin of safety, expected return and PE10 status "
+                    "are today's values, not the period's; no PE10 history"
+                )
+            except StandInError as exc:
+                out.problems.append(f"no custom run filter for {t} and no stand-in possible: {exc}")
     return out
+
+
+def _period_label(key: tuple[int, int]) -> str:
+    return f"{key[0]}{'FY' if key[1] == 5 else 'Q' + str(key[1])}"
 
 
 def _copy_upload(src: Path, dest: Path):
@@ -165,7 +257,7 @@ def run_one(ticker: str, analysis_type: str, match: Match, sheet, results: Path)
     created.status = "uploaded"
     analysis_service.save(created)
 
-    notes: list[str] = []
+    notes: list[str] = list(match.notes)
     analysis = orchestrator.run(analysis_id)
     if analysis.status == "awaiting_analyst_review":
         review = {}
@@ -255,7 +347,7 @@ def run_one(ticker: str, analysis_type: str, match: Match, sheet, results: Path)
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("jobs", nargs="+", help="TICKER:analysis_type, for example WWD:new_company")
+    ap.add_argument("jobs", nargs="+", help="TICKER:analysis_type[:period], for example WWD:new_company or AMAT:quarterly_update:2025Q1")
     ap.add_argument("--work", default=str(DOWNLOADS / "HAP work"))
     ap.add_argument("--results", default=str(DOWNLOADS / "HAP results"))
     ap.add_argument("--sheet-url", default=None, help="published .xlsx link of the Google Sheet (or set HAP_SHEET_URL); falls back to the newest download")
@@ -269,12 +361,20 @@ def main() -> int:
 
     report = []
     for job in args.jobs:
-        ticker, _, kind = job.partition(":")
+        ticker, _, rest = job.partition(":")
+        kind, _, period_text = rest.partition(":")
         ticker, kind = ticker.strip().upper(), kind.strip().lower()
+        period = None
+        if period_text.strip():
+            try:
+                period = parse_period(period_text)
+            except ValueError as exc:
+                report.append({"ticker": ticker, "problem": str(exc)})
+                continue
         if kind not in TYPES:
             report.append({"ticker": ticker, "problem": f"unknown analysis type '{kind}' (use {', '.join(sorted(TYPES))})"})
             continue
-        match = match_files(work, ticker, kind)
+        match = match_files(work, ticker, kind, period, standin_dir=results / "_standin_filters")
         if match.problems:
             report.append({"ticker": ticker, "type": kind, "problem": "; ".join(match.problems)})
             print(f"[{ticker}] skipped: {report[-1]['problem']}")
