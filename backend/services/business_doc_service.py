@@ -206,6 +206,51 @@ def _financial_table(doc, labels: list[str], rows: list[tuple[str, list[str]]]) 
                 _shade(table.cell(i, j), LIGHT)
 
 
+def _quarter_rows(f: Facts) -> list[tuple[str, str, str, str]]:
+    """(label, this quarter, the same quarter a year earlier, change) from the Last Quarter IS tab; rows without both figures are left out."""
+    spec = (("Revenue ($M)", "revenue", _plain), ("Operating income ($M)", "op_income", _plain),
+            ("Net income ($M)", "net_income", _plain), ("Diluted EPS ($)", "eps", _eps))
+    out = []
+    for label, key, fmt in spec:
+        pair = (f.q_yoy.get(key) or {}).get("q")
+        if not pair or pair[0] is None or pair[1] is None:
+            continue
+        cur, prior = pair
+        out.append((label, fmt(cur), fmt(prior), pct(cur / prior - 1, 1, sign=True) if prior else "n/a"))
+    return out
+
+
+def _quarter_section(doc, f: Facts) -> None:
+    rows = _quarter_rows(f)
+    if not rows or not f.quarter_label:
+        return
+    year, _, q = f.quarter_label.partition(" ")
+    prior_label = f"{q} {int(year) - 1}" if year.isdigit() else "year earlier"
+    _heading(doc, f"Latest quarter ({f.quarter_label})")
+    table = doc.add_table(rows=1 + len(rows), cols=4)
+    table.alignment = WD_TABLE_ALIGNMENT.CENTER
+    _borders(table)
+    for j, head in enumerate(("", f.quarter_label, prior_label, "Change")):
+        _cell_text(table.cell(0, j), head, bold=True, color=RGBColor(0xFF, 0xFF, 0xFF),
+                   align=WD_ALIGN_PARAGRAPH.RIGHT if j else None, size=7.5)
+        _shade(table.cell(0, j), NAVY)
+    for i, row in enumerate(rows, start=1):
+        for j, v in enumerate(row):
+            _cell_text(table.cell(i, j), v, bold=(j == 0), align=WD_ALIGN_PARAGRAPH.RIGHT if j else None, size=8)
+            if i % 2 == 0:
+                _shade(table.cell(i, j), LIGHT)
+    qoq = f.q_qoq or {}
+    a, l = qoq.get("assets", (None, None))[0], qoq.get("liabilities", (None, None))[0]
+    eq = qoq.get("equity", (None, None))
+    line = []
+    if a and l:
+        line.append(f"assets / liabilities {a / l:,.2f}")
+    if eq[0] is not None and eq[1] not in (None, 0):
+        line.append(f"equity {pct(eq[0] / eq[1] - 1, 1, sign=True)} on the previous quarter")
+    if line:
+        _para(doc, "Balance sheet at the quarter end: " + "; ".join(line) + ".", after=2)
+
+
 class BusinessDocService:
     def produce(
         self,
@@ -219,15 +264,23 @@ class BusinessDocService:
         search_dir: Path | None = None,
         sheet_fields: Any = None,
         description: str | None = None,
+        fiscal_year: int | None = None,
+        fiscal_quarter: int | None = None,
+        analyst_notes: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
-        facts = read_facts(workbook_path, ticker=ticker, company=company)
-        if business_text is None:
-            from services.company_description_service import _fetch_latest_business_text, _latest_cached_business_text
+        from services.company_description_service import (
+            _fetch_latest_business_text, _latest_cached_business_text, as_of_date, tenk_label,
+        )
 
-            business_text = _latest_cached_business_text(search_dir or output_dir) or _fetch_latest_business_text(ticker)
+        facts = read_facts(workbook_path, ticker=ticker, company=company)
+        as_of = as_of_date(fiscal_year, fiscal_quarter)        # a back-test: the 10-K that was current at the end of the period
+        if business_text is None:
+            business_text = _latest_cached_business_text(search_dir or output_dir, as_of) or _fetch_latest_business_text(ticker, as_of)
+        source = tenk_label(ticker, as_of) if business_text else "latest 10-K"
         content = extract(business_text or "")
         tables = [year_table(workbook_path, GROWTH_AND_RETURNS), year_table(workbook_path, BALANCE_AND_CAPITAL)]
-        doc = self._build(facts, content, tables, company or ticker, ticker, sheet_fields, description)
+        doc = self._build(facts, content, tables, company or ticker, ticker, sheet_fields, description, source,
+                          quarter=bool(fiscal_year and fiscal_quarter in (1, 2, 3)), analyst_notes=analyst_notes)
         output_dir.mkdir(parents=True, exist_ok=True)
         path = output_dir / f"{base_name}.docx"
         doc.save(path)
@@ -240,7 +293,8 @@ class BusinessDocService:
             return {"path": None, "error": f"{type(exc).__name__}: {exc}"}
 
     @staticmethod
-    def _build(f: Facts, content: BusinessContent, tables, name: str, ticker: str, sheet_fields, description) -> Document:
+    def _build(f: Facts, content: BusinessContent, tables, name: str, ticker: str, sheet_fields, description, source: str = "latest 10-K", quarter: bool = False,
+               analyst_notes: dict[str, Any] | None = None) -> Document:
         doc = Document()
         section = doc.sections[0]
         section.left_margin = section.right_margin = Inches(0.7)
@@ -261,7 +315,7 @@ class BusinessDocService:
         run.font.color.rgb = GREY
         sub = doc.add_paragraph()
         sub.paragraph_format.space_after = Pt(4)
-        run = sub.add_run(f"Business overview  |  based on the company's latest 10-K  |  {date.today():%B %d, %Y}")
+        run = sub.add_run(f"Business overview  |  based on the company's {source}  |  {date.today():%B %d, %Y}")
         run.font.size = Pt(8)
         run.font.color.rgb = GREY
 
@@ -303,13 +357,18 @@ class BusinessDocService:
             run.bold = True
             run.font.size = Pt(8.5)
             _financial_table(doc, labels, rows)
+        if quarter:
+            _quarter_section(doc, f)
+        if analyst_notes and analyst_notes.get("quarter_notes"):
+            _heading(doc, analyst_notes.get("quarter_title") or "Quarter analysis (from the 10-Q)")
+            _bullets(doc, list(analyst_notes["quarter_notes"]), size=8.5)
         if content.risks:
             _heading(doc, "Key risks (from the 10-K)")
             _bullets(doc, content.risks, size=8.5)
         note = doc.add_paragraph()
         note.paragraph_format.space_before = Pt(5)
         run = note.add_run(
-            "Business text is taken from the company's 10-K; figures are from the HAP workbook (fiscal years). ROCE and ROIC - WACC follow the house methodology."
+            f"Business text is taken from the company's {source}; figures are from the HAP workbook (fiscal years). ROCE and ROIC - WACC follow the house methodology."
         )
         run.italic = True
         run.font.size = Pt(7.5)

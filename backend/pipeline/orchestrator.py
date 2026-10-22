@@ -247,8 +247,10 @@ class PipelineOrchestrator:
             analysis, PipelineStage.FETCH_SEC_FILINGS, 35, log, sec_filings_manifest=manifest_path
         )
 
+        # the mapping must read the fiscal years of THIS workbook (FY2010-FY2019 for a back-test); without it the Inputs tax block falls back to
+        # the default FY2016-FY2025 window and writes the wrong years (FY2018-FY2023 tax into FY2012-FY2017 columns)
         _intent_report, intents_path, log = self.generate_write_intents_stage.run(
-            analysis, custom_run, company_facts
+            analysis, custom_run, company_facts, workbook_path=workbook_path
         )
         analysis.pipeline.outputs.write_intents = intents_path
         analysis.decision_log.append(log)
@@ -281,6 +283,9 @@ class PipelineOrchestrator:
         completed_workbook_path = self.output_service.artifact_path(
             analysis_id, "completed_workbook.xlsx"
         )
+        from services.stale_prior_quarter_service import clear_stale_prior_quarter
+
+        clear_stale_prior_quarter(completed_workbook_path)       # no previous period for a new company: drop the template's later-dated column
         discrepancy_report, validation_path, discrepancy_path, log = (
             self.validate_workbook_stage.run(
                 analysis,

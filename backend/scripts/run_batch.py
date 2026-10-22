@@ -2,6 +2,9 @@
 
     python scripts/run_batch.py TKR:new_company SXI:new_company WWD:new_company
     python scripts/run_batch.py AMAT:quarterly_update:2025Q1      # optional third part: the period to update, when the folder holds several
+    python scripts/run_batch.py TPL:new_company:2019Q4 TPL:new_company:2020Q3 --lease-rate TPL=0.05
+                                  # a new company can also name its period when the folder holds several workbooks of it (one run each);
+                                  # --lease-rate: an analyst-confirmed lease discount rate, used when HAP finds no evidence for one (no debt)
 
 Files are matched by name in the work folder (default Downloads\\HAP work):
   workbook      a ticker and a period in any order or style: "RPM 2027 Q1 - Industrial Template v28.2.xlsx", "RPM_2027Q1.xlsx",
@@ -44,7 +47,7 @@ _CRF_PREFIX = re.compile(r"^custom[ _\-]*run[ _\-]*filter", re.I)
 _CRF_NAME = re.compile(
     r"^custom[ _\-]*run[ _\-]*filter[ _\-]*"
     r"(?:(?P<d>\d{4}[ _\-]\d{2}[ _\-]\d{2}(?:[ _\-]+\d{2}[ _\-]\d{2})?)[ _\-]+)?"
-    r"(?P<t>[A-Za-z0-9][A-Za-z0-9.\-]*)$", re.I)
+    r"(?P<t>[A-Za-z0-9][A-Za-z0-9.\-]*)(?:[ _]+.*)?$", re.I)
 TYPES = {"new_company", "annual_update", "quarterly_update"}
 PERIOD_ORDER = {"Q1": 1, "Q2": 2, "Q3": 3, "Q4": 4, "FY": 5}
 
@@ -55,6 +58,7 @@ class Match:
     previous: Path | None = None
     crf: Path | None = None
     standin: dict | None = None
+    pit: dict | None = None
     notes: list[str] = field(default_factory=list)
     problems: list[str] = field(default_factory=list)
 
@@ -146,6 +150,14 @@ def match_files(folder: Path, ticker: str, analysis_type: str, period: tuple[int
     books.sort(key=lambda x: x[0])
     if not books:
         out.problems.append(f"no workbook for {t} (expected '{t} <year> <Q#|FY> ...xlsx')")
+    elif analysis_type == "new_company" and period is not None:
+        chosen = [b for b in books if b[0] == period]
+        if len(chosen) == 1:
+            out.workbook = chosen[0][1]
+        elif not chosen:
+            out.problems.append(f"no workbook for {t} for the requested period; found: " + ", ".join(p.name for _k, p in books))
+        else:
+            out.problems.append(f"{len(chosen)} workbooks for {t} for the requested period: " + ", ".join(p.name for _k, p in chosen))
     elif analysis_type == "new_company":
         if len(books) > 1:
             out.problems.append(f"{len(books)} workbooks for {t}; a new company needs exactly one: " + ", ".join(p.name for _k, p in books))
@@ -218,6 +230,48 @@ def _period_label(key: tuple[int, int]) -> str:
     return f"{key[0]}{'FY' if key[1] == 5 else 'Q' + str(key[1])}"
 
 
+def apply_point_in_time(match: Match, ticker: str, results: Path, mode: str) -> None:
+    """Back-test: when the custom run filter holds history later than the period being updated, use the filter as it stood at the end of
+    that period (scalars from the quarter's history column, nothing later) and price the run with that quarter's average price."""
+    if mode == "off" or match.standin or match.crf is None or match.workbook is None:
+        return
+    key = _period_key(match.workbook)
+    if key is None:
+        return
+    from services.market_price_service import MarketPriceService
+    from services.point_in_time_filter_service import (
+        PointInTimeError, available_quarters, build_point_in_time, infer_share_factor, quarter_key,
+    )
+
+    year, order = key
+    label = f"{year} Q{4 if order == 5 else order}"
+    try:
+        quarters = available_quarters(match.crf)
+        if label not in quarters:
+            match.notes.append(f"point-in-time not applied: {match.crf.name} has no history column for {label}")
+            return
+        if quarter_key(label) >= quarter_key(quarters[-1]):
+            return                                           # the filter's latest quarter: it is already current for this period
+        factor = infer_share_factor(match.workbook, match.crf, label)
+        info = build_point_in_time(match.crf, label, results / "_point_in_time" / f"custom_run_filter_pit_{ticker}_{label.replace(' ', '')}.xlsx",
+                                   share_factor=factor)
+    except PointInTimeError as exc:
+        match.notes.append(f"point-in-time not applied: {exc}")
+        return
+    match.pit = info
+    match.crf = Path(info["path"])
+    MarketPriceService.set_point_in_time(ticker, info["price_quarter_average"], f"custom run filter quarter average ({label})")
+    if info.get("share_factor", 1.0) != 1.0:
+        match.notes.append(
+            f"share basis: the workbook is adjusted for later splits (diluted shares x{info['share_factor']:g} the filter's), so the filter's "
+            f"per-share figures were divided by {info['share_factor']:g} before use"
+        )
+    match.notes.append(
+        f"point-in-time back-test as of {label} (quarter end {info['quarter_end']}) from {info['source']}: price = quarter average "
+        f"{info['price_quarter_average']:.2f}, max entry price {info['max_price_to_buy']:.2f}; PE10 percentile is approximate (quarterly history)"
+    )
+
+
 def _copy_upload(src: Path, dest: Path):
     from models.analysis import UploadedFileMetadata
     from models.common import utc_now_iso
@@ -225,6 +279,21 @@ def _copy_upload(src: Path, dest: Path):
     dest.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy2(src, dest)
     return UploadedFileMetadata(filename=src.name, stored_filename=dest.name, size_bytes=dest.stat().st_size, uploaded_at=utc_now_iso())
+
+
+def _apply_analyst_lease_rate(orchestrator, output_service, analysis, rate: float, notes: list[str]):
+    """An analyst-confirmed lease rate, for a company where HAP finds no evidence for one (no debt, no disclosed lease rate)."""
+    try:
+        review = output_service.read_json(analysis.analysis_id, "lease_rate_review.json")
+    except FileNotFoundError:
+        return analysis
+    if review.get("selected_rate") is not None or review.get("approved_rate") is not None:
+        return analysis                                       # HAP found its own rate: the analyst's is not needed
+    analysis = orchestrator.finalize_new_company_review(
+        analysis, action="correct", rate=rate, reason="Analyst-confirmed lease discount rate (HAP found no company evidence for one)"
+    )
+    notes.append(f"lease rate {rate:.2%} set by the analyst (HAP had no evidence for one)")
+    return analysis
 
 
 def _period_of(excel: Path, deliv: dict) -> tuple[int | None, int | None]:
@@ -235,12 +304,13 @@ def _period_of(excel: Path, deliv: dict) -> tuple[int | None, int | None]:
     return deliv.get("fiscal_year"), deliv.get("fiscal_quarter")
 
 
-def run_one(ticker: str, analysis_type: str, match: Match, sheet, results: Path) -> dict:
+def run_one(ticker: str, analysis_type: str, match: Match, sheet, results: Path, lease_rate: float | None = None, analyst: dict | None = None) -> dict:
     import main as hap_main
     from models.analysis import AnalysisFiles, CreateAnalysisRequest
     from services.deliverable_naming import business_deliverable_name, email_deliverable_name
     from services.business_doc_service import BusinessDocService
-    from services.email_draft_service import EmailDraftService
+    from services.email_draft_service import EmailDraftService, SheetFields
+    from services.daily_sheet_service import custom_filter_status
 
     analysis_service, file_service, output_service = hap_main.analysis_service, hap_main.file_service, hap_main.output_service
     orchestrator = hap_main.pipeline_orchestrator
@@ -259,6 +329,8 @@ def run_one(ticker: str, analysis_type: str, match: Match, sheet, results: Path)
 
     notes: list[str] = list(match.notes)
     analysis = orchestrator.run(analysis_id)
+    if lease_rate is not None and analysis_type == "new_company":
+        analysis = _apply_analyst_lease_rate(orchestrator, output_service, analysis, lease_rate, notes)
     if analysis.status == "awaiting_analyst_review":
         review = {}
         try:
@@ -304,10 +376,13 @@ def run_one(ticker: str, analysis_type: str, match: Match, sheet, results: Path)
             )
         except Exception:  # noqa: BLE001 - the projection lines are optional (Q2 and Q3 only)
             projection = None
-    from services.daily_sheet_service import custom_filter_status
-    from services.email_draft_service import SheetFields
 
     fields = sheet.fields(ticker) if sheet else SheetFields()
+    if match.pit and sheet:
+        # a back-test keeps today's classification only: market cap, TBV/P and status are the period's own (workbook and filter)
+        today = fields
+        fields = SheetFields(classified_as=today.classified_as)
+        notes.append("Classified as is today's value from the daily sheet (the period's own is not kept)")
     fields.pe10_status = custom_filter_status(match.crf, ticker)       # "Current Status with PE10 Percentile" of the custom run filter
     base = email_deliverable_name(fiscal_year=fy or 0, ticker=ticker, fiscal_quarter=fq)
     biz = None
@@ -315,11 +390,16 @@ def run_one(ticker: str, analysis_type: str, match: Match, sheet, results: Path)
         biz = BusinessDocService().produce_safe(
             ticker=ticker, company=company, workbook_path=excel, output_dir=out_dir,
             base_name=business_deliverable_name(fiscal_year=fy or 0, ticker=ticker, fiscal_quarter=fq),
-            search_dir=out_dir, sheet_fields=sheet.fields(ticker) if sheet else None,
+            search_dir=out_dir, sheet_fields=(SheetFields(classified_as=sheet.fields(ticker).classified_as) if match.pit else sheet.fields(ticker)) if sheet else None,
+            fiscal_year=fy, fiscal_quarter=fq, analyst_notes=analyst,
         )
     email = EmailDraftService().produce_safe(
         analysis_type=analysis_type, ticker=ticker, company=company, workbook_path=excel, output_dir=out_dir,
         sheet=fields, base_name=base, fiscal_year=fy, fiscal_quarter=fq, projection=projection,
+        highlights=(analyst or {}).get("highlights"),
+        basis_note=(f"Per-share figures (price, entry prices, EPS) are on the workbook's share basis, adjusted for later splits "
+                    f"(x{match.pit['share_factor']:g}); the prices seen at the time were x{match.pit['share_factor']:g} these.")
+        if match.pit and match.pit.get("share_factor", 1.0) != 1.0 else None,
         attachments=[excel] + ([Path(biz["path"])] if biz and biz.get("path") else []),
     )
     results.mkdir(parents=True, exist_ok=True)
@@ -350,9 +430,21 @@ def main() -> int:
     ap.add_argument("jobs", nargs="+", help="TICKER:analysis_type[:period], for example WWD:new_company or AMAT:quarterly_update:2025Q1")
     ap.add_argument("--work", default=str(DOWNLOADS / "HAP work"))
     ap.add_argument("--results", default=str(DOWNLOADS / "HAP results"))
+    ap.add_argument("--point-in-time", choices=("auto", "off"), default="auto",
+                    help="auto: when the custom run filter has history later than the period, back-test as of that period (default)")
+    ap.add_argument("--lease-rate", action="append", default=[], metavar="TICKER=RATE",
+                    help="analyst-confirmed lease discount rate (for example TPL=0.05), used only when HAP finds no evidence for one")
+    ap.add_argument("--notes", default=None, metavar="FILE.json",
+                    help='analyst commentary per run, {"TPL 2020Q3": {"highlights": "...", "quarter_title": "...", "quarter_notes": ["..."]}}: '
+                         "the highlights go into the email, the quarter notes into the Business document")
     ap.add_argument("--sheet-url", default=None, help="published .xlsx link of the Google Sheet (or set HAP_SHEET_URL); falls back to the newest download")
     args = ap.parse_args()
     work, results = Path(args.work), Path(args.results)
+    notes = json.loads(Path(args.notes).read_text(encoding="utf-8")) if args.notes else {}
+    lease_rates: dict[str, float] = {}
+    for item in args.lease_rate:
+        key, _, val = item.partition("=")
+        lease_rates[key.strip().upper()] = float(val)
 
     from services.daily_sheet_service import open_daily_sheet
 
@@ -380,11 +472,19 @@ def main() -> int:
             print(f"[{ticker}] skipped: {report[-1]['problem']}")
             continue
         print(f"[{ticker}] {kind}: {match.workbook.name} + {match.crf.name}" + (f" (previous {match.previous.name})" if match.previous else ""), flush=True)
+        apply_point_in_time(match, ticker, results, args.point_in_time)
         try:
-            result = run_one(ticker, kind, match, sheet, results)
+            result = run_one(ticker, kind, match, sheet, results, lease_rates.get(ticker),
+                             notes.get(f"{ticker} {_period_label(_period_key(match.workbook))}") if match.workbook else None)     # the daily sheet holds today's fields
         except Exception as exc:  # noqa: BLE001 - one company must not stop the batch
             traceback.print_exc()
             result = {"ticker": ticker, "type": kind, "problem": f"{type(exc).__name__}: {exc}"}
+        finally:
+            from services.market_price_service import MarketPriceService
+
+            MarketPriceService.clear_point_in_time(ticker)
+        if match.pit:
+            result["point_in_time"] = match.pit
         report.append(result)
         print(f"[{ticker}] {result.get('status', 'FAILED')}: {result.get('problem') or ', '.join(result.get('notes') or ['done'])}", flush=True)
 

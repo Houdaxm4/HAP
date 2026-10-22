@@ -153,6 +153,12 @@ class NewCompanyTaxService:
                 )
             years.append(year)
 
+        derived = self._fill_derived_rates(workbook_path, years)
+        if derived:
+            warnings.append(
+                "TAX_RATE_DERIVED_FROM_STATEMENTS: " + ", ".join(derived) + " (no filing reconciliation table: effective rate = 1 - net income / pre-tax income, "
+                "shown as the federal rate; confirm)"
+            )
         complete = all(y.category_coverage_complete and y.cells_written for y in years) if years else False
         return NewCompanyTaxReport(
             analysis_id=analysis_id,
@@ -165,6 +171,71 @@ class NewCompanyTaxService:
                 f"with statutory+ETR coverage; warnings={len(warnings)}."
             ),
         )
+
+    @staticmethod
+    def _fill_derived_rates(workbook_path: Path, years: list) -> list[str]:
+        """Fill Inputs rows 107-112 for years the filings gave no table for, so NOPAT is taxed instead of treated as untaxed.
+
+        Only blank years are touched. Effective rate = 1 - consolidated net income / pre-tax income (Inputs rows 38 and 37); in percentage mode the rate,
+        in USD-millions mode the tax charge, goes to the federal row and the total, and the other rows are 0. Each change is written to the HAP Adjustments tab."""
+        from openpyxl import load_workbook
+
+        from services.adjustment_ledger_service import AdjustmentLedger
+
+        wb = load_workbook(workbook_path)
+        done: list[str] = []
+        try:
+            if "Inputs" not in wb.sheetnames:
+                return done
+            ws = wb["Inputs"]
+            cols = {str(ws.cell(1, c).value or "").replace(" ", "").upper(): c for c in range(3, (ws.max_column or 3) + 1)}
+            try:                                              # the Inputs headers are links to the statements: read the years the way the mapping does
+                from openpyxl.utils import column_index_from_string
+
+                from services.annual_period_service import detect_workbook_years
+
+                for fy, col in detect_workbook_years(workbook_path).items():
+                    cols[str(fy).replace(" ", "").upper()] = column_index_from_string(col) if isinstance(col, str) else int(col)
+            except Exception:  # noqa: BLE001 - fall back to the header text
+                pass
+            percent_mode = int(ws["E106"].value or 0) == 1
+            ledger = None
+            for y in years:
+                col = cols.get(str(y.fiscal_year).replace(" ", "").upper())
+                if not col or any(ws.cell(r, col).value not in (None, "") for r in range(107, 113)):
+                    continue
+                pretax, net = ws.cell(37, col).value, ws.cell(38, col).value
+                present = lambda v: isinstance(v, (int, float)) or (isinstance(v, str) and v.startswith("="))   # the template links these rows to the statements
+                if not present(pretax) or not present(net):
+                    continue
+                if isinstance(pretax, (int, float)) and pretax <= 0:
+                    continue
+                rate = (1 - net / pretax) if isinstance(pretax, (int, float)) and isinstance(net, (int, float)) else None
+                if rate is not None and not 0 <= rate <= 0.6:
+                    continue
+                letter = ws.cell(1, col).column_letter
+                # percentage mode: the rate itself; USD-millions mode: the tax charge (pre-tax income - net income), the sheet divides it by EBT.
+                # Guarded so a loss year or a missing statement cell gives 0 instead of an error.
+                formula = (f"=IFERROR(MAX(0,MIN(0.6,1-{letter}38/{letter}37)),0)" if percent_mode
+                           else f"=IFERROR(MAX(0,{letter}37-{letter}38),0)")
+                ws.cell(112, col).value = formula
+                ws.cell(107, col).value = f"={letter}112"
+                for r in range(108, 112):
+                    ws.cell(r, col).value = 0
+                ledger = ledger or AdjustmentLedger(wb)
+                ledger.record(
+                    sheet="Inputs", cell=f"{letter}112", fiscal_year=y.fiscal_year, category="Missing figure",
+                    what="Effective tax rate derived from the statements", original="blank", new=formula + (f" ({rate:.1%})" if rate is not None else ""), amount=rate,
+                    reason="No rate-reconciliation table was found for this year. Effective rate = 1 - net income / pre-tax income, shown as federal "
+                           "(state, foreign, credits and other = 0). Replace with the 10-K reconciliation when available.",
+                    source="workbook statements", method="derived", confidence="medium", mark_cell=False, status="Derived",
+                )
+                done.append(str(y.fiscal_year))
+            if done:
+                wb.save(workbook_path)
+            return done
+        finally:
+            wb.close()
 
     @staticmethod
     def _disclosure(mapped: dict[str, float | None]) -> dict[str, str]:

@@ -144,18 +144,46 @@ def headquarters(ticker: str, sec=None) -> str:
     return sec_identity(ticker, sec)[1]
 
 
-def _latest_cached_business_text(search_dir: Path | None) -> str:
+def as_of_date(fiscal_year: int | None, fiscal_quarter: int | None) -> str | None:
+    """Last day of the period being analysed ('2020-09-30' for 2020 Q3, '2019-12-31' for FY2019), or None when no period is given."""
+    if not fiscal_year:
+        return None
+    if fiscal_quarter in (1, 2, 3, 4):
+        month = 3 * int(fiscal_quarter)
+        day = 31 if month in (3, 12) else 30
+        return f"{int(fiscal_year)}-{month:02d}-{day:02d}"
+    return f"{int(fiscal_year)}-12-31"
+
+
+def _latest_cached_business_text(search_dir: Path | None, as_of: str | None = None) -> str:
+    """The newest cached 10-K Business text of the analysis folder; with `as_of`, only the text of the 10-K that was current then."""
     if not search_dir or not Path(search_dir).exists():
         return ""
     from services.new_company_buyback_service import html_to_text
 
-    files = sorted(Path(search_dir).glob("sec_cache/**/10k_business_*.htm"), key=lambda p: p.name)
+    pattern = f"sec_cache/**/10k_business_{as_of}*.htm" if as_of else "sec_cache/**/10k_business_*.htm"
+    files = sorted(Path(search_dir).glob(pattern), key=lambda p: p.name)
     if not files:
         return ""
     return html_to_text(files[-1].read_text(encoding="utf-8", errors="ignore"))
 
 
-def _fetch_latest_business_text(ticker: str) -> str:
+def current_10k(sec, cik: str | list[str], as_of: str | None) -> dict | None:
+    """The newest 10-K of the company, or (a back-test) the newest one whose fiscal year had ended by `as_of` ('YYYY-MM-DD').
+
+    `cik` may be a list (the company and the filer it replaced): the filings of all of them are considered."""
+    filings = []
+    for one in ([cik] if isinstance(cik, str) else list(cik)):
+        filings += [f for f in sec.list_recent_filings(one, forms={"10-K"}) if f.get("document_url")]
+    filings.sort(key=lambda f: f.get("report_date") or "", reverse=True)
+    if as_of:
+        filings = [f for f in filings if (f.get("report_date") or "9999") <= as_of]
+        filings.sort(key=lambda f: f.get("report_date") or "", reverse=True)
+    return filings[0] if filings else None
+
+
+def _fetch_latest_business_text(ticker: str, as_of: str | None = None) -> str:
+    """Business text of the newest 10-K from SEC; with `as_of`, of the 10-K that was the latest annual report on that date."""
     if not sec_text_fetch_enabled():
         return ""
     try:
@@ -164,17 +192,33 @@ def _fetch_latest_business_text(ticker: str) -> str:
 
         sec = SecService()
         cik = sec.resolve_cik(ticker)
-        filings = [f for f in sec.list_recent_filings(cik, forms={"10-K"}) if f.get("document_url")]
-        if not filings:
+        filing = current_10k(sec, [cik] + (sec.predecessor_ciks(ticker) if as_of else []), as_of)
+        if not filing:
             return ""
-        return html_to_text(sec.fetch_document_text(filings[0]["document_url"], cik=cik, cache_name="10k_business_latest.htm"))
+        cache = f"10k_business_{filing.get('report_date') or 'latest'}.htm" if as_of else "10k_business_latest.htm"
+        return html_to_text(sec.fetch_document_text(filing["document_url"], cik=cik, cache_name=cache))
     except Exception:  # noqa: BLE001
         return ""
 
 
-def describe(ticker: str, search_dir: Path | None = None, *, with_headquarters: bool = True) -> CompanyDescription:
+def tenk_label(ticker: str, as_of: str | None) -> str:
+    """'FY2019 10-K' for the filing the Business text came from ('latest 10-K' when no date is given or it cannot be found)."""
+    if not as_of:
+        return "latest 10-K"
+    try:
+        from services.sec_service import SecService
+
+        sec = SecService()
+        filing = current_10k(sec, [sec.resolve_cik(ticker)] + sec.predecessor_ciks(ticker), as_of)
+        year = str((filing or {}).get("report_date") or "")[:4]
+        return f"FY{year} 10-K" if year.isdigit() else "latest 10-K"
+    except Exception:  # noqa: BLE001
+        return "latest 10-K"
+
+
+def describe(ticker: str, search_dir: Path | None = None, *, with_headquarters: bool = True, as_of: str | None = None) -> CompanyDescription:
     """The description from the analysis folder's cached 10-K, or the newest 10-K from SEC when none is cached."""
-    text = _latest_cached_business_text(search_dir) or _fetch_latest_business_text(ticker)
+    text = _latest_cached_business_text(search_dir, as_of) or _fetch_latest_business_text(ticker, as_of)
     predicate = predicate_from_business_text(text) if text else ""
     name, hq = sec_identity(ticker) if (predicate and with_headquarters) else ("", "")
     return CompanyDescription(

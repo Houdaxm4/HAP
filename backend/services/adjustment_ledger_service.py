@@ -36,6 +36,7 @@ CATEGORY_FILL = {
     "Enterprise value input": "E4DFEC",
     "Filled from filing": "E6F4EA",
     "Differs from filing": "FDE2E2",
+    "Point-in-time": "FDE2E2",
     "Missing figure": "FDE2E2",
     "Recast to latest definition": "FFF1C2",
     "Formula problem": "FCE4D6",

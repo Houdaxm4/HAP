@@ -12,8 +12,22 @@ class MarketPriceService:
     """
     Fetch a live share price for Inputs current-data completion.
 
-    Never substitutes Bloomberg CRF stale price as live current.
+    Never substitutes Bloomberg CRF stale price as live current, except in a point-in-time back-test, where the batch registers the
+    quarter's price from the custom run filter history (a live quote would be today's price, not the period's).
     """
+
+    _point_in_time: dict[str, tuple[float, str]] = {}
+
+    @classmethod
+    def set_point_in_time(cls, ticker: str, price: float, source: str) -> None:
+        cls._point_in_time[ticker.strip().upper()] = (float(price), source)
+
+    @classmethod
+    def clear_point_in_time(cls, ticker: str | None = None) -> None:
+        if ticker is None:
+            cls._point_in_time.clear()
+        else:
+            cls._point_in_time.pop(ticker.strip().upper(), None)
 
     def get_price(self, ticker: str) -> tuple[float | None, str | None]:
         """
@@ -22,6 +36,8 @@ class MarketPriceService:
         symbol = (ticker or "").strip().upper()
         if not symbol:
             return None, None
+        if symbol in self._point_in_time:
+            return self._point_in_time[symbol]
         price = self._yahoo_chart(symbol)
         if price is not None:
             return price, "market_internet:yahoo_chart"

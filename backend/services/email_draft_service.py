@@ -266,7 +266,7 @@ def _read_quarter(wb, f: Facts) -> None:
 
     if LQ_IS in wb.sheetnames:
         ws = wb[LQ_IS]
-        for c in range(2, 10):
+        for c in (3, 2, 4, 5, 6, 7, 8, 9):                       # the quarter's own column first: column B holds the template's live label
             for r in (1, 2, 3, 4, 5, 6, 7, 8, 9):
                 text = str(ws.cell(r, c).value or "")
                 m = re.search(r"FQ(\d)\s*(\d{4})", text)
@@ -295,11 +295,14 @@ def _read_quarter(wb, f: Facts) -> None:
             f.q_yoy["cfo"] = {"ytd": (_value(ws, r, 3), _value(ws, r, 4))}
     if LQ_BS in wb.sheetnames:
         ws = wb[LQ_BS]
+        from services.stale_prior_quarter_service import prior_quarter_is_earlier
+
+        prior_ok = prior_quarter_is_earlier(ws)                     # a prior column dated after the quarter (a stale template pull) is not a prior quarter
         q: dict[str, Any] = {}
         for key, code in (("assets", "BS_TOT_ASSET"), ("liabilities", "BS_TOT_LIAB2"), ("retained", "BS_PURE_RETAINED_EARNINGS"),
                           ("equity", "TOTAL_EQUITY")):
             r = _find_code_row(ws, code)
-            q[key] = (_value(ws, r, 3), _value(ws, r, 4)) if r else (None, None)
+            q[key] = (_value(ws, r, 3), _value(ws, r, 4) if prior_ok else None) if r else (None, None)
         f.q_qoq = q
 
 
@@ -567,6 +570,7 @@ class EmailDraftService:
         fiscal_year: int | None = None,
         fiscal_quarter: int | None = None,
         attachments: list[Path] | None = None,
+        basis_note: str | None = None,
     ) -> dict[str, str]:
         facts = read_facts(workbook_path, ticker=ticker, company=company)
         if fiscal_year and fiscal_quarter in (1, 2, 3):
@@ -577,13 +581,16 @@ class EmailDraftService:
         if projection:
             facts.projection = projection
         if description is None and analysis_type in ("annual_update", "new_company"):
-            description = self._describe(analysis_type, ticker, company or facts.company, output_dir)
+            description = self._describe(analysis_type, ticker, company or facts.company, output_dir, fiscal_year, fiscal_quarter)
         if analysis_type == "quarterly_update":
             subject, body = render_quarter(facts, sheet=sheet, highlights=highlights)
         elif analysis_type == "annual_update":
             subject, body = render_annual(facts, sheet=sheet, description=description, highlights=highlights)
         else:
             subject, body = render_new_company(facts, sheet=sheet, description=description, highlights=highlights, conclusion=conclusion)
+        if basis_note:
+            tail = "Let me know if you have any questions."
+            body = body.replace(tail, basis_note + "\n\n" + tail, 1) if tail in body else body + "\n\n" + basis_note
         output_dir.mkdir(parents=True, exist_ok=True)
         stem = base_name or f"Email draft {subject}"
         txt = output_dir / f"{stem}.txt"
@@ -605,12 +612,13 @@ class EmailDraftService:
         return {"subject": subject, "text_path": str(txt), "eml_path": str(eml), "body": body}
 
     @staticmethod
-    def _describe(analysis_type: str, ticker: str, company: str, output_dir: Path) -> str | None:
-        """The one-line description taken from the company's own 10-K (see company_description_service)."""
+    def _describe(analysis_type: str, ticker: str, company: str, output_dir: Path, fiscal_year: int | None = None,
+                  fiscal_quarter: int | None = None) -> str | None:
+        """The one-line description taken from the company's own 10-K that was current for the period (see company_description_service)."""
         try:
-            from services.company_description_service import describe
+            from services.company_description_service import as_of_date, describe
 
-            found = describe(ticker, output_dir)
+            found = describe(ticker, output_dir, as_of=as_of_date(fiscal_year, fiscal_quarter))
             name = company or found.name or ticker
             return found.annual(name) if analysis_type == "annual_update" else found.new_company(name)
         except Exception:  # noqa: BLE001 - the description is optional; the bracketed line stays

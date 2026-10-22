@@ -774,9 +774,17 @@ class NewCompanyLeaseService:
                     rate_row = row
                     break
             fy_cols = [c for k, c in cols.items() if str(k).startswith("FY")]
+            for c in range(2, (ws.max_column or 2) + 1):          # the Leases tab starts one column left of the others (B): do not miss its first year
+                v = ws.cell(rate_row, c).value
+                if c not in fy_cols and isinstance(v, str) and v.startswith("=") and "Inputs!" in v and "/" in v:
+                    fy_cols.append(c)
             for col in fy_cols:
                 cell = ws.cell(rate_row, col)
                 if isinstance(cell.value, str) and cell.value.startswith("="):
+                    # the template derives the rate from interest / debt: keep that where the company has debt, and use the selected rate
+                    # where it cannot be derived (no debt gives #DIV/0!, which stopped invested capital and ROIC for debt-free companies)
+                    if "IFERROR(" not in cell.value.upper():
+                        cell.value = f"=IFERROR({cell.value[1:]},{rate})"
                     continue
                 cell.value = rate
             wb.save(path)

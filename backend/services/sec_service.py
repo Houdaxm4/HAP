@@ -75,6 +75,12 @@ class SecService:
         self._last_request_at = 0.0
         self._ticker_map: dict[str, str] | None = None
 
+    # a company that reorganised files under a new CIK: its older 10-Ks (and the financial history in them) stay under the old one
+    PREDECESSOR_CIKS: dict[str, tuple[str, ...]] = {"TPL": ("0000097517",)}      # Texas Pacific Land Trust
+
+    def predecessor_ciks(self, ticker: str) -> list[str]:
+        return list(self.PREDECESSOR_CIKS.get(ticker.upper(), ()))
+
     def resolve_cik(self, ticker: str) -> str:
         """Map a ticker symbol to a zero-padded 10-digit CIK."""
         ticker_map = self._load_ticker_map()
