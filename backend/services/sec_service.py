@@ -185,6 +185,23 @@ class SecService:
             cache_path.write_text(body, encoding="utf-8", errors="replace")
         return body
 
+    @staticmethod
+    def merge_company_facts(primary: dict[str, Any], older: dict[str, Any]) -> dict[str, Any]:
+        """Add the facts of a predecessor CIK (older filings) to the current issuer's facts; duplicates are dropped."""
+        merged = json.loads(json.dumps(primary))
+        for taxonomy, tags in (older.get("facts") or {}).items():
+            target = merged.setdefault("facts", {}).setdefault(taxonomy, {})
+            for tag, body in tags.items():
+                dest = target.setdefault(tag, {k: v for k, v in body.items() if k != "units"})
+                dest_units = dest.setdefault("units", {})
+                for unit, entries in (body.get("units") or {}).items():
+                    have = dest_units.setdefault(unit, [])
+                    seen = {(e.get("accn"), e.get("start"), e.get("end"), e.get("val")) for e in have}
+                    have.extend(
+                        e for e in entries if (e.get("accn"), e.get("start"), e.get("end"), e.get("val")) not in seen
+                    )
+        return merged
+
     def fetch_company_facts(self, cik: str) -> dict[str, Any]:
         """Download structured XBRL company facts for an issuer."""
         cache_path = self._cache_path(cik, "companyfacts.json")

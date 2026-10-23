@@ -48,6 +48,16 @@ _SBC_TAGS = ("AllocatedShareBasedCompensationExpense", "ShareBasedCompensation")
 _FCF_PROXY = ("NetCashProvidedByUsedInOperatingActivities",)
 _CAPEX = ("PaymentsToAcquirePropertyPlantAndEquipment",)
 
+def _clean_split_factor(raw: float) -> float:
+    """A share-count ratio rounded to a plausible split factor (whole numbers or halves within 3%); otherwise 1.0."""
+    if raw < 1.45:
+        return 1.0
+    for candidate in (round(raw * 2) / 2, round(raw)):
+        if candidate >= 1.5 and abs(raw - candidate) / candidate <= 0.03:
+            return float(candidate)
+    return 1.0
+
+
 _MIN_IMPLIED_PRICE = 5.0
 _MAX_IMPLIED_PRICE = 5_000.0
 _VALUE_RECONCILE_TOL = 0.25
@@ -313,6 +323,26 @@ def parse_cfs_repurchase_dash_zeros(text: str, filing_year: int) -> dict[int, di
     return out
 
 
+# "The Trust purchased and retired 373,030 Sub-shares during 2011" (a share count with no dollars)
+_SUBSHARE_SENTENCE = re.compile(
+    r"purchased\s+and\s+retired\s+(?P<shares>\d[\d,]*)\s+(?:Sub-?)?shares?\s+during\s+(?P<year>(?:19|20)\d{2})\b",
+    re.IGNORECASE,
+)
+
+
+def parse_subshare_sentences(text: str) -> dict[int, list[tuple[float, float | None]]]:
+    """Fiscal year -> [(shares_millions, None)] from "purchased and retired N Sub-shares during YYYY" sentences."""
+    out: dict[int, list[tuple[float, float | None]]] = {}
+    for match in _SUBSHARE_SENTENCE.finditer(text):
+        shares_m = round(float(match.group("shares").replace(",", "")) / 1_000_000.0, 6)
+        if shares_m <= 0:
+            continue
+        pair = (shares_m, None)
+        if pair not in out.setdefault(int(match.group("year")), []):
+            out[int(match.group("year"))].append(pair)
+    return out
+
+
 def _iter_tag_entries(company_facts: dict[str, Any], tag: str) -> list[dict[str, Any]]:
     facts = company_facts.get("facts") or {}
     for taxonomy in ("us-gaap", "dei", "ifrs-full"):
@@ -401,6 +431,16 @@ class NewCompanyBuybackService:
         sec = SecService(cache_dir=cache_dir)
         self._searched_filings = False
         closes = self._year_close_prices(workbook_path)
+        # A back-test workbook is pulled today, so its per-share history is adjusted for every later split, while a filing states
+        # the counts and prices of its own date. The factor is the workbook's diluted shares over the filing's, per year; the
+        # filing's share counts are compared with market prices as filed and converted to the workbook's basis at the end.
+        wb_diluted = self._workbook_diluted_shares(workbook_path)
+        split_factor: dict[int, float] = {}
+        for fy in fiscal_years:
+            filed_was, _ = self._fact(sec, company_facts, fy, _WAS_DILUTED, scale=True, shares=True)
+            if filed_was and wb_diluted.get(_fy_int(fy)):
+                split_factor[_fy_int(fy)] = _clean_split_factor(wb_diluted[_fy_int(fy)] / filed_was)
+        closes = {y: c * split_factor.get(y, 1.0) for y, c in closes.items()}
         years: list[BuybackYearResult] = []
         warnings: list[str] = []
         sbc_total = 0.0
@@ -553,6 +593,12 @@ class NewCompanyBuybackService:
                     year_warnings.append(
                         "Share-count change is not used as buybacks; Δshares diverges from disclosed/derived repurchases."
                     )
+            factor = split_factor.get(year_n, 1.0)
+            if factor > 1.0 and shares is not None:
+                shares = shares * factor
+                if avg is not None:
+                    avg = avg / factor
+                year_warnings.append(f"BUYBACK_SHARES_CONVERTED_TO_WORKBOOK_SPLIT_BASIS_X{factor:g}")
             if sbc:
                 sbc_total += sbc
             fcf = None
@@ -748,9 +794,32 @@ class NewCompanyBuybackService:
                     continue
                 if not _is_annual_duration(entry, year_n):
                     continue
-                val = _scale(float(entry["val"]))
+                val = abs(_scale(float(entry["val"])))        # repurchase dollars are an outflow; filers sign the tag either way
                 return val, f"sec_xbrl:{tag}"
         return None, None
+
+    @staticmethod
+    def _workbook_diluted_shares(workbook_path: Path) -> dict[int, float]:
+        """Fiscal-year diluted weighted-average shares of the workbook (millions), on the workbook's split-adjusted basis."""
+        try:
+            wb = load_workbook(workbook_path, data_only=True)
+        except Exception:  # noqa: BLE001 - advisory data
+            return {}
+        try:
+            if "Income - GAAP" not in wb.sheetnames:
+                return {}
+            ws = wb["Income - GAAP"]
+            row = next((r for r in range(1, min(ws.max_row or 1, 140) + 1) if ws.cell(r, 2).value == "IS_SH_FOR_DILUTED_EPS"), None)
+            if row is None:
+                return {}
+            out: dict[int, float] = {}
+            for fy, col in detect_year_columns(ws, wb).items():
+                value = _num(ws.cell(row, col).value)
+                if str(fy).startswith("FY") and value:
+                    out[_fy_int(fy)] = value
+            return out
+        finally:
+            wb.close()
 
     def _narrative_disclosures(
         self,
@@ -820,6 +889,7 @@ class NewCompanyBuybackService:
                 out[year] = row
             for kind, parsed in (
                 ("repurchase_sentence", parse_repurchase_sentences(plain)),
+                ("subshare_sentence", parse_subshare_sentences(plain)),
                 ("multi_year_sentence", parse_multi_year_repurchases(plain)),
                 ("annual_summary_sentence", parse_annual_shares_narrative(plain, filing_year)),
                 ("equity_statement_treasury_row", parse_equity_statement_repurchases(plain)),

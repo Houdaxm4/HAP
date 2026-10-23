@@ -279,6 +279,16 @@ class CustomRunService:
                 f"found {found!r} there."
             )
         scalar_start = fy_row + _SCALAR_START_AFTER_FY
+        series_end = fy_row + _SERIES_BAND_AFTER_FY
+        series_stop = fy_row - 1
+        # Some exports (TPL, Feb 2024) put the 'Fiscal Year' row in the middle of the series block, so the distances from
+        # it are wrong: E10, PE10 and the growth rows lie below it and the scalar block starts further down. The scalar
+        # block begins at 'Current E10', so when that label lies below where the distance says, anchor on it instead.
+        ce_row = self._label_row(rows, "Current E10", fy_row + 1)
+        if ce_row is not None and ce_row > scalar_start:
+            scalar_start = ce_row
+            series_end = ce_row - (_SCALAR_START - _SERIES_END)
+            series_stop = series_end
         # the PE10 column: an empty column-A cell with 'PE10' in column B, followed by a row numbered 0
         header = None
         for row_idx in range(scalar_start, len(rows)):
@@ -292,7 +302,6 @@ class CustomRunService:
         if header is None:
             # no PE10 history column (small or hand-made files): keep the original distance from the 'Fiscal Year' row
             header = _PE10_HEADER_ROW + (fy_row - _FISCAL_YEAR_ROW)
-        series_stop = fy_row - 1
         growth_rows = {
             key: self._label_row(rows, label, _SERIES_START, series_stop) for key, label in _GROWTH_LABELS.items()
         }
@@ -300,7 +309,7 @@ class CustomRunService:
             date_row=_DATE_ROW,
             fiscal_quarter_row=_FISCAL_QUARTER_ROW,
             fiscal_year_row=fy_row,
-            series_end=fy_row + _SERIES_BAND_AFTER_FY,
+            series_end=series_end,
             scalar_start=scalar_start,
             scalar_end=header - _SCALAR_END_BEFORE_PE10,
             pe10_header_row=header,

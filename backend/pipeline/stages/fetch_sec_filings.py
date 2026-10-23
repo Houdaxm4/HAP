@@ -32,6 +32,22 @@ class FetchSecFilingsStage:
         cik = self.sec_service.resolve_cik(analysis.ticker)
         manifest = self.sec_service.fetch_filings_manifest(analysis.ticker, cik)
         company_facts = self.sec_service.fetch_company_facts(cik)
+        # a company that changed CIK (TPL: Trust -> Corporation): its older 10-Ks and XBRL facts sit under the old CIK
+        for old_cik in self.sec_service.predecessor_ciks(analysis.ticker):
+            try:
+                old_manifest = self.sec_service.fetch_filings_manifest(analysis.ticker, old_cik)
+                have = {f.get("accession_number") for f in manifest.get("selected_filings", [])}
+                manifest["selected_filings"] = manifest.get("selected_filings", []) + [
+                    f
+                    for f in old_manifest.get("selected_filings", [])
+                    if f.get("filing_type") == "10-K" and f.get("accession_number") not in have
+                ]
+                manifest.setdefault("predecessor_ciks", []).append(old_cik)
+                company_facts = self.sec_service.merge_company_facts(
+                    company_facts, self.sec_service.fetch_company_facts(old_cik)
+                )
+            except SecServiceError:
+                continue
 
         manifest_path = self.output_service.write_json(
             analysis.analysis_id,

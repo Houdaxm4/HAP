@@ -281,6 +281,39 @@ def _copy_upload(src: Path, dest: Path):
     return UploadedFileMetadata(filename=src.name, stored_filename=dest.name, size_bytes=dest.stat().st_size, uploaded_at=utc_now_iso())
 
 
+def _fill_expected_return_rows(excel: Path, analysis_id: str, ticker: str, notes: list[str]) -> None:
+    """Back-test: Bloomberg has no expected return for an earlier date, so Inputs B69:B71 take the workbook's own model.
+
+    B69 price-only and B70 price + dividends come from the Expected Returns & Buybacks tab (at the current price); B71 is the same
+    price + dividends return measured from the maximum entry price (Inputs B67). Blank cells only; the workbook is recalculated after."""
+    from openpyxl import load_workbook
+
+    tab = "'Expected Returns & Buybacks'"
+    formulas = {
+        "B69": f"={tab}!E14",
+        "B70": f"={tab}!F14",
+        "B71": f"=({tab}!D14/Inputs!B67)^(1/10)-1",
+    }
+    wb = load_workbook(excel)
+    try:
+        if "Inputs" not in wb.sheetnames or "Expected Returns & Buybacks" not in wb.sheetnames:
+            return
+        ws = wb["Inputs"]
+        todo = {cell: f for cell, f in formulas.items() if ws[cell].value in (None, "")}
+        if not todo:
+            return
+        for cell, formula in todo.items():
+            ws[cell] = formula
+        wb.save(excel)
+    finally:
+        wb.close()
+    from services.excel_recalc_service import ExcelRecalcService
+
+    report = ExcelRecalcService().recalculate(analysis_id=analysis_id, ticker=ticker, workbook_path=excel)
+    notes.append("Expected return rows (Inputs B69:B71) come from the workbook's own model, not Bloomberg (back-test)"
+                 + (f"; recalculation {report.status}, please open and recalculate" if report.status in ("UNAVAILABLE", "FAILED") else ""))
+
+
 def _apply_analyst_lease_rate(orchestrator, output_service, analysis, rate: float, notes: list[str]):
     """An analyst-confirmed lease rate, for a company where HAP finds no evidence for one (no debt, no disclosed lease rate)."""
     try:
@@ -354,6 +387,11 @@ def run_one(ticker: str, analysis_type: str, match: Match, sheet, results: Path,
     out_dir = output_service.analysis_output_dir(analysis_id)
     excel = Path(deliv["excel_path"])
     fy, fq = _period_of(excel, deliv)
+    if match.pit:
+        try:
+            _fill_expected_return_rows(excel, analysis_id, ticker, notes)
+        except Exception as exc:  # noqa: BLE001 - the rows stay blank; the run is not lost
+            notes.append(f"expected return rows not filled: {exc}")
     projection = None
     if analysis_type == "quarterly_update":
         try:
