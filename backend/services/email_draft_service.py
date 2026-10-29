@@ -140,6 +140,8 @@ class Facts:
     pe10_percentile: float | None = None
     max_entry: float | None = None
     ev_mos: float | None = None
+    ev_entry_mos: float | None = None             # Enterprise Value B32: stock price at the implied margin of safety, cash included
+    ev_implied_mos: float | None = None           # Enterprise Value B30: the implied margin of safety (25%)
     expected_return: float | None = None
     expected_return_adjusted: bool = False
     expected_return_red_flag: bool = False        # the model's return is unrealistic and was kept, with red flags in the HAP Adjustments tab
@@ -181,6 +183,10 @@ def _read_valuation(wb, f: Facts) -> None:
         f.market_cap_m = _value(ev, r, 2)
         r = _find_label_row(ev, "Margin of Safety")
         f.ev_mos = _value(ev, r, 2)
+        r = _find_label_row(ev, "Stock Price at Margin of Safety") or 32
+        f.ev_entry_mos = _value(ev, r, 2)
+        r = _find_label_row(ev, "Implied Margin of Safety") or 30
+        f.ev_implied_mos = _value(ev, r, 2)
         r = _find_label_row(ev, "Entry target price")
         f.graham_entry = _value(ev, r, 2)
     if "Expected Returns & Buybacks" in wb.sheetnames:
@@ -346,6 +352,7 @@ def _price_block(f: Facts) -> list[str]:
         "Price & MoS",
         f"Current price: {usd(f.price)}. PE10 percentile is at {pct(f.pe10_percentile)}. Max entry price {usd(f.max_entry)}.",
         f"EV MoS: {pct(f.ev_mos, 2, sign=True)}",
+        f"Entry price for MoS at {pct(f.ev_implied_mos if f.ev_implied_mos is not None else 0.25, 0)} (including cash): {usd(f.ev_entry_mos)}",
         f"Expected Return: {er}",
         f"Graham Entry Price: {usd(f.graham_entry)}",
     ]

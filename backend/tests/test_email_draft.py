@@ -19,7 +19,7 @@ from services.email_draft_service import (
 
 def _facts(**kw) -> Facts:
     f = Facts(ticker="LNN", company="Lindsay Corporation", fy="FY2025", quarter_label="2026 Q3", quarter_number=3, quarter_year=2026,
-              ytd_label="9M", price=93.34, market_cap_m=8920.0, tbv_p=0.0358, pe10_percentile=0.1687, max_entry=94.67, ev_mos=-1.0352,
+              ytd_label="9M", price=93.34, market_cap_m=8920.0, tbv_p=0.0358, pe10_percentile=0.1687, max_entry=94.67, ev_mos=-1.0352, ev_entry_mos=21.5, ev_implied_mos=0.25,
               expected_return=0.0468, expected_return_adjusted=True, graham_entry=28.72)
     f.fy_metrics = {
         "roce": (0.0729, 0.0837, 0.1097), "roic_wacc": (-0.0157, 0.0397, 0.0377), "a_l": (2.90, 2.89, None),
@@ -72,6 +72,7 @@ def test_quarter_email_matches_the_template():
     assert "Cash from Ops +36.49% ($476.2M vs. $348.9M)" in body
     assert "Comparison Q3 2026 to Q2 2026\nA/L: 1.61 vs. 1.59" in body
     assert "Expected Return: 4.68% (adjusted)" in body
+    assert "EV MoS: -103.52%\nEntry price for MoS at 25% (including cash): $21.50\nExpected Return" in body
     assert "Graham Entry Price: $28.72" in body
     assert body.rstrip().endswith("Very best,")
 
