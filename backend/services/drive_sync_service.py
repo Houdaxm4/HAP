@@ -80,8 +80,10 @@ class DriveFile:
 
 # --------------------------------------------------------------------------- sign-in (OAuth, desktop flow with PKCE)
 
-def _client_config(directory: Path) -> dict:
+def _client_config(directory: Path, client_file: str | None = None) -> dict:
     path = Path(os.environ.get("HAP_DRIVE_CLIENT_SECRET", "").strip() or directory / "client_secret.json")
+    if client_file and (directory / client_file).exists():
+        path = directory / client_file          # a separate OAuth client for this sign-in (for example the Gmail one)
     if not path.exists():
         raise DriveError(
             f"Google OAuth client file not found: {path}. Create a Desktop-app OAuth client in Google Cloud Console "
@@ -95,11 +97,11 @@ def _client_config(directory: Path) -> dict:
 
 
 def login(directory: Path | None = None, *, open_browser: bool = True, scope: str = SCOPE, token_name: str = "token.json",
-          purpose: str = "Google Drive (read-only)") -> Path:
+          purpose: str = "Google Drive (read-only)", client_file: str | None = None) -> Path:
     """Open the Google consent page, catch the redirect on localhost, store a refresh token. Returns the token file."""
     directory = Path(directory or auth_dir())
     directory.mkdir(parents=True, exist_ok=True)
-    cfg = _client_config(directory)
+    cfg = _client_config(directory, client_file)
     verifier = secrets.token_urlsafe(64)
     challenge = base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest()).rstrip(b"=").decode()
     state = secrets.token_urlsafe(16)

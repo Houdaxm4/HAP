@@ -59,7 +59,7 @@ def gmail_login() -> Path:
     """One-time sign-in as the sending mailbox; the token only allows sending mail (gmail.send)."""
     from services.drive_sync_service import login
 
-    return login(scope=GMAIL_SCOPE, token_name=GMAIL_TOKEN, purpose="Gmail (send only)")
+    return login(scope=GMAIL_SCOPE, token_name=GMAIL_TOKEN, purpose="Gmail (send only)", client_file="gmail_client_secret.json")
 
 
 def _prepare(eml_path: Path | str, recipient: str, sender: str | None):
