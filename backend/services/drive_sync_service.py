@@ -94,7 +94,8 @@ def _client_config(directory: Path) -> dict:
     return cfg
 
 
-def login(directory: Path | None = None, *, open_browser: bool = True) -> Path:
+def login(directory: Path | None = None, *, open_browser: bool = True, scope: str = SCOPE, token_name: str = "token.json",
+          purpose: str = "Google Drive (read-only)") -> Path:
     """Open the Google consent page, catch the redirect on localhost, store a refresh token. Returns the token file."""
     directory = Path(directory or auth_dir())
     directory.mkdir(parents=True, exist_ok=True)
@@ -109,7 +110,7 @@ def login(directory: Path | None = None, *, open_browser: bool = True) -> Path:
             q = parse_qs(urlparse(self.path).query)
             if q.get("state", [""])[0] == state and "code" in q:
                 result["code"] = q["code"][0]
-                body = b"HAP is connected to Google Drive (read-only). You can close this tab."
+                body = f"HAP is connected to {purpose}. You can close this tab.".encode()
             else:
                 result["error"] = q.get("error", ["unexpected response"])[0]
                 body = b"Google sign-in was not completed. You can close this tab and try again."
@@ -124,7 +125,7 @@ def login(directory: Path | None = None, *, open_browser: bool = True) -> Path:
     server = HTTPServer(("127.0.0.1", 0), Handler)
     redirect = f"http://127.0.0.1:{server.server_port}"
     url = cfg.get("auth_uri", "https://accounts.google.com/o/oauth2/v2/auth") + "?" + urlencode({
-        "client_id": cfg["client_id"], "redirect_uri": redirect, "response_type": "code", "scope": SCOPE,
+        "client_id": cfg["client_id"], "redirect_uri": redirect, "response_type": "code", "scope": scope,
         "access_type": "offline", "prompt": "consent", "state": state,
         "code_challenge": challenge, "code_challenge_method": "S256",
     })
@@ -144,15 +145,15 @@ def login(directory: Path | None = None, *, open_browser: bool = True) -> Path:
     token = resp.json()
     if resp.status_code != 200 or "refresh_token" not in token:
         raise DriveError(f"Google did not return a refresh token: {token.get('error_description') or token.get('error') or resp.text}")
-    path = directory / "token.json"
+    path = directory / token_name
     path.write_text(json.dumps({"refresh_token": token["refresh_token"], "client_id": cfg["client_id"],
                                 "client_secret": cfg.get("client_secret", ""),
                                 "token_uri": cfg.get("token_uri", "https://oauth2.googleapis.com/token")}), encoding="utf-8")
     return path
 
 
-def _access_token(directory: Path, client: httpx.Client) -> str:
-    path = directory / "token.json"
+def _access_token(directory: Path, client: httpx.Client, token_name: str = "token.json") -> str:
+    path = directory / token_name
     if not path.exists():
         raise DriveError("Not signed in to Google Drive yet: run  python scripts/drive_login.py  once")
     t = json.loads(path.read_text(encoding="utf-8"))
