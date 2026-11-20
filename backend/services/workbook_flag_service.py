@@ -47,6 +47,33 @@ def _record(ws: Worksheet, addr: str, *, category: str, what: str, original: Any
     add_notes(ws, notes)
 
 
+# A difference from the 10-K / 10-Q figure is "marginal" (rounding, scaling, small reclass) when it is within
+# MARGINAL_REL of the filing value or within MARGINAL_ABS (the workbook is in millions). Marginal differences are
+# logged on the HAP Adjustments tab but the cell is NOT recolored.
+MARGINAL_REL = 0.03
+MARGINAL_ABS = 1.0
+
+
+def _as_float(v: Any) -> float | None:
+    if v is None or isinstance(v, bool):
+        return None
+    try:
+        return float(v)
+    except (TypeError, ValueError):
+        return None
+
+
+def is_marginal_difference(workbook_value: Any, source_value: Any) -> bool:
+    a, b = _as_float(workbook_value), _as_float(source_value)
+    if a is None or b is None:
+        return False
+    diff = abs(a - b)
+    # the absolute allowance only applies to large figures, so per-share values are judged on the relative rule alone
+    if diff <= MARGINAL_ABS and abs(b) >= 100:
+        return True
+    return diff <= MARGINAL_REL * abs(b)
+
+
 def flag_discrepancy(
     ws: Worksheet,
     addr: str,
@@ -56,6 +83,13 @@ def flag_discrepancy(
     provenance: str,
     issue: str,
 ) -> None:
+    if is_marginal_difference(workbook_value, source_value):
+        _record(
+            ws, addr, category="Differs from filing", what="Marginal difference from the filing (not recolored)", original=workbook_value,
+            new=source_value, reason=f"{issue} The difference is marginal, so the cell color was not changed and the value was not changed.",
+            source=str(provenance), method="flag_only", status="Marginal - not flagged", notes=[],
+        )
+        return
     ws[addr].fill = RED_FILL
     _record(
         ws, addr, category="Differs from filing", what="Figure differs from the filing", original=workbook_value, new=source_value,

@@ -16,9 +16,9 @@ Expected Return (tab "Expected Returns & Buybacks")
 Enterprise Value (tab "Enterprise Value")
   The annualized owner's earnings growth (C6) is checked. When it is off, two corrected rates are computed and compared in the notes: the
   average of the first three and last three years (Final Metrics M10) and the log-linear model through all years (N10). The one that looks
-  more accurate is recommended and used.
+  more accurate is recommended in a comment; C6 is never replaced (log-linear if more conservative with a high R2, the ratio model, or neither).
 Graham entry price (tab "Enterprise Value", EPS 10 Year CAGR in B41, from Final Metrics L31)
-  The EPS growth rate is checked for being skewed by extraordinary EPS years. When it is, B41 is replaced by the rate of the other years.
+  The EPS growth rate is checked for being skewed by extraordinary EPS years. B41 is kept; a comment gives the Graham entry price under the rate of the other years.
 
 The original formula or value of every replaced cell is kept in the HAP Adjustments tab. Notes are plain language (see tab_notes).
 """
@@ -69,6 +69,13 @@ EV_SOURCE = "the Final Metrics history (owner's earnings) of the company"
 GRAHAM_SOURCE = "the company's EPS history (Final Metrics tab)"
 INPUTS_SHEET = "Inputs"
 RETENTION_LABEL = "change in retained earnings per share/ep"
+
+
+_pct_of_number = _pct
+
+
+def _pct(x: float) -> str:                                    # noqa: F811 - a model return that is an error (#NUM!) is shown as such
+    return "#NUM! (no meaningful number)" if x != x else _pct_of_number(x)
 
 
 def _cell(ws, addr: str) -> float | None:
@@ -146,15 +153,19 @@ class ValuationCorrectionService:
         review.alternatives.pop("expected_return", None)
         model = _cell(ws_values, "F14") if _cell(ws_values, "F14") is not None else _cell(ws_values, "E14")
         if model is None:
-            review.skipped.append("Expected return: the model's return is not calculated in this workbook.")
-            return False
+            shown = [ws_values["F14"].value, ws_values["E14"].value]
+            if any(isinstance(x, str) and x.startswith("#") for x in shown):
+                model = float("nan")                          # the template's own formula fails (for example a negative average ROE): treated as unusable
+            else:
+                review.skipped.append("Expected return: the model's return is not calculated in this workbook.")
+                return False
         if ER_LOW <= model <= ER_HIGH:
             review.findings.append(ReviewFinding(
                 "expected_return", "model_return", "reasonable",
                 f"The expected return of {_pct(model)} is within a realistic range of {_pct(ER_LOW)} to {_pct(ER_HIGH)}.", {"model": model},
             ))
             return False
-        side = "too high" if model > ER_HIGH else "negative"
+        side = "not meaningful" if model != model else "too high" if model > ER_HIGH else "negative"
         price, pe, bv0 = _cell(ws_values, "A2"), _cell(ws_values, "E2"), _cell(ws_values, "B8")
         growth, eps0 = _cell(ws_values, "B5"), _cell(ws_values, "C30")
         d17, e17 = _cell(ws_values, "D17"), _cell(ws_values, "E17")
@@ -197,10 +208,6 @@ class ValuationCorrectionService:
         new_return = self._model_return(price, pe, bv0, new_growth, new_roe, payout)
         if new_return is None:
             return keep("it gives no meaningful result")
-        what = (
-            f"The expected return model was switched to ten years of EPS projected from EPS growth of {_pct(used_growth)} a year{growth_note}, "
-            f"starting from ${eps0:,.2f}; the return is now {_pct(new_return)} (it was {_pct(model)})"
-        )
         why = (
             f"the original model, which grows book value by retention times return on equity, gave {_pct(model)}, which is {side} to rely on "
             f"(a realistic range is {_pct(ER_LOW)} to {_pct(ER_HIGH)})"
@@ -210,16 +217,16 @@ class ValuationCorrectionService:
             extras.append(note(tried[0].upper() + tried[1:].rstrip("."), None, ER_INPUTS_SOURCE, because=False))
         if trend is not None and trend.reasonable:
             extras.append(note(f"The EPS-growth model was chosen because {trend.reason}", None, ER_SOURCE, because=False))
-        for cell, label, new_value, orig in (
-            ("A14", "Average return on equity (now current EPS / book value per share)", new_roe, ws["A14"].value),
-            ("A11", "Book value per share growth (now the EPS growth rate)", new_growth, ws["A11"].value),
-        ):
-            ws[cell].value = new_value
-            ws[cell].number_format = "0.0%"
-            ledger.record(sheet=ER_SHEET, cell=cell, fiscal_year=None, category="Expected return input", what=label, original=orig, new=new_value,
-                          amount=None, reason=f"{what}, because {why}.", source=ER_SOURCE, method="eps_growth_model", confidence="medium")
-            review.applied.append(AppliedCorrection("expected_return", f"{ER_SHEET}!{cell}", orig, new_value, "replaced", what, why, ER_SOURCE))
-        review.findings.append(ReviewFinding("expected_return", "model_return", "flag", why[0].upper() + why[1:] + ".", {"model": model, "adjusted": new_return}))
+        # The ratios in A14 and A11 are never replaced: the alternative scenario is described in the notes and the HAP Adjustments tab.
+        scenario = (f"Alternative scenario (not applied): the EPS-growth model with EPS growth of {_pct(used_growth)} a year{growth_note} "
+                    f"from current EPS of ${eps0:,.2f} (return on equity {_pct(new_roe)}) would give {_pct(new_return)} instead of {_pct(model)}")
+        extras.append(note(scenario, None, ER_SOURCE, because=False))
+        extras.append(note(f"The ratios in the model were kept as they are: {_pct(model)} is {side} to rely on (a realistic range is {_pct(ER_LOW)} to {_pct(ER_HIGH)})", None, None, because=False))
+        review.left_as_is["expected_return"] = "the ratios were kept; the alternative EPS-growth scenario is in the notes"
+        ledger.record(sheet=ER_SHEET, cell="F14", fiscal_year=None, category="Expected return input", what="Expected return: alternative scenario (ratios not changed)",
+                      original=_pct(model), new="unchanged", amount=new_return, reason=f"{scenario}; {why}.", source=ER_SOURCE, method="flag_only",
+                      confidence="medium", mark_cell=False, status="Red flag")
+        review.findings.append(ReviewFinding("expected_return", "model_return", "flag", why[0].upper() + why[1:] + ".", {"model": model, "alternative": new_return}))
         return True
 
     def _repair_inputs(self, ws, ws_values, ledger, review, hist, *, model, side, price, pe, bv0, payout) -> tuple[bool, str]:
@@ -247,24 +254,22 @@ class ValuationCorrectionService:
         if new_return is None or not (ER_LOW <= new_return <= ER_HIGH):
             outcome = "no meaningful result" if new_return is None else f"a return of {_pct(new_return)}, still {'too high' if new_return > ER_HIGH else 'negative'}"
             return False, f"the model's own inputs were recalculated first ({recalculated}), but that still gives {outcome}"
-        what = f"The model's inputs were recalculated without the years that were clearly off: {recalculated}; the return is now {_pct(new_return)} (it was {_pct(model)})"
         why = (
             f"the return of {_pct(model)} was {side} to rely on (a realistic range is {_pct(ER_LOW)} to {_pct(ER_HIGH)}), and it rested on "
             f"{'return on equity' if bad_roe else ''}{' and ' if bad_roe and bad_ret else ''}{'retained earnings' if bad_ret else ''} "
             f"distorted by a few unusual years, so the model itself was kept"
         )
-        for cell, label, use, new_value, orig in (
-            ("A14", "Average return on equity (recalculated without the years that are off)", bool(bad_roe), round(new_roe, 4), ws["A14"].value),
-            ("C5", "Average retained earnings (recalculated without the years that are off)", bool(bad_ret), round(new_ret, 4), ws["C5"].value),
-        ):
-            if not use:
-                continue
-            ws[cell].value = new_value
-            ws[cell].number_format = "0.0%"
-            ledger.record(sheet=ER_SHEET, cell=cell, fiscal_year=None, category="Expected return input", what=label, original=orig, new=new_value,
-                          amount=None, reason=f"{what}, because {why}.", source=ER_INPUTS_SOURCE, method="normalized_input", confidence="medium")
-            review.applied.append(AppliedCorrection("expected_return", f"{ER_SHEET}!{cell}", orig, new_value, "replaced", what, why, ER_INPUTS_SOURCE))
-        review.findings.append(ReviewFinding("expected_return", "model_return", "flag", why[0].upper() + why[1:] + ".", {"model": model, "adjusted": new_return}))
+        # The inputs are never replaced: the recalculated averages and the return they give are described as an alternative scenario.
+        scenario = f"Alternative scenario (not applied): {recalculated}, which would give a return of {_pct(new_return)} instead of {_pct(model)}"
+        review.extra_notes.setdefault("expected_return", []).extend([
+            note(scenario, None, ER_INPUTS_SOURCE, because=False),
+            note(f"The ratios in the model were kept as they are: {_pct(model)} is {side} to rely on (a realistic range is {_pct(ER_LOW)} to {_pct(ER_HIGH)})", None, None, because=False),
+        ])
+        review.left_as_is["expected_return"] = "the ratios were kept; the alternative with the unusual years left out is in the notes"
+        ledger.record(sheet=ER_SHEET, cell="F14", fiscal_year=None, category="Expected return input", what="Expected return: alternative scenario (ratios not changed)",
+                      original=_pct(model), new="unchanged", amount=new_return, reason=f"{scenario}; {why}.", source=ER_INPUTS_SOURCE, method="flag_only",
+                      confidence="medium", mark_cell=False, status="Red flag")
+        review.findings.append(ReviewFinding("expected_return", "model_return", "flag", why[0].upper() + why[1:] + ".", {"model": model, "alternative": new_return}))
         return True, ""
 
     def _red_flags(self, ws, ledger, review, hist, *, model, side, trend_reason, tried) -> bool:
@@ -298,67 +303,48 @@ class ValuationCorrectionService:
         if annual is None or alt is None or len(series) < 6:
             review.left_as_is["owner_earnings"] = "The flagged rate was left as it is because there is not enough history to compute a corrected one"
             return False
-        # the two ways to correct the rate: the 3-year averages (Final Metrics M10) and the log-linear model (N10)
+        # The rate in C6 is never replaced. Three outcomes are discussed: the log-linear model (Final Metrics N10) when it is more
+        # conservative and fits well, the ratio model already in the cell, or neither when the history is too irregular for any model.
         fit = loglinear(series)
         g3 = alt
         gll = fit.growth if fit else None
-        if fit is not None and fit.r2 >= TREND_R2:
-            chosen, chosen_name = gll, "log-linear model"
-            recommendation = (f"The log-linear model is recommended because owner's earnings follow a steady trend (the fit explains {fit.r2:.0%} of their movement) "
-                              f"and it uses all {len(series)} years instead of six")
-        else:
-            chosen, chosen_name = g3, "average of the first three and last three years"
-            recommendation = ("The average of the first three and last three years is recommended because "
-                              + (f"owner's earnings are irregular (a straight-line fit explains only {fit.r2:.0%} of their movement)" if fit
-                                 else "owner's earnings include zero or negative years, which a log-linear model cannot use"))
         numbers = (
-            f"Two corrected owner's earnings growth rates were compared: the average of the first three and last three years (Final Metrics M10) gives {_pct(g3)} a year"
-            + (f", and the log-linear model through all {len(series)} years (Final Metrics N10) gives {_pct(gll)} a year" if gll is not None else "")
-            + (" and they agree within a point" if gll is not None and abs(g3 - gll) <= OE_AGREE else "")
+            f"The ratio model in the cell (first three against last three years of owner's earnings) gives {_pct(annual)} a year"
+            f" and the 3-year-average rate (Final Metrics M10) gives {_pct(g3)}"
+            + (f"; the log-linear model through all {len(series)} years (Final Metrics N10) gives {_pct(gll)} a year and explains {fit.r2:.0%} of the movement (R2)"
+               if fit else "; the log-linear model cannot be fitted because owner's earnings include zero or negative years")
         )
-        review.extra_notes.setdefault("owner_earnings", []).extend([
-            note(numbers, None, EV_SOURCE, because=False),
-            note(recommendation, None, None, because=False),
-        ])
-        corrected = round(min(max(chosen, OE_LOW), OE_HIGH), 4)
-        if abs(corrected - annual) < OE_MATERIAL:
-            review.left_as_is["owner_earnings"] = "The flagged rate was left as it is because the corrected rate is almost the same"
-            return False
+        if fit is not None and fit.r2 >= TREND_R2 and gll < annual:
+            verdict = "log-linear"
+            conclusion = (f"We recommend the log-linear model at {_pct(gll)}: it is more conservative than the ratio model's {_pct(annual)} and its R2 of {fit.r2:.0%} "
+                          "is high enough for the trend to be reliable")
+        elif fit is not None and fit.r2 >= TREND_R2:
+            verdict = "ratio"
+            conclusion = (f"We stay with the ratio model in the cell at {_pct(annual)}: the log-linear model fits well (R2 {fit.r2:.0%}) "
+                          f"but is not more conservative at {_pct(gll)}")
+        else:
+            verdict = "none"
+            conclusion = ("Neither model describes the company's dynamics: "
+                          + (f"a straight-line fit explains only {fit.r2:.0%} of the movement in owner's earnings, " if fit else "owner's earnings include zero or negative years, ")
+                          + "which points to strong seasonality, cyclicality or one-off items, so any single growth rate should be treated with caution")
         years = list(series)
         typical = statistics.median(series.values())
-        base_low = series[years[0]] < 0.6 * typical
-        clearly_off = annual >= OE_CLEARLY_OFF or annual < 0 or (annual > OE_HIGH and base_low)
         if annual > OE_HIGH:
             reason = f"{_pct(annual)} a year is very high to project forward"
         elif annual < 0:
             reason = f"{_pct(annual)} a year is negative"
         else:
-            reason = f"{_pct(annual)} a year is unrealistically low"
-        if base_low and annual > OE_HIGH:
+            reason = f"{_pct(annual)} a year looks unrealistically low"
+        if series[years[0]] < 0.6 * typical and annual > OE_HIGH:
             reason += f", and it rests on {years[0]}, when owner's earnings were only {series[years[0]]:,.0f} against a typical {typical:,.0f}"
-        clamp = f" (limited to {_pct(OE_HIGH if chosen > OE_HIGH else OE_LOW)})" if corrected != round(chosen, 4) else ""
-        if clearly_off:
-            original = ws["C6"].value
-            what = f"Owner's earnings growth was replaced with {_pct(corrected)} a year{clamp} (it was {_pct(annual)})"
-            why = f"{reason}; the corrected rate is from the {chosen_name}, the more accurate of the two methods compared"
-            ws["C6"].value = corrected
-            ws["C6"].number_format = "0.0%"
-            ledger.record(sheet=EV_SHEET, cell="C6", fiscal_year=None, category="Enterprise value input", what="Owner's earnings growth (annualized)",
-                          original=original, new=corrected, amount=None, reason=f"{what}, because {why}.", source=EV_SOURCE,
-                          method="normalized_input", confidence="medium")
-            review.applied.append(AppliedCorrection("owner_earnings", f"{EV_SHEET}!C6", original, corrected, "replaced", what, why, EV_SOURCE))
-            return True
-        from services.annual_judgment_service import AnnualJudgmentService
-
-        written = AnnualJudgmentService._clone_ev_projections(ws, corrected)
-        if not written:
-            return False
-        what = f"A parallel calculation with owner's earnings growth of {_pct(corrected)} a year{clamp} was added below the original (rows 54 to 57)"
-        why = f"{reason}, but the original is not clearly wrong, so both are shown; the corrected rate is from the {chosen_name}"
-        ledger.record(sheet=EV_SHEET, cell="A54", fiscal_year=None, category="Enterprise value input", what="Parallel owner's earnings projection",
-                      original="not present", new=f"{_pct(corrected)} growth", amount=None, reason=f"{what}, because {why}.", source=EV_SOURCE,
-                      method="normalized_input", confidence="medium", mark_cell=False)
-        review.applied.append(AppliedCorrection("owner_earnings", f"{EV_SHEET}!A54", None, corrected, "parallel", what, why, EV_SOURCE))
+        review.extra_notes.setdefault("owner_earnings", []).extend([
+            note(numbers, None, EV_SOURCE, because=False),
+            note(conclusion, None, None, because=False),
+        ])
+        review.left_as_is["owner_earnings"] = f"The growth rate in the cell was kept as it is ({reason}); {conclusion[0].lower() + conclusion[1:]}"
+        ledger.record(sheet=EV_SHEET, cell="C6", fiscal_year=None, category="Enterprise value input", what="Owner's earnings growth: model discussion (cell not changed)",
+                      original=_pct(annual), new="unchanged", amount=None, reason=f"{reason}. {numbers}. {conclusion}.", source=EV_SOURCE,
+                      method="flag_only", confidence="medium", mark_cell=False, status="Discussion")
         return True
 
     # ------------------------------------------------------------------ Graham: the EPS growth rate (EV tab B41)
@@ -374,16 +360,30 @@ class ValuationCorrectionService:
                                                  {"endpoint": endpoint, "robust": rg.robust}))
             return False
         corrected = round(rg.robust, 4)
-        original = ws["B41"].value
-        what = f"The EPS growth rate used for the Graham entry price was replaced with {_pct(corrected)} a year (it was {_pct(endpoint)})"
+        # The rate in B41 is kept. What the Graham entry price would be with the adjusted rate is written as a comment only.
+        current_entry = self._graham_entry(ws_values, endpoint)
+        adjusted_entry = self._graham_entry(ws_values, corrected)
         why = (f"EPS was extraordinary in {_years_text(rg.extraordinary)}, which skews the first-to-last-year rate; "
-               f"the corrected rate is the steady growth of the other years (the fit explains {rg.r2:.0%} of their movement)"
-               if rg.r2 is not None else f"EPS was extraordinary in {_years_text(rg.extraordinary)}, which skews the first-to-last-year rate")
-        ws["B41"].value = corrected
-        ws["B41"].number_format = "0.0%"
-        ledger.record(sheet=EV_SHEET, cell="B41", fiscal_year=None, category="Enterprise value input", what="EPS growth used for the Graham entry price",
-                      original=original, new=corrected, amount=None, reason=f"{what}, because {why}.", source=GRAHAM_SOURCE,
-                      method="normalized_input", confidence="medium")
-        review.applied.append(AppliedCorrection("graham", f"{EV_SHEET}!B41", original, corrected, "replaced", what, why, GRAHAM_SOURCE))
-        review.findings.append(ReviewFinding("graham", "eps_growth", "flag", why[0].upper() + why[1:] + ".", {"endpoint": endpoint, "robust": rg.robust}))
+               f"the steady growth of the other years is {_pct(corrected)}"
+               + (f" (the fit explains {rg.r2:.0%} of their movement)" if rg.r2 is not None else ""))
+        price = (f"Graham entry price would move from ${current_entry:,.2f} to ${adjusted_entry:,.2f} with the adjusted EPS growth model"
+                 if current_entry is not None and adjusted_entry is not None else "The Graham entry price under the adjusted rate could not be computed")
+        text = f"The EPS growth rate of {_pct(endpoint)} used for the Graham entry price was kept. {why[0].upper() + why[1:]}. {price}."
+        ledger.record(sheet=EV_SHEET, cell="B41", fiscal_year=None, category="Enterprise value input", what="EPS growth for the Graham entry price: adjusted alternative (cell not changed)",
+                      original=_pct(endpoint), new="unchanged", amount=adjusted_entry, reason=text, source=GRAHAM_SOURCE,
+                      method="flag_only", confidence="medium", mark_cell=False, status="Discussion")
+        review.left_as_is["graham"] = text
+        review.extra_notes.setdefault("graham", []).append(note(price, None, GRAHAM_SOURCE, because=False))
+        review.findings.append(ReviewFinding("graham", "eps_growth", "flag", text, {"endpoint": endpoint, "robust": rg.robust,
+                                                                                    "entry_current": current_entry, "entry_adjusted": adjusted_entry}))
         return True
+
+    @staticmethod
+    def _graham_entry(ws_values, growth: float) -> float | None:
+        """Entry target price (EV tab B48) recomputed for a given EPS growth rate, with the sheet's own formulas."""
+        eps, pe, mult, req = (_cell(ws_values, a) for a in ("B40", "B51", "B52", "B53"))
+        if None in (eps, pe, mult, req) or (1 + req) <= 0:
+            return None
+        g7 = min(growth, 0.07)
+        value_7 = eps * (1 + growth) ** 7 * ((g7 * 100) * mult + pe)
+        return value_7 / (1 + req) ** 7

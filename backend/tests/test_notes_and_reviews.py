@@ -186,23 +186,24 @@ def _apply(path: Path):
     return ValuationCorrectionService().apply(path)
 
 
-def test_a_clearly_wrong_owner_earnings_growth_replaces_the_model_value(tmp_path: Path):
+def test_a_clearly_wrong_owner_earnings_growth_is_kept_and_the_models_are_discussed(tmp_path: Path):
     path = _valuation_workbook(tmp_path / "c.xlsx", oe=[74, 200, 260, 280, 290, 300, 310, 330, 380, 424], roe=[0.13] * 10)
+    before = load_workbook(path)["Enterprise Value"]["C6"].value
     review = _apply(path)
     ev = load_workbook(path)["Enterprise Value"]
-    assert 0.10 < ev["C6"].value < 0.15 and ev["C6"].number_format == "0.0%"             # was about 21%, now the 3-year-average rate
-    applied = [a for a in review.applied if a.topic == "owner_earnings"][0]
-    assert applied.kind == "replaced" and "was replaced with" in applied.what and "FY2016" in applied.why
+    assert ev["C6"].value == before                                                    # never replaced by a clamped rate
+    assert not [a for a in review.applied if a.topic == "owner_earnings"]
+    text = " ".join(review.notes("owner_earnings"))
+    assert "ratio model" in text and "log-linear" in text and "R2" in text
 
 
-def test_a_borderline_owner_earnings_growth_gets_a_parallel_calculation(tmp_path: Path):
+def test_a_borderline_owner_earnings_growth_is_kept_without_a_parallel_calculation(tmp_path: Path):
     oe = [280, 300, 320, 345, 370, 400, 430, 460, 490, 520]      # about 7% a year; the start year is normal
     path = _valuation_workbook(tmp_path / "d.xlsx", oe=oe, roe=[0.13] * 10, annual=0.17)
     review = _apply(path)
     ev = load_workbook(path)["Enterprise Value"]
-    applied = [a for a in review.applied if a.topic == "owner_earnings"]
-    assert applied and applied[0].kind == "parallel" and ev["C6"].value == 0.17            # the original stays; a corrected copy sits below
-    assert "HAP Alternative" in str(ev["A54"].value) or any("HAP" in str(c.value) for row in ev.iter_rows(min_row=50) for c in row if c.value)
+    assert ev["C6"].value == 0.17 and not [a for a in review.applied if a.topic == "owner_earnings"]
+    assert "log-linear model at" in " ".join(review.notes("owner_earnings"))       # steady and more conservative than 17%
 
 
 def test_realistic_inputs_are_not_touched(tmp_path: Path):
@@ -227,29 +228,28 @@ def _er_workbook(path: Path, *, model_return: float, growth: float = 0.0491, eps
     return path
 
 
-def test_an_unrealistic_expected_return_switches_to_the_eps_growth_model(tmp_path: Path):
+def test_an_unrealistic_expected_return_keeps_the_ratios_and_describes_the_alternative(tmp_path: Path):
     path = _er_workbook(tmp_path / "a.xlsx", model_return=0.24)
     review = _apply(path)
     wb = load_workbook(path)
     er = wb["Expected Returns & Buybacks"]
-    assert er["A14"].value == pytest.approx(3.17 / 14.5621, abs=1e-4)             # current EPS / book value per share
-    assert er["A11"].value == pytest.approx(0.0491)                                # the EPS growth rate
-    assert er["A11"].number_format == "0.0%"
-    applied = [a for a in review.applied if a.topic == "expected_return"]
-    assert {a.cell.split("!")[-1] for a in applied} == {"A11", "A14"} and applied[0].original == "='Final Metrics'!B4"
+    assert er["A14"].value == "='Final Metrics'!B4" and er["A11"].value == "=C5*A14"          # the ratios stay as they were
+    assert not [a for a in review.applied if a.topic == "expected_return"]
     ledger = [str(c.value) for row in wb["HAP Adjustments"].iter_rows(min_row=5) for c in row if c.value]
-    assert "Expected return input" in ledger and "='Final Metrics'!B4" in ledger and "=C5*A14" in ledger        # the original formulas are kept
+    assert "Expected return input" in ledger and "Red flag" in ledger
     notes = review.notes("expected_return")
-    assert len(notes) == 2 and "EPS growth of 4.9% a year" in notes[0] and "it was 24.0%" in notes[0] and "too high" in notes[0]
+    assert any("Alternative scenario (not applied)" in n and "EPS growth of 4.9% a year" in n and "instead of 24.0%" in n for n in notes)
+    assert any("ratios in the model were kept" in n and "too high" in n for n in notes)
     # the same arithmetic as the template: EPS grows 4.91% a year from 3.17, valued at 25.1x, plus dividends at the model's payout
     eps = [3.17 * 1.0491 ** t for t in range(1, 11)]
     expected = ((eps[-1] * 25.117 + (2.17 / 4.78) * sum(eps)) / 93.34) ** 0.1 - 1
-    assert f"the return is now {expected * 100:.1f}%" in notes[0]
+    assert any(f"would give {expected * 100:.1f}%" in n for n in notes)
 
 
-def test_a_negative_expected_return_also_switches_models(tmp_path: Path):
+def test_a_negative_expected_return_also_keeps_the_ratios(tmp_path: Path):
     review = _apply(_er_workbook(tmp_path / "b.xlsx", model_return=-0.03))
-    assert review.applied and "negative" in review.applied[0].why
+    assert not review.applied and any("negative" in n for n in review.notes("expected_return"))
+
 
 
 def test_a_realistic_expected_return_is_left_alone(tmp_path: Path):

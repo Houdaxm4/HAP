@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from typing import Any
 
@@ -10,6 +11,7 @@ from openpyxl.styles import PatternFill
 
 from models.quarterly_presentation import STATEMENT_SHEETS, QuarterlyStatementKind
 from models.quarterly_update import QuarterlyProjectionReport
+from services.ic_projection_writer import IcProjectionWriter, translate_to_last_quarter
 from services.quarterly_review_service import _detect_fiscal_quarter
 
 IC_SHEET = "IC & NOPAT & ROIC "
@@ -26,6 +28,10 @@ _DOLLAR_PROJ_ROWS = {3, 4, 5, 6, 7, 11, 13, 14, 15, 16, 17, 18, 19, 20}
 
 # Same annual BS row classifications as Inputs!81/82/84/85 (house ROIC OA/OL)
 _OA_CURRENT_ROWS = (11, 14, 20, 27)
+# 10-Qs are less granular than 10-Ks (prepaid expenses are often folded into other current assets), so for the
+# quarter-based projection the prepaid-expense line (27) is replaced by the whole "Other ST Assets" line (26).
+# This can slightly overstate operating assets (conservative: it lowers the projected ROIC).
+_CONSERVATIVE_ROW_SWAPS = {27: 26}
 _OA_NONCURRENT_ROWS = (37, 48, 51)
 _OL_CURRENT_ROWS = (65, 68, 78)
 _OL_NONCURRENT_ROWS = (98,)
@@ -59,6 +65,46 @@ def _sum_rows(ws, rows: tuple[int, ...], col: int = 3) -> float:
         if v is not None:
             total += v
     return total
+
+
+def _plain(formula: str) -> str:
+    """IF(ref="",0,ref) is just ref for the formula evaluator (a blank cell counts as zero)."""
+    return re.sub(r"IF\(('[^']+'![A-Z]+\d+)=\"\",0,\1\)", r"\1", formula)
+
+
+def _eval_lq_sum(wb, formula: str) -> float | None:
+    """Value of a formula that only adds and subtracts Last Quarter BS cells (blank counts as zero), as the sheet calculates it."""
+    if LQ_BS not in wb.sheetnames:
+        return None
+    ws = wb[LQ_BS]
+    expr = _plain(formula).lstrip("=")
+
+    def cell(m: re.Match) -> str:
+        v = _num(ws[m.group(1)].value)
+        return repr(v if v is not None else 0.0)
+
+    expr = re.sub(r"'" + re.escape(LQ_BS) + r"'!(C\d+)", cell, expr)
+    if not re.fullmatch(r"[0-9eE+\-*/(). ]+", expr):
+        return None
+    try:
+        return float(eval(expr, {"__builtins__": {}}, {}))  # noqa: S307 - digits and arithmetic operators only
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def _conservative_10q(formula: str) -> str:
+    """Swap Prepaid Expenses (row 27) for all Other ST Assets (row 26) in a Last Quarter BS formula."""
+    import re as _re
+
+    def sw(m: "_re.Match") -> str:
+        row = int(m.group(2))
+        return f"{m.group(1)}{_CONSERVATIVE_ROW_SWAPS.get(row, row)}"
+
+    return _re.sub(r"('?" + _re.escape(LQ_BS) + r"'?!\$?C\$?)(\d+)", sw, formula)
+
+
+def _row_sum_formula(rows: tuple[int, ...]) -> str:
+    return "+".join(f"'{LQ_BS}'!C{r}" for r in rows)
 
 
 def _find_is_row(ws, needle: str) -> int | None:
@@ -149,12 +195,15 @@ class QuarterlyProjectionService:
             # --- OA / OL from latest-quarter BS using house row classification ---
             oa = ol = total_assets = None
             if bs is not None:
-                oa = _sum_rows(bs, _OA_CURRENT_ROWS) + _sum_rows(bs, _OA_NONCURRENT_ROWS)
+                oa = _sum_rows(bs, tuple(_CONSERVATIVE_ROW_SWAPS.get(r, r) for r in _OA_CURRENT_ROWS)) + _sum_rows(
+                    bs, _OA_NONCURRENT_ROWS
+                )
                 ol = _sum_rows(bs, _OL_CURRENT_ROWS) + _sum_rows(bs, _OL_NONCURRENT_ROWS)
                 total_assets = _num(bs.cell(61, 3).value)
 
             # --- YTD Revenue / OI / CFO ---
             ytd_rev = ytd_oi = ytd_cfo = None
+            rev_r = oi_r = None
             if is_ws is not None:
                 rev_r = _find_is_row(is_ws, "revenue")
                 oi_r = _find_is_row(is_ws, "operating income")
@@ -229,14 +278,37 @@ class QuarterlyProjectionService:
             prior_roic = self._last_fy_component(wb, ic, 23, prev_wb)
             prior_roce = None  # optional; Word may show N/A
 
+            # --- Live formulas so the calculation is visible in the cells ---
+            oa_formula, ol_formula = self._oa_ol_formulas(wb)
+            factor_lit = "2" if abs(factor - 2.0) < 1e-9 else "4/3"
+            rev_formula = f"='{LQ_IS}'!G{rev_r}*{factor_lit}" if is_ws is not None and rev_r else None
+            oi_formula = f"='{LQ_IS}'!G{oi_r}*{factor_lit}" if is_ws is not None and oi_r else None
+
+            # The report and the email must show what the cells calculate: evaluate the same formulas (the fixed row list above is
+            # only the fallback, it can differ from the Inputs-based mapping of a given template).
+            oa_calc = _eval_lq_sum(wb, oa_formula) if oa_formula else None
+            ol_calc = _eval_lq_sum(wb, ol_formula) if ol_formula else None
+            if oa_calc is not None and ol_calc is not None:
+                oa, ol = oa_calc, ol_calc
+                proj_ic = oa - ol + (cap_lease or 0.0) + (cap_rd or 0.0)
+                if proj_nopat is not None and proj_ic != 0:
+                    proj_roic = proj_nopat / proj_ic
+                    roic_wacc = (proj_roic - wacc) if wacc is not None else None
+
             # --- Write projection cells (house structure from completed Q2 workbook) ---
             formulas: dict[str, str] = {}
             ic.cell(1, PROJ_COL).value = "Projected ROIC"
             ic.cell(1, ROCE_COL).value = "ROCE"
 
-            if oa is not None:
+            if oa_formula is not None:
+                ic.cell(3, PROJ_COL).value = oa_formula
+                formulas["M3"] = oa_formula
+            elif oa is not None:
                 ic.cell(3, PROJ_COL).value = oa
-            if ol is not None:
+            if ol_formula is not None:
+                ic.cell(4, PROJ_COL).value = ol_formula
+                formulas["M4"] = ol_formula
+            elif ol is not None:
                 ic.cell(4, PROJ_COL).value = ol
             if cap_lease is not None:
                 ic.cell(5, PROJ_COL).value = cap_lease
@@ -245,9 +317,15 @@ class QuarterlyProjectionService:
             ic.cell(7, PROJ_COL).value = "=M3-M4+M5+M6"
             formulas["M7"] = "=M3-M4+M5+M6"
 
-            if proj_rev is not None:
+            if rev_formula is not None:
+                ic.cell(11, PROJ_COL).value = rev_formula
+                formulas["M11"] = rev_formula
+            elif proj_rev is not None:
                 ic.cell(11, PROJ_COL).value = proj_rev
-            if proj_oi is not None:
+            if oi_formula is not None:
+                ic.cell(13, PROJ_COL).value = oi_formula
+                formulas["M13"] = oi_formula
+            elif proj_oi is not None:
                 ic.cell(13, PROJ_COL).value = proj_oi
             if lease_exp is not None:
                 ic.cell(14, PROJ_COL).value = lease_exp
@@ -273,7 +351,6 @@ class QuarterlyProjectionService:
 
             # N4 ROCE formula using LQ CFO × factor / LQ Total Assets
             cfo_row = _find_cf_cfo_row(cf) if cf is not None else 27
-            factor_lit = "2" if abs(factor - 2.0) < 1e-9 else "4/3"
             roce_f = (
                 f"='{LQ_CF}'!C{cfo_row}*{factor_lit}/'{LQ_BS}'!C61"
             )
@@ -353,6 +430,42 @@ class QuarterlyProjectionService:
             wb.close()
             if prev_wb is not None:
                 prev_wb.close()
+
+    @staticmethod
+    def _oa_ol_formulas(wb) -> tuple[str | None, str | None]:
+        """Operating assets / liabilities as formulas on the Last Quarter BS tab.
+
+        Prefer the annual Inputs formulas (rows 81/82 and 84/85, including any adjusted lines) re-pointed at
+        the Last Quarter BS; fall back to the house row classification.
+        """
+        if LQ_BS not in wb.sheetnames:
+            return None, None
+        oa_f = _conservative_10q("=" + _row_sum_formula(_OA_CURRENT_ROWS + _OA_NONCURRENT_ROWS))
+        ol_f = "=" + _row_sum_formula(_OL_CURRENT_ROWS + _OL_NONCURRENT_ROWS)
+        inputs = wb["Inputs"] if "Inputs" in wb.sheetnames else None
+        bs_name = "Balance Sheet - Standardized"
+        if inputs is None or bs_name not in wb.sheetnames:
+            return oa_f, ol_f
+        col = "L"
+        try:
+            row_map = IcProjectionWriter._row_map_for_inputs(wb, inputs, col)
+            unmapped: list[int] = []
+
+            def lq(row: int) -> str | None:
+                v = inputs[f"{col}{row}"].value
+                if not isinstance(v, str) or not v.startswith("="):
+                    return None
+                return translate_to_last_quarter(v, row_map, unmapped)
+
+            oa_parts, ol_parts = [lq(81), lq(82)], [lq(84), lq(85)]
+            if all(oa_parts) and all(ol_parts) and not unmapped:
+                return (
+                    _conservative_10q("=(" + oa_parts[0] + ")+(" + oa_parts[1] + ")"),
+                    "=(" + ol_parts[0] + ")+(" + ol_parts[1] + ")",
+                )
+        except Exception:  # noqa: BLE001
+            pass
+        return oa_f, ol_f
 
     @staticmethod
     def _apply_projection_formats(ic) -> list[str]:

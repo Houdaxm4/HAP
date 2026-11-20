@@ -67,6 +67,7 @@ backend/storage/analyses/*.json
 backend/storage/uploads/*/
 backend/storage/outputs/*/
 backend/storage/parse_cache/
+backend/storage/drive/
 backend/storage/parse_cache_bench/
 
 # Ad-hoc local debug / acceptance scratch (not product)

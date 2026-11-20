@@ -65,7 +65,7 @@ def test_update_uses_newer_period_as_new_and_older_as_previous(tmp_path: Path):
     assert m.workbook.name == "ETD 2026 Q2.xlsx" and m.previous.name == "ETD 2026 Q1.xlsx"
     _touch(tmp_path, "ATR 2025 Q4.xlsx", "ATR 2025 FY.xlsx", "custom_run_filter_2026-10-06_ATR.xlsx")
     n = run_batch.match_files(tmp_path, "ATR", "annual_update")
-    assert n.workbook.name == "ATR 2025 FY.xlsx" and n.previous.name == "ATR 2025 Q4.xlsx"       # FY sorts after Q4
+    assert n.workbook is None and any("same period" in p for p in n.problems)       # Q4 and FY are the same period: reported, not guessed
 
 
 def test_a_finished_result_is_accepted_as_the_previous_workbook(tmp_path: Path):
@@ -86,9 +86,9 @@ def test_workbook_names_are_recognised_in_any_word_order_and_style():
     for name, want in [
         ("RPM 2027 Q1 - Industrial Template v28.2.xlsx", ("RPM", (2027, 1))), ("RPM_2027_Q1.xlsx", ("RPM", (2027, 1))),
         ("RPM-2027-Q1.xlsx", ("RPM", (2027, 1))), ("rpm 2027 q1.xlsx", ("RPM", (2027, 1))), ("RPM 2027Q1.xlsx", ("RPM", (2027, 1))),
-        ("RPM Q1 2027.xlsx", ("RPM", (2027, 1))), ("Q1 2027 RPM.xlsx", ("RPM", (2027, 1))), ("RPM FY2026.xlsx", ("RPM", (2026, 5))),
-        ("FY2026 RPM.xlsx", ("RPM", (2026, 5))), ("2026 FY RPM FA.xlsx", ("RPM", (2026, 5))), ("2026_FY_RPM_FA.xlsx", ("RPM", (2026, 5))),
-        ("BRK.B 2026 FY.xlsx", ("BRK.B", (2026, 5))), ("3M 2026 Q2.xlsx", ("3M", (2026, 2))),
+        ("RPM Q1 2027.xlsx", ("RPM", (2027, 1))), ("Q1 2027 RPM.xlsx", ("RPM", (2027, 1))), ("RPM FY2026.xlsx", ("RPM", (2026, 4))),
+        ("FY2026 RPM.xlsx", ("RPM", (2026, 4))), ("2026 FY RPM FA.xlsx", ("RPM", (2026, 4))), ("2026_FY_RPM_FA.xlsx", ("RPM", (2026, 4))),
+        ("BRK.B 2026 FY.xlsx", ("BRK.B", (2026, 4))), ("3M 2026 Q2.xlsx", ("3M", (2026, 2))),
     ]:
         tickers, period = parse(name)
         assert want[0] in tickers and period == want[1], name

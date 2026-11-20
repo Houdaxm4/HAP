@@ -108,6 +108,7 @@ class QuarterlyDeliverablesService:
             attachments=[excel_path],
             fiscal_year=fy,
             fiscal_quarter=q,
+            fetch_release=True,
         )
         return QuarterlyDeliverablesReport(
             analysis_id=analysis_id,

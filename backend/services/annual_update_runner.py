@@ -242,6 +242,13 @@ class AnnualUpdateRunner:
                 filing_rd=filing_rd,
             ),
         )
+        # The previous file's R&D life and earlier expenses stay; the 10-Ks only fill blanks or correct values that disagree with them.
+        from services.update_assumptions_service import ensure_rd_history, previous_manual_lease_rate, carry_previous_lease_rates
+
+        rd_assumptions = timed(
+            "rd_assumptions_from_previous_or_10k",
+            lambda: ensure_rd_history(working_path, ticker=ticker, previous_workbook_path=previous_path, company_facts=company_facts),
+        )
         leases = timed(
             "leases_rate_judgment",
             lambda: self.leases.apply(
@@ -283,6 +290,15 @@ class AnnualUpdateRunner:
                 fiscal_year=new_fy,
             ),
         )
+        analyst_lease_rate = previous_manual_lease_rate(previous_path)      # a rate typed by hand in the previous file is continued
+        carried_rate_years = carry_previous_lease_rates(working_path, previous_path)   # earlier years' typed rates, matched by fiscal year
+        if carried_rate_years:
+            timed(
+                "excel_recalculation_after_lease_rate_carry",
+                lambda: self.excel_recalc.recalculate(
+                    analysis_id=analysis_id, ticker=ticker, workbook_path=working_path, fiscal_year=new_fy,
+                ),
+            )
         # Newest year only: earlier years already went through the adjustment and are copied from the previous file.
         if new_fy:
             lease_row_fix = timed(
@@ -290,8 +306,9 @@ class AnnualUpdateRunner:
                 lambda: self.lease_rows.apply(
                     workbook_path=working_path,
                     newest_only_fy=new_fy,
-                    estimated_rate=self._estimated_lease_rate(leases),
-                    estimated_basis="the long-term rate the analyst used in earlier years",
+                    estimated_rate=analyst_lease_rate if analyst_lease_rate is not None else self._estimated_lease_rate(leases),
+                    estimated_basis=("the long-term rate the analyst typed in the previous file" if analyst_lease_rate is not None
+                                     else "the long-term rate the analyst used in earlier years"),
                 ),
             )
             if lease_row_fix.changed:

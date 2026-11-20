@@ -83,32 +83,32 @@ STEADY_EPS = [1.0 * 1.10 ** i for i in range(10)]
 CYCLICAL_EPS = [2.0, 3.5, 1.2, 4.0, 0.8, 3.9, 1.1, 4.2, 1.0, 4.4]
 
 
-def test_a_few_off_years_in_the_inputs_are_removed_and_the_model_is_kept(tmp_path: Path):
+def test_a_few_off_years_in_the_inputs_are_described_as_an_alternative_and_nothing_is_replaced(tmp_path: Path):
     roe = [0.10] * 9 + [3.00]                               # one extraordinary year pulls the average ROE up
     path = _book(tmp_path / "a.xlsx", roe=roe, retention=[0.5] * 10, eps=STEADY_EPS)
-    before = load_workbook(path)["Expected Returns & Buybacks"]
-    assert before["F14"].value > 0.20                        # the model gives an unrealistic return
+    original = load_workbook(path)["Expected Returns & Buybacks"]["A14"].value
     review = ValuationCorrectionService().apply(path)
     er = load_workbook(path)["Expected Returns & Buybacks"]
-    assert er["A14"].value == pytest.approx(0.10) and er["C5"].value == pytest.approx(0.5)       # recalculated without FY2026; C5 had no off year, A11 stays a formula
-    assert er["A11"].value == "=C5*A14"                      # the model is kept
-    applied = [a for a in review.applied if a.topic == "expected_return"]
-    assert [a.cell.split("!")[-1] for a in applied] == ["A14"] and "without FY2026" in applied[0].what
+    assert er["A14"].value == original and er["A11"].value == "=C5*A14"
+    assert not [a for a in review.applied if a.topic == "expected_return"]
+    assert any("Alternative scenario (not applied)" in n and "without FY2026" in n for n in review.notes("expected_return"))
     ledger = [str(c.value) for row in load_workbook(path)["HAP Adjustments"].iter_rows(min_row=5) for c in row if c.value]
-    assert "Expected return input" in ledger and "Applied" in ledger
+    assert "Expected return input" in ledger and "Red flag" in ledger
 
 
-def test_when_the_whole_history_is_off_but_eps_is_steady_the_other_model_is_used(tmp_path: Path):
+
+def test_when_the_whole_history_is_off_but_eps_is_steady_the_alternative_model_is_only_described(tmp_path: Path):
     roe = [0.05, 0.45] * 5                                   # a cyclical business: no few years to remove
     path = _book(tmp_path / "b.xlsx", roe=roe, retention=[0.1, 0.9] * 5, eps=STEADY_EPS, price=40.0, pe=40.0)
+    before = load_workbook(path)["Expected Returns & Buybacks"]
+    a11, a14 = before["A11"].value, before["A14"].value
     review = ValuationCorrectionService().apply(path)
     er = load_workbook(path)["Expected Returns & Buybacks"]
-    assert er["A11"].value == pytest.approx(0.10, abs=1e-4)                         # EPS growth of the steady series
-    assert er["A14"].value == pytest.approx(STEADY_EPS[-1] / 10.0, abs=1e-3)       # current EPS / book value per share
-    applied = [a for a in review.applied if a.topic == "expected_return"]
-    assert {a.cell.split("!")[-1] for a in applied} == {"A11", "A14"}
+    assert er["A11"].value == a11 and er["A14"].value == a14
+    assert not [a for a in review.applied if a.topic == "expected_return"]
     notes = review.notes("expected_return")
-    assert any("steady trend" in n for n in notes) and all(len(n) <= 400 for n in notes)        # why this model, in a note of its own
+    assert any("steady trend" in n for n in notes) and any("Alternative scenario (not applied)" in n for n in notes) and all(len(n) <= 400 for n in notes)
+
 
 
 def test_when_eps_is_cyclical_too_the_model_is_kept_and_red_flags_are_written(tmp_path: Path):
@@ -138,30 +138,42 @@ def test_the_email_marks_an_unrealistic_return_that_was_kept(tmp_path: Path):
 
 
 # ------------------------------------------------------------------------------------------------ owner's earnings
-def test_both_owner_earnings_models_are_compared_in_the_notes_and_the_better_one_is_used(tmp_path: Path):
+def test_owner_earnings_models_are_discussed_and_the_cell_is_never_replaced(tmp_path: Path):
     oe = [74, 200, 260, 280, 290, 300, 310, 330, 380, 424]
     path = _book(tmp_path / "e.xlsx", roe=[0.13] * 10, retention=[0.5] * 10, eps=STEADY_EPS, oe=oe, c6=0.21)
     review = ValuationCorrectionService().apply(path)
     text = " ".join(review.notes("owner_earnings"))
-    assert "Final Metrics M10" in text and "Final Metrics N10" in text and "recommended" in text
-    assert [a for a in review.applied if a.topic == "owner_earnings"][0].kind == "replaced"
+    assert "Final Metrics M10" in text and "Final Metrics N10" in text and "log-linear model at" in text
+    assert load_workbook(path)["Enterprise Value"]["C6"].value == 0.21 and not [a for a in review.applied if a.topic == "owner_earnings"]
     irregular = [300, 120, 380, 90, 420, 150, 460, 100, 500, 130]
     path2 = _book(tmp_path / "f.xlsx", roe=[0.13] * 10, retention=[0.5] * 10, eps=STEADY_EPS, oe=irregular, c6=0.30)
     review2 = ValuationCorrectionService().apply(path2)
-    assert "The average of the first three and last three years is recommended" in " ".join(review2.notes("owner_earnings"))
+    assert "Neither model describes the company's dynamics" in " ".join(review2.notes("owner_earnings"))
+    assert load_workbook(path2)["Enterprise Value"]["C6"].value == 0.30
 
 
 # ------------------------------------------------------------------------------------------------ Graham
-def test_a_skewed_eps_growth_rate_is_corrected_for_the_graham_entry_price(tmp_path: Path):
+def test_a_skewed_eps_growth_rate_is_kept_and_the_graham_effect_is_commented(tmp_path: Path):
     eps = STEADY_EPS[:-1] + [STEADY_EPS[-1] * 2.2]           # an extraordinary last year
     endpoint = (eps[-1] / eps[0]) ** (1 / 9) - 1
     path = _book(tmp_path / "g.xlsx", roe=[0.13] * 10, retention=[0.5] * 10, eps=eps, b41=endpoint)
     review = ValuationCorrectionService().apply(path)
     ev = load_workbook(path)["Enterprise Value"]
-    assert ev["B41"].value == pytest.approx(0.10, abs=1e-3) and ev["B41"].value < endpoint - 0.05
-    applied = [a for a in review.applied if a.topic == "graham"]
-    assert applied and "FY2026" in applied[0].why and "was replaced" in applied[0].what
-    assert any("EPS growth rate used for the Graham entry price" in n for n in review.notes("graham"))
+    assert ev["B41"].value == pytest.approx(endpoint)                                 # the value already there stays
+    assert not [a for a in review.applied if a.topic == "graham"]
+    assert "was kept" in review.left_as_is["graham"] and "FY2026" in review.left_as_is["graham"]
+
+
+def test_graham_entry_price_is_recomputed_with_the_sheet_formulas():
+    ws = {"B40": 7.17, "B51": 8.5, "B52": 2.0, "B53": 0.15}
+
+    class _Ws:
+        def __getitem__(self, k):
+            return type("C", (), {"value": ws[k]})()
+
+    g = 0.29
+    expected = 7.17 * (1 + g) ** 7 * ((min(g, 0.07) * 100) * 2.0 + 8.5) / 1.15 ** 7
+    assert ValuationCorrectionService._graham_entry(_Ws(), g) == pytest.approx(expected)
 
 
 def test_a_clean_eps_growth_rate_is_left_alone_for_graham(tmp_path: Path):
@@ -178,4 +190,20 @@ def test_a_return_up_to_twenty_percent_is_realistic_and_above_it_is_not(tmp_path
     before = keep.read_bytes()
     review = ValuationCorrectionService().apply(keep)
     assert not review.applied and keep.read_bytes() == before and "0.0% to 20.0%" in review.notes("expected_return")[0]
-    assert ValuationCorrectionService().apply(_er_workbook(tmp_path / "s.xlsx", model_return=0.21)).applied          # the old-behaviour fallback switches above 20%
+    assert any("Alternative scenario" in n for n in ValuationCorrectionService().apply(_er_workbook(tmp_path / "s.xlsx", model_return=0.21)).notes("expected_return"))          # above 20% only the alternative is described
+
+
+def test_an_error_in_the_models_return_still_gets_an_alternative_scenario_in_the_notes(tmp_path: Path):
+    """A hugely negative ROE year (equity almost wiped out) makes the average ROE negative and the model's return #NUM!: nothing is replaced, the alternative is described."""
+    roe = [0.2, -5.0] + [0.25] * 8
+    path = _book(tmp_path / "n.xlsx", roe=roe, retention=[0.5] * 10, eps=STEADY_EPS)
+    wb = load_workbook(path)
+    er = wb["Expected Returns & Buybacks"]
+    er["F14"].value = "#NUM!"
+    original = er["A14"].value
+    wb.save(path)
+    review = ValuationCorrectionService().apply(path)
+    after = load_workbook(path)["Expected Returns & Buybacks"]
+    assert after["A14"].value == original and not [a for a in review.applied if a.topic == "expected_return"]
+    notes = " ".join(review.notes("expected_return"))
+    assert "#NUM!" in notes and "Alternative scenario (not applied)" in notes

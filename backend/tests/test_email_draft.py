@@ -64,7 +64,7 @@ def test_quarter_email_matches_the_template():
     assert subject == "LNN quarter update Q3 2026"
     assert body.startswith("Dear All,\n\nPlease find attached the quarter update of LNN.\nMarket Cap: ~$8.92B\nCurrent TBV/P: 3.58%\nClassified as: Q\nStatus with PE10: Buy")
     assert "2026 Q3 Financial Highlights" in body
-    assert "2026 Projection\nProjected ROIC - WACC at 6.22% (1.88% in FY2025)\nProjected ROCE at 18.00% (19.25% in FY2025)" in body
+    assert "2026 Projection\nProjected ROIC - WACC at 6.22% (1.88% in FY2025, 10-year average 3.77%)\nProjected ROCE at 18.00% (19.25% in FY2025, 10-year average 10.97%)" in body
     assert "Comparison Q3 2026 to Q3 2025 (9M to 9M)" in body
     assert "Revenue +7.04% ($3,686.8M vs. $3,444.2M)" in body
     assert "Net Income (GAAP) +19.42% ($290.3M vs. $243.1M)" in body
@@ -244,3 +244,25 @@ def test_new_company_email_at_a_q2_or_q3_stop_carries_the_projection():
     assert NewCompanyDeliverablesService.email_projection(report, 2026, 4) is None
     assert NewCompanyDeliverablesService.email_projection(report.model_copy(update={"status": "PROJECTED_ROCE_FAILED"}), 2026, 2) is None
     assert "Projection" not in render_new_company(_facts())[1]
+
+
+def test_q1_email_ends_quarter_data_with_last_fy_returns_and_10y_averages():
+    f = _facts()
+    f.quarter_number, f.quarter_label = 1, "2026 Q1"
+    _subject, body = render_quarter(f, sheet=SheetFields(classified_as="Q", pe10_status="Buy"))
+    assert "Projection" not in body
+    assert "ROIC - WACC in FY2025: -1.57% (10-year average 3.77%)\nROCE in FY2025: 7.29% (10-year average 10.97%)" in body
+    assert body.index("ROCE in FY2025") < body.index("Current price")
+
+
+def test_titles_and_the_market_cap_paragraph_are_bold_in_the_html_part(tmp_path):
+    f = _facts()
+    f.quarter_number, f.quarter_year, f.quarter_label = 3, 2026, "2026 Q3"
+    subject, body = render_quarter(f, sheet=SheetFields(classified_as="Q", pe10_status="Buy"))
+    html = body.html
+    for title in ("2026 Q3 Financial Highlights", "Price &amp; MoS"):
+        assert f"<b>{title}</b>" in html
+    for line in ("Market Cap:", "Current TBV/P:", "Classified as: Q", "Status with PE10: Buy"):
+        assert f"<b>{line}" in html
+    assert "<b>Comparison Q3 2026 to Q3 2025" in html and "<b>Dear All" not in html
+    assert "<b>" not in str(body)                                    # the plain-text file has no markup

@@ -114,7 +114,9 @@ class PipelineOrchestrator:
                 return self._run_new_company(analysis)
             return self._run_standard(analysis)
         except Exception as exc:  # noqa: BLE001 - never leave analyses stuck processing
-            return self._fail(analysis, str(exc))
+            import traceback as _tb
+
+            return self._fail(analysis, (str(exc) or type(exc).__name__) + "\n" + "".join(_tb.format_exc().splitlines(True)[-12:]))
 
     def _run_standard(self, analysis: Analysis) -> Analysis:
         analysis_id = analysis.analysis_id
@@ -789,6 +791,19 @@ class PipelineOrchestrator:
         analysis.cik = manifest.get("cik")
         self._complete_stage(
             analysis, PipelineStage.FETCH_SEC_FILINGS, 45, log, sec_filings_manifest=manifest_path
+        )
+
+        # Lease rate and R&D life/history come from the previous file (carried above); the 10-Ks only fill blanks or correct disagreements.
+        from services.update_assumptions_service import ensure_rd_history
+
+        rd_assumptions = _time(
+            "rd_assumptions_from_previous_or_10k",
+            lambda: ensure_rd_history(carried_path, ticker=analysis.ticker, previous_workbook_path=previous_path, company_facts=company_facts),
+        )
+        analysis.decision_log.append(
+            DecisionLogEntry(
+                agent="Quarterly Carry-Forward", action="rd_assumptions", detail=rd_assumptions.summary(), confidence=0.85, citations=[],
+            )
         )
 
         # M3 still runs but completion scope limits quarterly writes to current_data + LQ

@@ -98,13 +98,13 @@ def insert_lookback_columns(wb, count: int) -> list[str]:
         return []
     # 1. every formula in the workbook that points into the block follows it
     for ws in wb.worksheets:
-        for row in ws.iter_rows():
-            for cell in row:
-                value = cell.value
-                if isinstance(value, str) and value.startswith("=") and ("R&D" in value.upper() or ws.title == RD):
-                    new = shift_references(value, in_rd_sheet=(ws.title == RD), count=count, last_col=last_col)
-                    if new != value:
-                        cell.value = new
+        # only cells that exist: some templates carry formatting out to column XFD, and iter_rows would materialize millions of blanks
+        for cell in list(ws._cells.values()):
+            value = cell.value
+            if isinstance(value, str) and value.startswith("=") and ("R&D" in value.upper() or ws.title == RD):
+                new = shift_references(value, in_rd_sheet=(ws.title == RD), count=count, last_col=last_col)
+                if new != value:
+                    cell.value = new
     # 2. move the cells (values, formulas, formats), right to left
     for col in range(last_col, 1, -1):
         for row in BLOCK_ROWS:

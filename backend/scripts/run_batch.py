@@ -49,7 +49,7 @@ _CRF_NAME = re.compile(
     r"(?:(?P<d>\d{4}[ _\-]\d{2}[ _\-]\d{2}(?:[ _\-]+\d{2}[ _\-]\d{2})?)[ _\-]+)?"
     r"(?P<t>[A-Za-z0-9][A-Za-z0-9.\-]*)(?:[ _]+.*)?$", re.I)
 TYPES = {"new_company", "annual_update", "quarterly_update"}
-PERIOD_ORDER = {"Q1": 1, "Q2": 2, "Q3": 3, "Q4": 4, "FY": 5}
+PERIOD_ORDER = {"Q1": 1, "Q2": 2, "Q3": 3, "Q4": 4, "FY": 4}      # FY and Q4 are the same period: files and requests may use either name
 
 
 @dataclass
@@ -170,7 +170,7 @@ def match_files(folder: Path, ticker: str, analysis_type: str, period: tuple[int
                 out.problems.append(f"no workbook for {t} for the requested period; found: " + ", ".join(p.name for _k, p in books))
                 books = []
             else:
-                older = [b for b in books if b[0] < period]
+                older = [b for b in books if b[0] < period and (analysis_type != "annual_update" or (b[0][1] == 4 and b[0][0] < period[0]))]
                 books = older[-1:] + newer[-1:]
         elif len(books) > 2:
             out.notes.append(
@@ -226,8 +226,138 @@ def match_files(folder: Path, ticker: str, analysis_type: str, period: tuple[int
     return out
 
 
+def select_drive_files(files: list, ticker: str, analysis_type: str, period: tuple[int, int] | None = None) -> list:
+    """The Drive files one job needs, picked by name with the same rules as match_files (so the right ones end up in the work folder).
+
+    workbooks: new company -> the requested period, or every workbook of the ticker (match_files then reports an ambiguity);
+               update -> the requested period and the newest older one, or the newest two.
+    custom run filter: the latest one for the ticker."""
+    t = ticker.upper()
+    books, crfs = [], []
+    for f in files:
+        path = Path(f.name)
+        if _CRF_PREFIX.match(path.name):
+            crf = _parse_crf_name(path)
+            if crf and crf[0] == t:
+                crfs.append((crf[1], f.name, f))
+            continue
+        if "is-bs-cf" in path.name.lower():            # raw statement exports, not the template
+            continue
+        parsed = _parse_workbook_name(path)
+        if parsed and t in parsed[0]:
+            books.append((parsed[1], f))
+    # a Drive history holds many versions of one period (v25.5, v25.13): keep the most recently modified of each
+    newest_per_period: dict = {}
+    for key, f in books:
+        if key not in newest_per_period or f.modified > newest_per_period[key].modified:
+            newest_per_period[key] = f
+    books = sorted(newest_per_period.items(), key=lambda x: x[0])
+    if analysis_type == "new_company":
+        chosen = [b for b in books if b[0] == period] if period is not None else books[-1:]     # no period: the newest workbook
+    elif period is not None:
+        chosen = [b for b in books if b[0] < period][-1:] + [b for b in books if b[0] == period][-1:]
+    else:
+        chosen = books[-2:]
+    picked = [f for _k, f in chosen]
+    if crfs:
+        picked.append(max(crfs, key=lambda c: (c[0], c[1]))[2])
+    return picked
+
+
+def select_reference_sheets(files: list) -> list:
+    """The newest daily summary sheet and the newest 'Current Filter Summary Sheet' (the stand-in source when a company has no custom filter)."""
+    def newest(pred):
+        hits = [f for f in files if pred(f.name.lower())]
+        return max(hits, key=lambda f: f.modified) if hits else None
+
+    picked = [newest(lambda n: "filter summary" in n), newest(lambda n: "summary" in n and "filter summary" not in n and not n.startswith("custom"))]
+    return [f for f in picked if f]
+
+
+def _books_for(files: list, t: str) -> list:
+    """[(period key, file)] of the ticker's workbooks, oldest first, one per period (the most recently modified version)."""
+    best: dict = {}
+    for f in files:
+        path = Path(f.name)
+        if _CRF_PREFIX.match(path.name) or "is-bs-cf" in path.name.lower():
+            continue
+        parsed = _parse_workbook_name(path)
+        if parsed and t in parsed[0] and (parsed[1] not in best or f.modified > best[parsed[1]].modified):
+            best[parsed[1]] = f
+    return sorted(best.items(), key=lambda x: x[0])
+
+
+def plan_drive_job(files: list, previous_files: list, ticker: str, kind: str, period: tuple[int, int] | None, max_gap_years: int = 2):
+    """(files to download, analysis type to run, period of the new workbook, notes) for one job.
+
+    With a previous-analysis folder, an update takes the NEW workbook from the template folder and the PREVIOUS one from the previous-analysis
+    folder: the latest finished analysis of the company older than the new period. When there is none, or it is max_gap_years or more years
+    before the new period, the company is treated as new (analysis type new_company, no previous workbook)."""
+    t = ticker.upper()
+    if kind == "new_company" or not previous_files:
+        return select_drive_files(files, ticker, kind, period), kind, period, []
+    new = [b for b in _books_for(files, t) if period is None or b[0] == period]
+    if not new:
+        return select_drive_files(files, ticker, kind, period), kind, period, []      # nothing to run: match_files reports it
+    new_key, new_file = new[-1]
+    picked, notes, effective = [new_file], [], kind
+    prev = [b for b in _books_for(previous_files, t) if b[0] < new_key and (kind != "annual_update" or (b[0][1] == 4 and b[0][0] < new_key[0]))]      # a yearly update builds on LAST YEAR's FY analysis, not on a quarter of this year
+    if prev and new_key[0] - prev[-1][0][0] < max_gap_years:
+        picked.append(prev[-1][1])
+    else:
+        effective = "new_company"
+        notes.append(
+            f"treated as a new company: no earlier analysis of {t} in the previous-analysis folder" if not prev else
+            f"treated as a new company: the latest earlier analysis ({prev[-1][1].name}) is {new_key[0] - prev[-1][0][0]} years before {_period_label(new_key)}"
+        )
+    crfs = [(_parse_crf_name(Path(f.name)), f) for f in files if _CRF_PREFIX.match(f.name)]
+    crfs = [(c[0][1], c[1]) for c in crfs if c[0] and c[0][0] == t]
+    if crfs:
+        picked.append(max(crfs, key=lambda c: (c[0], c[1].name))[1])
+    return picked, effective, new_key, notes
+
+
+def _merge_listing(client, folder_ids) -> list:
+    by_name: dict[str, object] = {}
+    for folder_id in folder_ids:
+        for f in client.list_spreadsheets(folder_id):
+            if f.name not in by_name or f.modified > by_name[f.name].modified:
+                by_name[f.name] = f
+    return list(by_name.values())
+
+
+def fetch_from_drive(folder_ids: "str | list[str]", jobs: list[tuple[str, str, tuple[int, int] | None]], work: Path,
+                     previous_folder_ids: list[str] | None = None, max_gap_years: int = 2) -> dict:
+    """Download what the jobs need from the Google Drive folder(s) into the work folder. Never raises: a Drive problem is reported and the
+    batch carries on with whatever is already in the work folder. report["plans"][i] = (analysis type, period, notes) for job i."""
+    from services.drive_sync_service import DriveClient, DriveError, sync_files
+
+    try:
+        client = DriveClient()
+        files = _merge_listing(client, [folder_ids] if isinstance(folder_ids, str) else folder_ids)
+        previous_files = _merge_listing(client, previous_folder_ids) if previous_folder_ids else []
+        wanted: dict[str, object] = {}
+        plans = []
+        for ticker, kind, period in jobs:
+            picked, effective, new_period, notes = plan_drive_job(files, previous_files, ticker, kind, period, max_gap_years)
+            plans.append((effective, new_period, notes))
+            for f in picked:
+                wanted[f.name] = f
+        reference = select_reference_sheets(files)
+        for f in reference:
+            wanted[f.name] = f
+        report = sync_files(client, list(wanted.values()), work, refresh_if_newer={f.name for f in reference})
+        report["listed"] = len(files) + len(previous_files)
+        report["plans"] = plans
+        return report
+    except DriveError as exc:
+        return {"error": str(exc)}
+    except Exception as exc:  # noqa: BLE001 - offline etc.: use the local folder
+        return {"error": f"{type(exc).__name__}: {exc}"}
+
+
 def _period_label(key: tuple[int, int]) -> str:
-    return f"{key[0]}{'FY' if key[1] == 5 else 'Q' + str(key[1])}"
+    return f"{key[0]}{'FY' if key[1] == 4 else 'Q' + str(key[1])}"      # Q4 and FY are one period; shown as FY
 
 
 def apply_point_in_time(match: Match, ticker: str, results: Path, mode: str) -> None:
@@ -433,7 +563,7 @@ def run_one(ticker: str, analysis_type: str, match: Match, sheet, results: Path,
         )
     email = EmailDraftService().produce_safe(
         analysis_type=analysis_type, ticker=ticker, company=company, workbook_path=excel, output_dir=out_dir,
-        sheet=fields, base_name=base, fiscal_year=fy, fiscal_quarter=fq, projection=projection,
+        sheet=fields, base_name=base, fiscal_year=fy, fiscal_quarter=fq, projection=projection, fetch_release=True,
         highlights=(analyst or {}).get("highlights"),
         basis_note=(f"Per-share figures (price, entry prices, EPS) are on the workbook's share basis, adjusted for later splits "
                     f"(x{match.pit['share_factor']:g}); the prices seen at the time were x{match.pit['share_factor']:g} these.")
@@ -476,6 +606,18 @@ def main() -> int:
                     help='analyst commentary per run, {"TPL 2020Q3": {"highlights": "...", "quarter_title": "...", "quarter_notes": ["..."]}}: '
                          "the highlights go into the email, the quarter notes into the Business document")
     ap.add_argument("--sheet-url", default=None, help="published .xlsx link of the Google Sheet (or set HAP_SHEET_URL); falls back to the newest download")
+    ap.add_argument("--drive-folder", default=None, metavar="ID_OR_LINK",
+                    help="Google Drive folder (id or link) holding the workbooks, filters and sheets; HAP downloads what each job needs into the "
+                         "work folder (or set HAP_DRIVE_FOLDER_ID). Sign in once with scripts/drive_login.py")
+    ap.add_argument("--drive-previous", default=None, metavar="ID_OR_LINK",
+                    help="Google Drive folder of finished earlier analyses (or set HAP_DRIVE_PREVIOUS_FOLDER): an update takes its previous workbook "
+                         "from here; with no earlier analysis, or one --previous-max-years or more before, the company is run as new")
+    ap.add_argument("--previous-max-years", type=int, default=2, metavar="N",
+                    help="an earlier analysis whose year is N or more years before the new period is not used (default 2)")
+    ap.add_argument("--no-email", action="store_true",
+                    help="do not send the finished email; by default each finished analysis is emailed to HAP_EMAIL_TO (default houda@vlixes.us) "
+                         "with the workbook attached, when HAP_SMTP_USER / HAP_SMTP_PASSWORD are set in backend/.env")
+    ap.add_argument("--no-drive", action="store_true", help="do not use Google Drive even when a folder is configured")
     args = ap.parse_args()
     work, results = Path(args.work), Path(args.results)
     notes = json.loads(Path(args.notes).read_text(encoding="utf-8")) if args.notes else {}
@@ -485,6 +627,33 @@ def main() -> int:
         lease_rates[key.strip().upper()] = float(val)
 
     from services.daily_sheet_service import open_daily_sheet
+    from services.drive_sync_service import folder_id_from
+
+    # one or several folders (links or ids separated by commas or spaces)
+    raw_folders = [] if args.no_drive else re.split(r"[,\s]+", args.drive_folder or os.environ.get("HAP_DRIVE_FOLDER_ID") or "")
+    drive_folder = [fid for fid in (folder_id_from(x) for x in raw_folders if x) if fid]
+    raw_prev = [] if args.no_drive else re.split(r"[,\s]+", args.drive_previous or os.environ.get("HAP_DRIVE_PREVIOUS_FOLDER") or "")
+    previous_folder = [fid for fid in (folder_id_from(x) for x in raw_prev if x) if fid]
+    drive_plans: dict[str, tuple] = {}           # job text -> (analysis type to run, period of the new workbook, notes)
+    if drive_folder:
+        drive_jobs, job_texts = [], []
+        for job in args.jobs:
+            tkr, _, rest = job.partition(":")
+            kind, _, period_text = rest.partition(":")
+            try:
+                drive_jobs.append((tkr.strip().upper(), kind.strip().lower(), parse_period(period_text) if period_text.strip() else None))
+                job_texts.append(job)
+            except ValueError:
+                continue                                  # reported below with the job
+        got = fetch_from_drive(drive_folder, drive_jobs, work, previous_folder, args.previous_max_years)
+        if "error" in got:
+            print(f"Google Drive: {got['error']} -- using the files already in {work}")
+        else:
+            drive_plans = dict(zip(job_texts, got["plans"]))
+            print(f"Google Drive: {got['listed']} spreadsheets listed; downloaded {len(got['downloaded'])}, up to date {len(got['cached'])}"
+                  + (f", kept your own copy of {', '.join(got['kept_local'])}" if got["kept_local"] else ""))
+            for name in got["downloaded"]:
+                print(f"  + {name}")
 
     sheet, source = open_daily_sheet(work, args.sheet_url or os.environ.get("HAP_SHEET_URL"))
     print(f"Daily sheet: {source if sheet else 'NOT FOUND (email fields will be marked)'}")
@@ -504,7 +673,14 @@ def main() -> int:
         if kind not in TYPES:
             report.append({"ticker": ticker, "problem": f"unknown analysis type '{kind}' (use {', '.join(sorted(TYPES))})"})
             continue
+        plan_notes: list[str] = []
+        if job in drive_plans and kind in TYPES:
+            kind, new_period, plan_notes = drive_plans[job]          # an update with no recent earlier analysis runs as a new company
+            period = new_period or period
+            for n in plan_notes:
+                print(f"[{ticker}] {n}")
         match = match_files(work, ticker, kind, period, standin_dir=results / "_standin_filters")
+        match.notes[:0] = plan_notes
         if match.problems:
             report.append({"ticker": ticker, "type": kind, "problem": "; ".join(match.problems)})
             print(f"[{ticker}] skipped: {report[-1]['problem']}")
@@ -523,6 +699,12 @@ def main() -> int:
             MarketPriceService.clear_point_in_time(ticker)
         if match.pit:
             result["point_in_time"] = match.pit
+        if not args.no_email and result.get("email_eml") and "problem" not in result:
+            from services.email_delivery_service import send_analysis_email
+
+            sent = send_analysis_email(result["email_eml"])
+            result["emailed"] = sent
+            print(f"[{ticker}] email to {sent['to']}: " + ("sent with the workbook attached" if sent["sent"] else f"NOT sent ({sent['error']})"), flush=True)
         report.append(result)
         print(f"[{ticker}] {result.get('status', 'FAILED')}: {result.get('problem') or ', '.join(result.get('notes') or ['done'])}", flush=True)
 

@@ -13,6 +13,8 @@ analyst completes; a model-written version replaces them when the API key is ava
 
 from __future__ import annotations
 
+from html import escape as html_escape
+
 import os
 from dataclasses import dataclass, field
 import mimetypes
@@ -155,6 +157,8 @@ class Facts:
     projection: dict[str, Any] = field(default_factory=dict)
     sources: list[str] = field(default_factory=list)
     fy_series: dict[str, list[tuple[str, float | None]]] = field(default_factory=dict)
+    avg_note: dict[str, str] = field(default_factory=dict)   # metric -> why its 10-year average was recomputed
+    release: Any = None                          # ReleaseCommentary from the company's SEC earnings release (quarterly updates)
 
 
 def read_facts(workbook_path: Path, *, ticker: str, company: str = "") -> Facts:
@@ -241,6 +245,13 @@ def _read_fy(wb, f: Facts) -> None:
         for key, label in (("roce", "ROCE"), ("roic_wacc", "ROIC in - WACC")):
             r = _find_label_row(fm, label)
             f.fy_series[key] = [(fy, _value(fm, r, years[fy])) for fy in sorted(years)]
+            # the sheet's own average breaks when one year is an error (#DIV/0!); average the years that did compute instead
+            cur, prior_v, avg = m.get(key, (None, None, None))
+            if avg is None:
+                valid = [v for _fy, v in f.fy_series[key][-10:] if v is not None]
+                if valid:
+                    m[key] = (cur, prior_v, sum(valid) / len(valid))
+                    f.avg_note[key] = f"{len(valid)} years with a computable value"
     if "All Ratios" in wb.sheetnames:
         ar = wb["All Ratios"]
         lat, prior, token = _fy_pair(ar)
@@ -335,10 +346,10 @@ def _header_block(f: Facts, sheet: SheetFields | None) -> list[str]:
     cap = sheet.market_cap_text or money_b(f.market_cap_m)
     tbv = sheet.tbv_p_text or pct(f.tbv_p)
     return [
-        f"Market Cap: {cap}",
-        f"Current TBV/P: {tbv}",
-        f"Classified as: {sheet.classified_as or '[Google Sheet]'}",
-        f"Status with PE10: {sheet.pe10_status or pe10_status(f)}",
+        Bold(f"Market Cap: {cap}"),
+        Bold(f"Current TBV/P: {tbv}"),
+        Bold(f"Classified as: {sheet.classified_as or '[Google Sheet]'}"),
+        Bold(f"Status with PE10: {sheet.pe10_status or pe10_status(f)}"),
     ]
 
 
@@ -346,10 +357,10 @@ def _price_block(f: Facts) -> list[str]:
     er = pct(f.expected_return)
     if f.expected_return is not None and f.expected_return_adjusted:
         er += " (adjusted)"
-    elif f.expected_return is not None and f.expected_return_red_flag:
+    elif f.expected_return_red_flag:
         er += " (red flag: see the Expected Returns tab notes)"
     return [
-        "Price & MoS",
+        Bold("Price & MoS"),
         f"Current price: {usd(f.price)}. PE10 percentile is at {pct(f.pe10_percentile)}. Max entry price {usd(f.max_entry)}.",
         f"EV MoS: {pct(f.ev_mos, 2, sign=True)}",
         f"Entry price for MoS at {pct(f.ev_implied_mos if f.ev_implied_mos is not None else 0.25, 0)} (including cash): {usd(f.ev_entry_mos)}",
@@ -379,11 +390,17 @@ def _fy_names(f: Facts) -> tuple[str, str]:
 def _fy_metrics_block(f: Facts, title: str) -> list[str]:
     fy, prior = _fy_names(f)
     m = f.fy_metrics
-    lines = [title]
+    lines = [Bold(title)]
     if "roce" in m:
         lines.append(_avg_line("ROCE", m["roce"], fy, prior))
     if "roic_wacc" in m:
-        lines.append(_avg_line("ROIC-WACC", m["roic_wacc"], fy, prior))
+        line = _avg_line("ROIC-WACC", m["roic_wacc"], fy, prior)
+        cur_v, prior_v, avg_v = m["roic_wacc"]
+        if prior_v is None:                 # always show the comparison with the year before, even when it could not be computed
+            line = line.replace(" (", f" (n/a in {prior}, ", 1) if " (" in line else f"{line} (n/a in {prior})"
+        if avg_v is not None and "roic_wacc" in f.avg_note:
+            line = line[:-1] + f"; average of the {f.avg_note['roic_wacc']})"
+        lines.append(line)
     if "a_l" in m:
         lines.append(f"A/L: {ratio(m['a_l'][0])}")
     gm = m.get("gross_margin", (None,))[0]
@@ -400,7 +417,7 @@ def _fy_metrics_block(f: Facts, title: str) -> list[str]:
 def _fy_vs_block(f: Facts) -> list[str]:
     fy, prior = _fy_names(f)
     m, ch = f.fy_metrics, f.fy_changes
-    lines = [f"{fy} vs. {prior}"]
+    lines = [Bold(f"{fy} vs. {prior}")]
     for label, key in (("Revenue", "revenue"), ("Net Income", "net_income"), ("EPS", "eps")):
         cur, pri, _ = m.get(key, (None, None, None))
         lines.append(f"{label}: {pct(change(cur, pri), 2, sign=True)}")
@@ -423,7 +440,7 @@ def _periods(f: Facts) -> tuple[str, str, str]:
 
 def _quarter_vs_block(f: Facts, heading: str, *, with_ytd: bool, margin_digits: int = 2) -> list[str]:
     y = f.q_yoy
-    lines = [heading]
+    lines = [Bold(heading)]
 
     def cmp_line(label: str, pair: tuple, money: bool, per_share: bool = False) -> str:
         cur, pri = pair
@@ -462,7 +479,7 @@ def _quarter_vs_block(f: Facts, heading: str, *, with_ytd: bool, margin_digits: 
 
 def _qoq_block(f: Facts, heading: str) -> list[str]:
     q = f.q_qoq
-    lines = [heading]
+    lines = [Bold(heading)]
     a, li = q.get("assets", (None, None)), q.get("liabilities", (None, None))
     cur = a[0] / li[0] if a[0] and li[0] else None
     pri = a[1] / li[1] if a[1] and li[1] else None
@@ -476,8 +493,36 @@ def _qoq_block(f: Facts, heading: str) -> list[str]:
 # ---------------------------------------------------------------- templates
 
 
+class Bold(str):
+    """A line the email shows in bold: section titles and the market-cap paragraph. In the plain-text file it is just text."""
+
+
+class EmailBody(str):
+    """The plain-text body; `.html` holds the same email with the Bold lines in bold (used for the .eml)."""
+
+    html: str = ""
+
+
+_P = '<p style="margin:0 0 12px 0">'
+
+
+def _html(sections: list[list[str]]) -> str:
+    paragraphs = []
+    for section in sections:
+        if not section:
+            continue
+        lines = []
+        for line in section:
+            text = html_escape(str(line)) if line else ""
+            lines.append(f"<b>{text}</b>" if isinstance(line, Bold) else text)
+        paragraphs.append(_P + "<br>".join(lines) + "</p>")
+    return '<div style="font-family:Calibri,Arial,sans-serif;font-size:11pt">\n' + "\n".join(paragraphs) + "\n</div>\n"
+
+
 def _join(sections: list[list[str]]) -> str:
-    return "\n\n".join("\n".join(s) for s in sections if s) + "\n"
+    body = EmailBody("\n\n".join("\n".join(s) for s in sections if s) + "\n")
+    body.html = _html(sections)
+    return body
 
 
 def _description(f: Facts, description: str | None) -> str:
@@ -492,9 +537,52 @@ def _projection_block(f: Facts) -> list[str]:
     # the projection report may lack last year's figures; the workbook's last full fiscal year has them
     prior_spread = p.get("prior_spread") if p.get("prior_spread") is not None else f.fy_metrics.get("roic_wacc", (None,))[0]
     prior_roce = p.get("prior_roce") if p.get("prior_roce") is not None else f.fy_metrics.get("roce", (None,))[0]
-    return [f"{p.get('next_fy', 'Next year')} Projection",
-            f"Projected ROIC - WACC at {pct(p.get('roic_wacc'))} ({pct(prior_spread)} in {p.get('fy', 'last year')})",
-            f"Projected ROCE at {pct(p.get('roce'))} ({pct(prior_roce)} in {p.get('fy', 'last year')})"]
+    avg_spread = f.fy_metrics.get("roic_wacc", (None, None, None))[2]
+    avg_roce = f.fy_metrics.get("roce", (None, None, None))[2]
+    fy = p.get("fy", "last year")
+
+    def tail(prior: float | None, average: float | None) -> str:
+        parts = ([f"{pct(prior)} in {fy}"] if prior is not None else []) + ([f"10-year average {pct(average)}"] if average is not None else [])
+        return f" ({', '.join(parts)})" if parts else ""
+
+    return [Bold(f"{p.get('next_fy', 'Next year')} Projection"),
+            f"Projected ROIC - WACC at {pct(p.get('roic_wacc'))}{tail(prior_spread, avg_spread)}",
+            f"Projected ROCE at {pct(p.get('roce'))}{tail(prior_roce, avg_roce)}"]
+
+
+def _q1_returns_block(f: Facts) -> list[str]:
+    """Q1 has no projection: the last fiscal year's ROIC - WACC and ROCE with their 10-year averages, as two closing lines of the quarter data."""
+    fy = f.fy or "last year"
+    lines = []
+    for label, key in (("ROIC - WACC", "roic_wacc"), ("ROCE", "roce")):
+        last, _prior, average = f.fy_metrics.get(key, (None, None, None))
+        if last is None and average is None:
+            continue
+        lines.append(f"{label} in {fy}: {pct(last)}" + (f" (10-year average {pct(average)})" if average is not None else ""))
+    return lines
+
+
+def _quarter_highlights_block(f: Facts, highlights: str | None) -> list[str]:
+    """Financial Highlights: what the numbers show, then management's explanation and its short and medium-term plans from the earnings release."""
+    from services.email_narrative import quarter_highlights
+
+    title = Bold(f"{f.quarter_label or 'Latest quarter'} Financial Highlights")
+    numbers = highlights or quarter_highlights(f) or "[What drove the quarter: segment growth and the reasons behind it. To be completed by the analyst.]"
+    r = f.release
+    if r is None or getattr(r, "status", "") in ("NO_PERIOD",):
+        return [title, numbers]
+    source = f"SEC 8-K earnings release filed {r.filed}" if getattr(r, "filed", None) else "the SEC earnings release"
+    lines = [title, numbers, ""]
+    if r.results:
+        lines += [f"Management's explanation of the results ({source}):"] + [f"- {x}" for x in r.results]
+    else:
+        lines.append("[Management's explanation of the results: nothing usable in the earnings release; to be completed by the analyst.]")
+    lines.append("")
+    if r.outlook:
+        lines += [f"Management's plans and outlook, short and medium term ({source}; the call transcript itself was not available):"] + [f"- {x}" for x in r.outlook]
+    else:
+        lines.append("[Management's plans for the short and medium term: nothing usable in the earnings release; to be completed by the analyst from the call.]")
+    return lines
 
 
 def render_quarter(f: Facts, *, sheet: SheetFields | None = None, highlights: str | None = None) -> tuple[str, str]:
@@ -503,14 +591,12 @@ def render_quarter(f: Facts, *, sheet: SheetFields | None = None, highlights: st
     ytd = f.ytd_label if q >= 2 else ""
     ytd_note = f" ({ytd} to {ytd})" if ytd else ""
     intro = ["Dear All,", "", f"Please find attached the quarter update of {f.ticker}."] + _header_block(f, sheet)
-    from services.email_narrative import quarter_highlights
-
-    hl = [f"{f.quarter_label or 'Latest quarter'} Financial Highlights",
-          highlights or quarter_highlights(f) or "[What drove the quarter: segment growth and the reasons behind it. To be completed by the analyst.]"]
+    hl = _quarter_highlights_block(f, highlights)
     sections = [
         intro, hl, _projection_block(f),
         _quarter_vs_block(f, f"Comparison {cur} to {last_year}{ytd_note}", with_ytd=q >= 2),
         _qoq_block(f, f"Comparison {cur} to {prev}"),
+        _q1_returns_block(f) if q == 1 else [],
         _price_block(f),
         ["Very best,"],
     ]
@@ -524,7 +610,7 @@ def render_annual(f: Facts, *, sheet: SheetFields | None = None, description: st
     from services.email_narrative import annual_highlights
 
     intro = ["Dear All,", "", f"Please find the annual update for {f.ticker} below ({_description(f, description)})"] + _header_block(f, sheet)
-    hl = [f"{fy} Highlights", f"Net Revenue: {money_m(rev)}", f"Net Income: {money_m(ni)}", f"EPS: {usd(eps)}", "",
+    hl = [Bold(f"{fy} Highlights"), f"Net Revenue: {money_m(rev)}", f"Net Income: {money_m(ni)}", f"EPS: {usd(eps)}", "",
           highlights or annual_highlights(f) or "[What drove the year: demand, margins and the reasons behind them. To be completed by the analyst.]"]
     sections = [intro, hl, _fy_metrics_block(f, f"{fy} Metrics"), _fy_vs_block(f), _price_block(f), ["Very best,"]]
     return f"{f.ticker} annual update {fy}", _join(sections)
@@ -542,13 +628,13 @@ def render_new_company(f: Facts, *, sheet: SheetFields | None = None, descriptio
     name = f"{f.ticker}: {f.company}" if f.company else f.ticker
     subject_line = f"{f.ticker}: {description}" if description else f"{name}, [one-line description of the company]"
     intro = ["Dear All,", "", f"Please find attached the analysis of {subject_line}"] + _header_block(f, sheet)
-    hl = ["Highlights", highlights or new_company_highlights(f) or "[Competitive position and the main story of the last years: to be completed by the analyst.]"]
+    hl = [Bold("Highlights"), highlights or new_company_highlights(f) or "[Competitive position and the main story of the last years: to be completed by the analyst.]"]
     sections = [
         intro, hl, _fy_metrics_block(f, fy), _fy_vs_block(f), _projection_block(f),
         _quarter_vs_block(f, f"{cur} vs. {last_year}{ytd_note}", with_ytd=q >= 2, margin_digits=1),
         _qoq_block(f, f"{cur} vs. {prev}"),
         _price_block(f),
-        ["Conclusion", conclusion or new_company_conclusion(f) or "[Overall view of the company: to be completed by the analyst.]"],
+        [Bold("Conclusion"), conclusion or new_company_conclusion(f) or "[Overall view of the company: to be completed by the analyst.]"],
         ["Let me know if you have any questions.", "", "Very best"],
     ]
     return f"{f.ticker} new company analysis", _join(sections)
@@ -578,6 +664,7 @@ class EmailDraftService:
         fiscal_quarter: int | None = None,
         attachments: list[Path] | None = None,
         basis_note: str | None = None,
+        fetch_release: bool = False,
     ) -> dict[str, str]:
         facts = read_facts(workbook_path, ticker=ticker, company=company)
         if fiscal_year and fiscal_quarter in (1, 2, 3):
@@ -587,6 +674,8 @@ class EmailDraftService:
             facts.ytd_label = {1: "3M", 2: "6M", 3: "9M"}[int(fiscal_quarter)]
         if projection:
             facts.projection = projection
+        if fetch_release and analysis_type == "quarterly_update" and highlights is None:
+            facts.release = self._release_commentary(ticker, workbook_path)
         if description is None and analysis_type in ("annual_update", "new_company"):
             description = self._describe(analysis_type, ticker, company or facts.company, output_dir, fiscal_year, fiscal_quarter)
         if analysis_type == "quarterly_update":
@@ -595,8 +684,11 @@ class EmailDraftService:
             subject, body = render_annual(facts, sheet=sheet, description=description, highlights=highlights)
         else:
             subject, body = render_new_company(facts, sheet=sheet, description=description, highlights=highlights, conclusion=conclusion)
+        html = getattr(body, "html", "") or ""
         if basis_note:
             tail = "Let me know if you have any questions."
+            note_html = _P + html_escape(basis_note) + "</p>\n"
+            html = html.replace(_P + tail, note_html + _P + tail, 1) if (_P + tail) in html else html.replace("</div>", note_html + "</div>", 1)
             body = body.replace(tail, basis_note + "\n\n" + tail, 1) if tail in body else body + "\n\n" + basis_note
         output_dir.mkdir(parents=True, exist_ok=True)
         stem = base_name or f"Email draft {subject}"
@@ -607,7 +699,9 @@ class EmailDraftService:
         msg["To"] = os.environ.get("HAP_EMAIL_DRAFT_TO", DEFAULT_TO)
         msg["Subject"] = subject
         msg["X-Unsent"] = "1"          # opens as an editable draft in Outlook and other mail apps
-        msg.set_content(body)
+        msg.set_content(str(body))
+        if html:
+            msg.add_alternative(html, subtype="html")          # titles and the market-cap paragraph in bold
         for path in attachments or []:
             path = Path(path)
             if not path.is_file():
@@ -617,6 +711,21 @@ class EmailDraftService:
             msg.add_attachment(path.read_bytes(), maintype=main, subtype=sub or "octet-stream", filename=path.name)
         eml.write_bytes(bytes(msg))
         return {"subject": subject, "text_path": str(txt), "eml_path": str(eml), "body": body}
+
+    @staticmethod
+    def _release_commentary(ticker: str, workbook_path: Path):
+        """The company's earnings release for the quarter in the workbook (its end date is on the Last Quarter BS tab); None when it cannot be read."""
+        try:
+            from services.earnings_release_service import EarningsReleaseService
+
+            wb = load_workbook(workbook_path, data_only=True, read_only=True)
+            try:
+                end = wb[LQ_BS]["C4"].value if LQ_BS in wb.sheetnames else None
+            finally:
+                wb.close()
+            return EarningsReleaseService().commentary(ticker, end)
+        except Exception:  # noqa: BLE001 - optional: the email keeps its numbers-only highlights
+            return None
 
     @staticmethod
     def _describe(analysis_type: str, ticker: str, company: str, output_dir: Path, fiscal_year: int | None = None,

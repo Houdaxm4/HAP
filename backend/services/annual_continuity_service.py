@@ -126,10 +126,36 @@ def analyst_extra_terms(previous_shifted: str, template_formula: str) -> str | N
     return extra if extra and extra[0] in "+-" else None
 
 
+def _split_factor(workbook, new_fiscal_year: str | None) -> float:
+    """The stock split ratio the new template records for the new fiscal year ('Split Ratio' row, Income - GAAP); 1 when none."""
+    if not new_fiscal_year or "Income - GAAP" not in workbook.sheetnames:
+        return 1.0
+    ws = workbook["Income - GAAP"]
+    col = detect_year_columns(ws, workbook).get(new_fiscal_year)
+    if col is None:
+        return 1.0
+    for row in range(1, min(ws.max_row or 1, 400) + 1):
+        if str(ws.cell(row, 1).value or "").strip().lower() == "split ratio":
+            value = ws.cell(row, col).value
+            return float(value) if isinstance(value, (int, float)) and not isinstance(value, bool) and value > 1 else 1.0
+    return 1.0
+
+
+def _is_split_restatement(previous: Any, template: Any, factor: float) -> bool:
+    """True when the template value is the previous value restated for a stock split (shares x factor, per-share amounts / factor)."""
+    if factor <= 1.0 or isinstance(previous, bool) or isinstance(template, bool):
+        return False
+    if not isinstance(previous, (int, float)) or not isinstance(template, (int, float)) or not previous or not template:
+        return False
+    ratio = template / previous
+    return abs(ratio / factor - 1) <= 0.012 or abs(ratio * factor - 1) <= 0.012
+
+
 class AnnualContinuityService:
     """Reconcile persistent historical regions from the previous completed workbook."""
 
     def __init__(self) -> None:
+        self._split = 1.0
         self._extras: dict[tuple[str, int], tuple[int, str, int]] = {}      # (sheet, row) -> (fiscal year, extra terms, column they sit in)
 
     def apply(
@@ -151,7 +177,13 @@ class AnnualContinuityService:
         out = load_workbook(workbook_path, data_only=False)
         entries: list[ContinuityEntry] = []
         self._extras = {}
+        self._split = 1.0
         try:
+            cached = load_workbook(template_path, data_only=True)      # the Split Ratio cell is a formula: read its cached value
+            try:
+                self._split = _split_factor(cached, detected_new)
+            finally:
+                cached.close()
             template_fy_cols = self._workbook_fy_columns(out)
             previous_fy_cols = self._workbook_fy_columns(prev)
             sheet_set = list(dict.fromkeys(list(_HISTORICAL_SHEETS) + list(_FORMULA_ONLY_SHEETS)))
@@ -279,6 +311,11 @@ class AnnualContinuityService:
                         break
             fy_keys = [k for k in year_map if k.startswith("FY")]
             detected_new = new_fiscal_year or (max(fy_keys) if fy_keys else None)
+            cached = load_workbook(workbook_path, data_only=True)
+            try:
+                split = _split_factor(cached, detected_new)
+            finally:
+                cached.close()
 
             for sheet in _HISTORICAL_SHEETS:
                 if sheet not in prev.sheetnames or sheet not in out.sheetnames:
@@ -314,7 +351,7 @@ class AnnualContinuityService:
                                     final_type=ok,
                                 )
                             )
-                        elif pk == "value" and ok == "value" and not _values_equal(pv, ov):
+                        elif pk == "value" and ok == "value" and not _values_equal(pv, ov) and not _is_split_restatement(pv, ov, split):
                             mismatches.append(
                                 ContinuityEntry(
                                     sheet=sheet,
@@ -449,6 +486,10 @@ class AnnualContinuityService:
             else:
                 action = ContinuityAction.KEEP_NEW_FORMULA
                 reason = "Template formula preserved; not flattened to prior cached value."
+        elif pk == "value" and ok == "value" and not _values_equal(pv, ov) and _is_split_restatement(pv, ov, self._split):
+            action = ContinuityAction.KEEP_NEW_FORMULA
+            reason = (f"Stock split of {self._split:g} for 1 in the new fiscal year: the template's restated historical value is kept, "
+                      "the previous workbook's pre-split value is not carried.")
         elif pk == "value" and (ok == "blank" or (ok == "value" and not _values_equal(pv, ov))):
             out_cell.value = pv
             action = ContinuityAction.CARRY_FORWARD_VALUE

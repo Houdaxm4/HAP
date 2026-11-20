@@ -36,7 +36,7 @@ BS = "Balance Sheet - Standardized"
 LQ_BS = "Last Quarter BS Standardized"
 LQ_IS = "Last Quarter IS Standardized"
 LQ_CF = "Last Quarter CF Standardized"
-FACTOR = {1: "*4", 2: "*2", 3: "*4/3"}
+FACTOR = {2: "*2", 3: "*4/3"}              # projections only when the latest quarter is Q2 or Q3, whatever the analysis type
 BS_REF = re.compile(rf"'{re.escape(BS)}'!(?P<col>[A-Z]+)(?P<row>\d+)")
 
 
@@ -89,7 +89,7 @@ class IcProjectionWriter:
     def apply(self, *, workbook_path: Path, latest_quarter: int | None) -> IcProjectionReport:
         report = IcProjectionReport()
         if latest_quarter not in FACTOR:
-            report.skipped.append("Full fiscal year or unidentified quarter: no projection columns.")
+            report.skipped.append("Latest period is not Q2 or Q3: no projection columns.")
             return report
         path = Path(workbook_path)
         wb = load_workbook(path, data_only=False)
@@ -157,7 +157,7 @@ class IcProjectionWriter:
                 report.written.append(f"{IC}!{addr}")
             self._format(ws, last)
             if report.changed:
-                quarter_word = {1: "x 4", 2: "x 2", 3: "x 4/3"}[latest_quarter]
+                quarter_word = {2: "x 2", 3: "x 4/3"}[latest_quarter]
                 AdjustmentLedger(wb).record(
                     sheet=IC, cell=f"{M}23", fiscal_year=None, category="Projection",
                     what=f"Projected ROIC (column {M}) and ROCE (column {N})", original="blank", new=f"=NOPAT/Invested capital (column {M})",
